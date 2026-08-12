@@ -2006,3 +2006,421 @@ body.admin-view-active .navbar {
 @media (max-width: 480px) {
   .brand-wordmark { font-size:1.35rem; }.navbar .user-badge .btn { min-height:34px; box-shadow:3px 3px 0 #090909; }.neo-hero-actions { align-items:flex-start; flex-direction:column; }.neo-proof { line-height:1.35; }.machine-body { padding:17px; }.neo-shell { padding-inline:14px; }.neo-how { padding:16px; }.neo-landing .metrics-banner-card { grid-template-columns:1fr; }.neo-landing .metric-item,.neo-landing .metric-item:nth-child(even) { border-right:0!important; }.neo-landing .metric-item:last-child { grid-column:auto; }.neo-cta { box-shadow:7px 7px 0 #090909; }
 }
+
+/* ========================================================================== */
+/* SMMJET — NEO BRUTALIST APPLICATION INTERFACE                              */
+/* Landing sayfasinin karakterini katalog, panel, blog ve yonetime tasir.     */
+/* ========================================================================== */
+
+body.neo-app-active {
+  background: #21a9f6;
+  background-image: none;
+  color: #090909;
+}
+
+body.neo-app-active #app-viewport {
+  min-height: calc(100vh - 74px);
+  border-top: 3px solid #090909;
+  background:
+    linear-gradient(90deg, rgba(9,9,9,.055) 1px, transparent 1px),
+    linear-gradient(rgba(9,9,9,.055) 1px, transparent 1px),
+    #fffef8;
+  background-size: 32px 32px;
+}
+
+body.neo-app-active .app-view:not(#view-landing):not(#view-admin) {
+  min-height: calc(100vh - 74px);
+  padding-bottom: 84px;
+}
+
+body.neo-app-active .app-view:not(#view-landing):not(#view-admin) .main-content {
+  max-width: 1380px !important;
+  padding: clamp(34px, 5vw, 72px) clamp(18px, 4vw, 52px) 80px;
+}
+
+body.neo-app-active .app-view:not(#view-landing):not(#view-admin) .main-content::before {
+  display: inline-block;
+  margin-bottom: 14px;
+  padding: 6px 10px;
+  border: 2px solid #090909;
+  background: #ffde17;
+  box-shadow: 3px 3px 0 #090909;
+  font: 800 .68rem 'IBM Plex Mono', monospace;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+#view-new-order .main-content::before { content: '01 / SİPARİŞ MAKİNESİ'; }
+#view-services .main-content::before { content: '02 / CANLI KATALOG'; }
+#view-orders .main-content::before { content: '03 / HAREKETLER'; }
+#view-add-funds .main-content::before { content: '04 / CÜZDAN'; }
+#view-tickets .main-content::before { content: '05 / DESTEK MERKEZİ'; }
+#view-api-docs .main-content::before { content: '06 / GELİŞTİRİCİ ALANI'; }
+#view-blog .main-content::before { content: '07 / SMM LAB'; }
+#view-blog-detail .main-content::before { content: '07 / SMM LAB / YAZI'; }
+
+body.neo-app-active .app-view:not(#view-landing):not(#view-admin) h1 {
+  max-width: 920px;
+  margin-bottom: 30px !important;
+  color: #090909 !important;
+  font: 900 clamp(2.25rem, 5vw, 4.9rem)/.94 'Archivo Black', sans-serif !important;
+  letter-spacing: -.055em;
+  text-transform: uppercase;
+}
+
+body.neo-app-active .app-view:not(#view-landing):not(#view-admin) h2,
+body.neo-app-active .app-view:not(#view-landing):not(#view-admin) h3,
+body.neo-app-active .app-view:not(#view-landing):not(#view-admin) h4 {
+  color: #090909 !important;
+  font-family: 'Archivo Black', sans-serif;
+}
+
+body.neo-app-active .app-view:not(#view-landing):not(#view-admin) p,
+body.neo-app-active .app-view:not(#view-landing):not(#view-admin) .form-label {
+  color: #222 !important;
+}
+
+body.neo-app-active .glass-card,
+body.neo-app-active .modal-body.glass-card {
+  padding: clamp(20px, 2.5vw, 30px);
+  border: 3px solid #090909 !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+  color: #090909;
+  box-shadow: 9px 9px 0 #090909 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.neo-app-active .glass-card::before { display: none; }
+body.neo-app-active .glass-card:hover { transform: none; }
+
+body.neo-app-active .form-label {
+  margin-bottom: 7px;
+  color: #090909 !important;
+  font: 800 .72rem 'IBM Plex Mono', monospace;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+body.neo-app-active .form-control {
+  min-height: 48px;
+  padding: 11px 13px;
+  border: 2px solid #090909 !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+  color: #090909 !important;
+  box-shadow: none !important;
+  font-weight: 650;
+}
+
+body.neo-app-active .form-control::placeholder { color: #777; }
+body.neo-app-active .form-control:focus {
+  outline: 0;
+  background: #fff8b8 !important;
+  box-shadow: 4px 4px 0 #090909 !important;
+}
+
+body.neo-app-active .btn {
+  min-height: 42px;
+  border: 2px solid #090909 !important;
+  border-radius: 0 !important;
+  background: #fff;
+  color: #090909 !important;
+  box-shadow: 4px 4px 0 #090909 !important;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+body.neo-app-active .btn:hover {
+  transform: translate(2px, 2px) !important;
+  box-shadow: 2px 2px 0 #090909 !important;
+}
+
+body.neo-app-active .btn-primary { background: #ed2d2d !important; color: #fff !important; }
+body.neo-app-active .btn-cyan { background: #1769e8 !important; color: #fff !important; }
+body.neo-app-active .btn-outline { background: #ffde17 !important; color: #090909 !important; }
+body.neo-app-active .btn:disabled { opacity: .42; filter: grayscale(1); }
+
+body.neo-app-active .table-responsive {
+  max-height: 660px;
+  border: 2px solid #090909;
+  border-radius: 0;
+  background: #fff;
+}
+
+body.neo-app-active .table-responsive::-webkit-scrollbar-track { background: #fff; border-radius: 0; }
+body.neo-app-active .table-responsive::-webkit-scrollbar-thumb { background: #ed2d2d; border: 2px solid #090909; border-radius: 0; }
+body.neo-app-active .custom-table { border-collapse: collapse; border-spacing: 0; }
+body.neo-app-active .custom-table th {
+  padding: 15px 16px;
+  border-right: 2px solid #090909;
+  border-bottom: 3px solid #090909;
+  background: #ffde17;
+  color: #090909;
+  box-shadow: none;
+  font: 900 .72rem 'IBM Plex Mono', monospace;
+}
+body.neo-app-active .custom-table th:last-child { border-right: 0; }
+body.neo-app-active .custom-table td {
+  padding: 15px 16px;
+  border-right: 1px solid #090909;
+  border-bottom: 1px solid #090909;
+  border-radius: 0 !important;
+  background: #fff;
+  color: #090909;
+}
+body.neo-app-active .custom-table td:last-child { border-right: 0; }
+body.neo-app-active .custom-table tr:hover td { background: #dff4ff; }
+body.neo-app-active .custom-table tbody tr:last-child td { border-bottom: 0; }
+
+body.neo-app-active .badge {
+  border: 2px solid #090909 !important;
+  border-radius: 0;
+  background: #ffde17;
+  color: #090909;
+  box-shadow: 2px 2px 0 #090909;
+  font-family: 'IBM Plex Mono', monospace;
+}
+body.neo-app-active .badge-completed { background: #9af0b4; }
+body.neo-app-active .badge-processing { background: #9edcff; }
+body.neo-app-active .badge-pending { background: #ffde17; }
+body.neo-app-active .badge-canceled { background: #ff9b9b; }
+
+body.neo-app-active .table-pagination {
+  color: #090909;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 700;
+}
+
+/* Hizmet kataloğu */
+#view-services .flex-between.mb-20 {
+  align-items: flex-end;
+  gap: 28px;
+  margin-bottom: 32px;
+}
+#view-services .flex-between.mb-20 > div:last-child {
+  width: min(100%, 720px) !important;
+  padding: 16px;
+  border: 3px solid #090909;
+  background: #21a9f6;
+  box-shadow: 7px 7px 0 #090909;
+}
+#view-services .platform-tabs {
+  gap: 8px;
+  margin-bottom: 26px;
+  padding: 0 0 7px;
+  overflow-x: auto;
+}
+#view-services .tab-btn {
+  flex: none;
+  min-height: 44px;
+  padding: 9px 15px;
+  border: 2px solid #090909;
+  border-radius: 0;
+  background: #fff;
+  color: #090909;
+  box-shadow: 4px 4px 0 #090909;
+  font: 800 .72rem 'IBM Plex Mono', monospace;
+}
+#view-services .tab-btn:hover,
+#view-services .tab-btn.active { background: #ffde17; color: #090909; transform: translate(2px,2px); box-shadow: 2px 2px 0 #090909; }
+#view-services > .main-content > .glass-card { padding: 0; }
+#view-services .table-pagination { padding: 18px; border-top: 3px solid #090909; background: #fff; }
+#view-services .cell-service-title { font-weight: 850; }
+#view-services .custom-table td:nth-child(3) { color: #ed2d2d; font-weight: 900; }
+
+/* Sipariş ve müşteri panelleri */
+#view-new-order .main-content > div[style*="grid-template-columns"] { align-items: start; gap: 28px !important; }
+#view-new-order #order-form > .glass-card { background: #ffde17 !important; box-shadow: 5px 5px 0 #090909 !important; }
+#view-new-order #service-info-box,
+#view-new-order #order-form > div[style*="rgba(255,255,255"] {
+  border: 2px solid #090909 !important;
+  border-radius: 0 !important;
+  background: #dff4ff !important;
+  color: #090909 !important;
+}
+#view-new-order #service-info-box * { color: #090909 !important; }
+#view-new-order #service-rate { color: #ed2d2d !important; font-weight: 900; }
+#view-new-order .main-content > div > div:last-child > .glass-card:nth-child(1) { background: #1769e8 !important; color: #fff; }
+#view-new-order .main-content > div > div:last-child > .glass-card:nth-child(1) * { color: #fff !important; }
+#view-new-order .main-content > div > div:last-child > .glass-card:nth-child(2) { background: #ffde17 !important; }
+
+#view-orders > .main-content > .glass-card,
+#view-tickets .main-content > .glass-card:last-child { padding: 0; }
+
+#view-add-funds .main-content > div[style*="grid-template-columns"] > .glass-card:first-child { background: #ffde17 !important; }
+#view-add-funds .main-content > div[style*="grid-template-columns"] > .glass-card:last-child { background: #21a9f6 !important; }
+#view-add-funds .main-content > .glass-card:nth-of-type(1) { background: #fff !important; }
+#view-add-funds .main-content > .glass-card:last-child { background: #9af0b4 !important; }
+#view-add-funds .glass-card div[style*="background: rgba(7"] { border: 2px solid #090909; border-radius: 0 !important; background: #fff !important; }
+
+#view-tickets .main-content > .glass-card:first-of-type {
+  border-color: #090909 !important;
+  background: #1769e8 !important;
+  color: #fff;
+}
+#view-tickets .main-content > .glass-card:first-of-type h3,
+#view-tickets .main-content > .glass-card:first-of-type p { color: #fff !important; }
+#view-tickets #tickets-telegram-link { background: #ffde17 !important; color: #090909 !important; }
+
+/* API ve blog */
+#view-api-docs .main-content > .glass-card:first-of-type { background: #21a9f6 !important; }
+#view-api-docs pre,
+#view-api-docs .glass-card div[style*="font-family: monospace"] {
+  border: 3px solid #090909 !important;
+  border-radius: 0 !important;
+  background: #090909 !important;
+  color: #f2f2f2 !important;
+  box-shadow: 5px 5px 0 #ffde17;
+  font-family: 'IBM Plex Mono', monospace !important;
+  line-height: 1.65;
+}
+#view-api-docs pre { margin-bottom: 28px !important; }
+
+#view-blog .text-center { text-align: left; }
+#view-blog .text-center p { max-width: 700px !important; margin: 0 !important; font-weight: 650; }
+#view-blog .blog-cards-grid { gap: 28px; }
+#view-blog .blog-card {
+  border: 3px solid #090909;
+  border-radius: 0;
+  background: #fff;
+  color: #090909;
+  box-shadow: 8px 8px 0 #090909;
+}
+#view-blog .blog-card:nth-child(3n+1) { background: #ffde17; }
+#view-blog .blog-card:nth-child(3n+2) { background: #21a9f6; }
+#view-blog .blog-card:nth-child(3n+3) { background: #fff; }
+#view-blog .blog-card:hover { transform: translate(4px,4px); box-shadow: 4px 4px 0 #090909; }
+#view-blog .blog-card-img { border-bottom: 3px solid #090909; filter: saturate(.8) contrast(1.08); }
+#view-blog .blog-card h3,
+#view-blog .blog-card p,
+#view-blog .blog-card div { color: #090909 !important; }
+
+#view-blog-detail article.glass-card { padding: clamp(22px,4vw,48px) !important; }
+#view-blog-detail #blog-detail-title { font-size: clamp(2rem,5vw,4rem) !important; }
+#view-blog-detail #blog-detail-img { border: 3px solid #090909; border-radius: 0 !important; box-shadow: 7px 7px 0 #090909; }
+#view-blog-detail #blog-detail-content,
+#view-blog-detail #blog-detail-content p,
+#view-blog-detail #blog-detail-content h2,
+#view-blog-detail #blog-detail-content h3 { color: #090909 !important; }
+#view-blog-detail #blog-detail-content blockquote { border: 3px solid #090909; border-left-width: 10px; border-radius: 0; background: #ffde17; color: #090909; }
+#view-blog-detail #blog-detail-content th { border: 2px solid #090909; background: #21a9f6; color: #090909; }
+#view-blog-detail #blog-detail-content td { border: 2px solid #090909; }
+
+/* Giriş / kayıt */
+#view-auth {
+  min-height: calc(100vh - 74px);
+  padding: clamp(34px,6vw,78px) 18px;
+  background: #21a9f6;
+}
+#view-auth .auth-split-container { gap: clamp(30px,5vw,72px); max-width: 1260px; }
+#view-auth .auth-pill-badge { border: 2px solid #090909; border-radius: 0; background: #ffde17; color: #090909; box-shadow: 4px 4px 0 #090909; font-family: 'IBM Plex Mono', monospace; }
+#view-auth .auth-headline { color: #090909; font: 900 clamp(3rem,6vw,6.2rem)/.88 'Archivo Black', sans-serif; letter-spacing: -.06em; text-transform: uppercase; }
+#view-auth .auth-paragraph { color: #090909; font-weight: 650; }
+#view-auth .auth-steps-row { gap: 0; }
+#view-auth .auth-step-box { border: 2px solid #090909; border-radius: 0; background: #fff; color: #090909; }
+#view-auth .auth-step-box:nth-child(2) { background: #ffde17; transform: translateY(12px); }
+#view-auth .auth-step-box:nth-child(3) { background: #ed2d2d; color: #fff; transform: translateY(24px); }
+#view-auth .auth-step-num { border: 2px solid #090909; border-radius: 0; background: #090909; }
+#view-auth .auth-step-title,
+#view-auth .auth-step-desc { color: inherit; }
+#view-auth .auth-prop-icon { border: 2px solid #090909; border-radius: 0; background: #fff; color: #1769e8; box-shadow: 3px 3px 0 #090909; }
+#view-auth .auth-prop-title,
+#view-auth .auth-prop-desc { color: #090909; }
+#view-auth .auth-form-card { border: 3px solid #090909; border-radius: 0; box-shadow: 12px 12px 0 #090909; }
+#view-auth .auth-dark-btn { border: 3px solid #090909; border-radius: 0; background: #ed2d2d; box-shadow: 5px 5px 0 #090909; }
+#view-auth .cloudflare-box { border: 2px solid #090909; border-radius: 0; }
+
+/* Modal ve etkileşim katmanı */
+body.neo-app-active .modal-backdrop { background: rgba(9,9,9,.78); }
+body.neo-app-active .modal-body,
+body.neo-app-active .language-editor-card {
+  border: 3px solid #090909 !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+  color: #090909 !important;
+  box-shadow: 10px 10px 0 #ffde17 !important;
+}
+body.neo-app-active .modal-body h2,
+body.neo-app-active .modal-body h3,
+body.neo-app-active .modal-body p { color: #090909 !important; }
+
+/* Yönetim merkezi */
+body.neo-app-active.admin-view-active,
+body.admin-view-active { background: #21a9f6; background-image: none; }
+#view-admin { --admin-surface:#fff; --admin-surface-soft:#fffef8; --admin-line:#090909; --admin-muted:#444; }
+#view-admin .app-layout { align-items: flex-start; background: #fffef8; }
+#view-admin .admin-sidebar {
+  border-right: 3px solid #090909;
+  background: #090909;
+}
+#view-admin .admin-sidebar-brand { border-bottom: 2px solid #444; }
+#view-admin .admin-brand-mark { border: 2px solid #fff; border-radius: 0; background: #ed2d2d; box-shadow: 4px 4px 0 #ffde17; }
+#view-admin .admin-nav-label { color: #888; font-family: 'IBM Plex Mono', monospace; }
+#view-admin .sidebar-item { border: 2px solid transparent; border-radius: 0; color: #ddd; }
+#view-admin .sidebar-item:hover { border-color: #fff; background: #222; color: #fff; }
+#view-admin .sidebar-item.active { border: 2px solid #090909; background: #ffde17; color: #090909; box-shadow: 4px 4px 0 #ed2d2d; }
+#view-admin .sidebar-item.active i { color: #090909; }
+#view-admin .admin-main-content { max-width: 1500px; padding: clamp(28px,4vw,54px) clamp(18px,3vw,42px) 80px; }
+#view-admin .admin-main-content::before {
+  content: 'SMMJET / CONTROL ROOM';
+  display: inline-block;
+  margin-bottom: 18px;
+  padding: 6px 10px;
+  border: 2px solid #090909;
+  background: #21a9f6;
+  box-shadow: 3px 3px 0 #090909;
+  font: 800 .68rem 'IBM Plex Mono', monospace;
+}
+#view-admin .admin-main-content > div > h2,
+#view-admin .admin-main-content .flex-between h2 {
+  color: #090909 !important;
+  font: 900 clamp(1.8rem,3vw,3.2rem)/1 'Archivo Black', sans-serif !important;
+  text-transform: uppercase;
+}
+#view-admin .glass-card { border-color: #090909 !important; background: #fff !important; color: #090909; }
+#view-admin .stats-grid { gap: 20px; }
+#view-admin .stat-card:nth-child(3n+1) { background: #ffde17 !important; }
+#view-admin .stat-card:nth-child(3n+2) { background: #21a9f6 !important; }
+#view-admin .stat-card:nth-child(3n+3) { background: #ed2d2d !important; color: #fff; }
+#view-admin .stat-card:nth-child(3n+3) .stat-val,
+#view-admin .stat-card:nth-child(3n+3) .stat-lbl { color: #fff !important; }
+#view-admin .stat-icon { border: 2px solid #090909; border-radius: 0; background: #fff; color: #090909; box-shadow: 3px 3px 0 #090909; }
+#view-admin .stat-val { color: #090909; font-family: 'Archivo Black', sans-serif; }
+#view-admin .stat-lbl { color: #090909; font-family: 'IBM Plex Mono', monospace; font-weight: 700; }
+#view-admin .table-responsive { border: 2px solid #090909; border-radius: 0; background: #fff; }
+#view-admin .custom-table th { color: #090909; background: #ffde17; border-color: #090909; }
+#view-admin .custom-table td { color: #090909; background: #fff; border-color: #090909; }
+#view-admin .custom-table tr:hover td { background: #dff4ff; }
+#view-admin .form-control { border-color: #090909; background: #fff; color: #090909; }
+#view-admin .form-label,
+#view-admin .admin-help { color: #333; }
+#view-admin .btn { border-radius: 0; }
+#view-admin .language-editor-card { border: 2px solid #090909; border-radius: 0; background: #fff8b8; }
+
+@media (max-width: 980px) {
+  #view-services .flex-between.mb-20 { align-items: stretch; flex-direction: column; }
+  #view-services .flex-between.mb-20 > div:last-child { width: 100% !important; flex-wrap: wrap; }
+  #view-services .flex-between.mb-20 > div:last-child > * { width: calc(50% - 5px) !important; flex: 1 1 260px; }
+  #view-new-order .main-content > div[style*="grid-template-columns"],
+  #view-add-funds .main-content > div[style*="grid-template-columns"],
+  #view-add-funds form div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
+  #view-admin .admin-sidebar { border-right: 0; border-bottom: 3px solid #090909; }
+}
+
+@media (max-width: 640px) {
+  body.neo-app-active .app-view:not(#view-landing):not(#view-admin) .main-content { padding: 30px 13px 58px; }
+  body.neo-app-active .app-view:not(#view-landing):not(#view-admin) h1 { font-size: clamp(2rem,11vw,3rem) !important; }
+  body.neo-app-active .glass-card { padding: 17px; box-shadow: 6px 6px 0 #090909 !important; }
+  body.neo-app-active .flex-between { align-items: flex-start; gap: 14px; flex-direction: column; }
+  #view-services .flex-between.mb-20 > div:last-child { padding: 12px; }
+  #view-services .flex-between.mb-20 > div:last-child > * { width: 100% !important; }
+  #view-auth .auth-steps-row { grid-template-columns: 1fr; gap: 10px; }
+  #view-auth .auth-step-box:nth-child(2),
+  #view-auth .auth-step-box:nth-child(3) { transform: none; }
+  #view-auth .auth-props-grid { grid-template-columns: 1fr; }
+  #view-blog-detail #blog-detail-img { height: 230px !important; }
+  #view-admin .admin-main-content { padding: 24px 13px 58px; }
+}

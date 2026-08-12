@@ -631,6 +631,8 @@ class SmmApp {
     this.currentView = viewName;
     window.location.hash = viewName;
     document.body.classList.toggle('admin-view-active', viewName === 'admin');
+    document.body.classList.toggle('neo-app-active', viewName !== 'landing');
+    document.body.dataset.activeView = viewName;
 
     // Hide all views
     document.querySelectorAll('.app-view').forEach(el => el.style.display = 'none');

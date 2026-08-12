@@ -1982,7 +1982,10 @@ body.admin-view-active .navbar {
 .neo-popular { position:relative; margin-bottom:100px; display:grid; grid-template-columns:minmax(230px,.38fr) minmax(0,1fr); gap:38px; align-items:start; scroll-margin-top:96px; }
 /* Sol sutun her iki satira birden yayilir: aksi halde yan panel 1. satiri
    uzatir ve sagdaki tablo asagi kayar. */
-.neo-popular .neo-section-heading { position:sticky; top:120px; grid-column:1; grid-row:1 / span 2; }
+.neo-popular .neo-section-heading { position:sticky; top:120px; grid-column:1; grid-row:1 / span 2; container-type:inline-size; min-width:0; }
+/* Baslik boyutu sol sutunun genisligine gore olceklenir; "YÜKSELİYOR?" gibi
+   uzun kelimeler ekran genisligine bagli olsaydi tasip listenin ustune binerdi. */
+.neo-popular .neo-section-heading h2 { font-size:clamp(1.8rem,13cqw,5.1rem); overflow-wrap:break-word; }
 .neo-popular .platform-tabs { grid-row:1; }
 .neo-popular .table-responsive { grid-row:2; }
 

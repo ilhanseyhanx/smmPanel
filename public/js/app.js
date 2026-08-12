@@ -248,7 +248,7 @@ class SmmApp {
     this.authMode = 'login'; // 'login' or 'register'
     this.selectedPlatform = 'all';
     this.servicesPage = 1;
-    this.servicesPerPage = 50;
+    this.servicesPerPage = 20;
     this.referralCode = null;
 
     this.debouncedFilterServicesTable = this.debounce(() => this.filterServicesTable(), 180);

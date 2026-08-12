@@ -2278,6 +2278,18 @@ body.neo-app-active .table-pagination {
 #view-services > .main-content > .glass-card { padding: 0; }
 #view-services .table-pagination { padding: 18px; border-top: 3px solid #090909; background: #fff; }
 #view-services .cell-service-title { font-weight: 850; }
+
+/* Filtre satiri: arama kutusu kalan alani doldurur, dar ekranda satir kirilir.
+   Onceden sabit genislikli select'ler alani yiyip aramayi kirpiyordu. */
+#view-services .flex-between.mb-20 > div:last-child { flex-wrap: wrap; }
+#view-services #services-country-select { flex: 0 1 150px; width: auto !important; min-width: 130px; }
+#view-services #services-subcategory-select { flex: 1 1 185px; width: auto !important; min-width: 155px; }
+#view-services #services-search-input { flex: 2 1 200px; min-width: 165px; }
+
+/* Islem sutunundaki buton, kalin cerceve + 4px ofset golge yuzunden 120px'e
+   sigmiyordu. Sutun 178px'e cikarildi; buton da sikismaya karsi korunuyor. */
+#view-services #full-services-table td:last-child { padding-right: 14px; }
+#view-services #full-services-table td:last-child .btn { flex-shrink: 0; white-space: nowrap; }
 #view-services .custom-table td:nth-child(3) { color: #ed2d2d; font-weight: 900; }
 
 /* Sipariş ve müşteri panelleri */

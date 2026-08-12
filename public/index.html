@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Sosyal medya hizmetlerini, siparişlerini ve bakiyeni güvenli biçimde yönetebileceğin otomatik SMM paneli.">
-  <meta name="theme-color" content="#070a12">
+  <meta name="theme-color" content="#21a9f6">
   <meta property="og:type" content="website">
   <meta property="og:title" content="SMM Panel - Sosyal Medya Hizmetleri">
   <meta property="og:description" content="Instagram, TikTok, YouTube ve diğer platformlar için hızlı sosyal medya hizmetleri.">
@@ -15,7 +15,7 @@
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@500;600&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <!-- Custom CSS -->
@@ -24,18 +24,16 @@
 <body>
 
   <!-- ANNOUNCEMENT BAR -->
-  <div id="announcement-bar" style="background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899); color: #fff; padding: 7px 16px; font-size: 0.88rem; text-align: center; font-weight: 600; display: flex; justify-content: center; align-items: center; gap: 10px; box-shadow: 0 2px 10px rgba(168, 85, 247, 0.3);">
-    <i class="fa-solid fa-bullhorn"></i>
+  <div id="announcement-bar">
+    <span class="announcement-star">✦</span>
     <span id="announcement-text">🚀 Bahar Kampanyası: Instagram ve TikTok Takipçi servislerinde %20 İndirim ve Anlık Teslimat!</span>
+    <span class="announcement-star">✦</span>
   </div>
 
   <!-- NAVBAR -->
   <nav class="navbar">
     <div class="brand-logo" onclick="app.navigate('landing')">
-      <div class="brand-icon">
-        <i class="fa-solid fa-bolt"></i>
-      </div>
-      <span class="brand-gradient">SMM Panel</span>
+      <span class="brand-wordmark">SMM<span>JET</span></span>
     </div>
 
     <ul class="nav-links" id="main-nav-links">
@@ -57,8 +55,7 @@
         <option value="tr">🇹🇷 TR</option>
         <option value="en">🇬🇧 EN</option>
       </select>
-      <!-- Theme Switcher -->
-      <select id="theme-selector" onchange="app.setTheme(this.value)" class="form-control" style="padding: 4px 8px; font-size: 0.82rem; width: 115px; background: rgba(15, 23, 42, 0.8); border-color: var(--border-glass);">
+      <select id="theme-selector" onchange="app.setTheme(this.value)" class="form-control theme-selector" aria-label="Tema">
         <option value="purple">🟣 Siber Mor</option>
         <option value="gold">🟡 Altın Lüks</option>
         <option value="emerald">🟢 Zümrüt</option>
@@ -78,35 +75,48 @@
   <main id="app-viewport">
     
     <!-- 1. LANDING PAGE VIEW -->
-    <section id="view-landing" class="app-view">
-      <div class="hero-container">
-        <div class="hero-badge">
-          <i class="fa-solid fa-sparkles"></i> <span data-i18n="home.badge">Otomatik SMM Sosyal Medya Hizmetleri</span>
-        </div>
-        <h1 class="hero-title" id="landing-hero-title">
-          Sosyal Medya Büyümenizi <br>
-          <span class="brand-gradient">Otomatik İlerleterek Zirveye Taşıyın</span>
-        </h1>
-        <p class="hero-subtitle" id="landing-hero-subtitle">
-          Instagram, TikTok, YouTube ve diğer tüm platformlar için anlık teslimatlı, yüksek kaliteli ve uygun fiyatlı takipçi, beğeni ve izlenme servisleri.
-        </p>
-        <div style="display: flex; justify-content: center; gap: 16px; margin-bottom: 50px;">
-          <button class="btn btn-primary" onclick="app.startNow()">
-            <i class="fa-solid fa-rocket"></i> <span data-i18n="home.start">Hemen Başla</span>
-          </button>
-          <button class="btn btn-outline" onclick="app.navigate('services')">
-            <i class="fa-solid fa-list-check"></i> <span data-i18n="home.explore">Hizmetleri İncele</span>
-          </button>
-        </div>
-
-        <!-- SUPPORTED PLATFORMS BAR (IMAGE 1) -->
-        <div class="platforms-bar-container">
-          <div class="platforms-scroll-row" id="landing-platforms-bar">
-            <!-- Dynamic Supported Platforms -->
+    <section id="view-landing" class="app-view neo-landing">
+      <div class="neo-hero">
+        <div class="neo-hero-copy">
+          <div class="neo-kicker"><span>01</span> SOSYAL BÜYÜME PLATFORMU</div>
+          <h1 class="hero-title" id="landing-hero-title">AKIŞTA KAL.<br><span>ÖNDE</span> KAL.</h1>
+          <p class="hero-subtitle" id="landing-hero-subtitle">Instagram, TikTok, YouTube ve diğer platformlarda görünürlüğünü saniyeler içinde artır.</p>
+          <div class="neo-hero-actions">
+            <button class="btn btn-primary" onclick="app.startNow()">
+              <span data-i18n="home.start">Hizmetleri Keşfet</span> <i class="fa-solid fa-arrow-right"></i>
+            </button>
+            <button class="neo-text-link" onclick="app.navigate('services')"><span data-i18n="home.explore">Fiyatları İncele</span> ↗</button>
           </div>
+          <div class="neo-proof"><span class="neo-avatars"><b>İ</b><b>S</b><b>M</b><b>J</b></span><strong>12.000+</strong> kullanıcı büyümeyi SMMJET ile hızlandırıyor.</div>
+          <div class="neo-scribble"><i class="fa-solid fa-arrow-turn-up"></i> 6 saniyede başlar!</div>
         </div>
 
-        <!-- PERFORMANCE & METRICS BANNER (tüm değerler canlı veriden gelir) -->
+        <div class="order-machine" aria-label="Hızlı sipariş önizlemesi">
+          <div class="machine-cap"><span>SİPARİŞ MAKİNESİ</span><small><i></i> HAZIR</small></div>
+          <div class="machine-body">
+            <label>PLATFORM</label>
+            <div class="machine-field"><i class="fa-brands fa-instagram"></i><span id="landing-machine-platform">Instagram</span><i class="fa-solid fa-chevron-down"></i></div>
+            <label>HİZMET</label>
+            <div class="machine-field"><span id="landing-machine-service">Instagram Takipçi</span><i class="fa-solid fa-chevron-down"></i></div>
+            <label>MİKTAR</label>
+            <div class="machine-counter"><button type="button">−</button><strong>1000</strong><button type="button">+</button></div>
+            <div class="machine-total"><small>TAHMİNİ FİYAT</small><strong id="landing-machine-price">₺48,90</strong></div>
+            <button class="machine-submit" onclick="app.startNow()">SİPARİŞ VER <i class="fa-solid fa-arrow-right"></i></button>
+          </div>
+          <div class="machine-shadow"></div>
+        </div>
+      </div>
+
+      <div class="platforms-bar-container">
+        <div class="platforms-scroll-row" id="landing-platforms-bar"><!-- Dynamic Supported Platforms --></div>
+      </div>
+
+      <div class="neo-shell">
+        <div class="neo-section-heading neo-heading-split">
+          <div><span class="neo-label">02 / CANLI VERİLER</span><h2>Rakamlarla<br>SMMJET.</h2></div>
+          <p>Panelde gördüğün tüm rakamlar doğrudan sistemden gelir. Süs değil, gerçek performans.</p>
+        </div>
+
         <div class="metrics-banner-card" id="landing-metrics-banner">
           <div class="metric-item">
             <div class="metric-icon-box"><i class="fa-solid fa-tags"></i></div>
@@ -145,9 +155,18 @@
           </div>
         </div>
 
-        <!-- POPULAR SERVICES PREVIEW -->
-        <div class="glass-card mt-20 text-center">
-          <h2 style="margin-bottom: 20px; font-size: 1.6rem;">🔥 En Popüler Servislerimiz</h2>
+        <div class="neo-service-mosaic">
+          <button class="mosaic-card mosaic-instagram" onclick="app.filterLandingCategory('Instagram')"><span>01</span><i class="fa-brands fa-instagram"></i><strong>PLANLA<br>YAYINLA<br>BÜYÜT</strong><small>Instagram hizmetleri →</small></button>
+          <button class="mosaic-card mosaic-tiktok" onclick="app.filterLandingCategory('TikTok')"><span>02</span><i class="fa-brands fa-tiktok"></i><strong>TRENDİ<br>YAKALA</strong><small>TikTok hizmetleri →</small></button>
+          <button class="mosaic-card mosaic-youtube" onclick="app.filterLandingCategory('YouTube')"><span>03</span><i class="fa-brands fa-youtube"></i><strong>VİDEONU<br>ÖNE ÇIKAR</strong><small>YouTube hizmetleri →</small></button>
+          <button class="mosaic-card mosaic-more" onclick="app.navigate('services')"><span>04</span><i class="fa-solid fa-arrow-up-right-from-square"></i><strong>TÜM<br>ARAÇLAR</strong><small>Hepsini keşfet →</small></button>
+        </div>
+
+        <div class="neo-popular">
+          <div class="neo-section-heading">
+            <span class="neo-label">03 / CANLI SERVİSLER</span>
+            <h2>BUGÜN NE<br>YÜKSELİYOR?</h2>
+          </div>
           <div class="platform-tabs" id="landing-platform-tabs">
             <!-- Dynamic Category Filter Tabs -->
           </div>
@@ -170,14 +189,40 @@
           </div>
         </div>
 
-        <!-- FEATURED CARDS GRID (IMAGE 3) -->
-        <div style="margin-top: 50px;">
-          <h2 style="font-size: 1.6rem; text-align: center; margin-bottom: 24px;">🚀 Öne Çıkan Sosyal Medya Hizmet Paketleri</h2>
+        <div class="neo-how">
+          <span class="neo-label">04 / NASIL ÇALIŞIR?</span>
+          <div class="neo-steps">
+            <div><b>01</b><i class="fa-solid fa-arrow-pointer"></i><strong>Hizmeti seç</strong><p>İhtiyacına uygun platformu ve servisi bul.</p></div>
+            <div><b>02</b><i class="fa-solid fa-link"></i><strong>Bilgileri gir</strong><p>Kullanıcı adı veya bağlantını ekle.</p></div>
+            <div><b>03</b><i class="fa-solid fa-chart-line"></i><strong>Sonucu izle</strong><p>Siparişini panelden anlık takip et.</p></div>
+          </div>
+        </div>
+
+        <div class="neo-trust">
+          <div><i class="fa-solid fa-headset"></i><strong>7/24 DESTEK</strong><small>Gerçek insanlar, hızlı çözümler.</small></div>
+          <div><i class="fa-solid fa-shield-halved"></i><strong>GÜVENLİ ÖDEME</strong><small>Korunan ödeme altyapısı.</small></div>
+          <div><i class="fa-solid fa-bolt"></i><strong>ANLIK BAŞLANGIÇ</strong><small>Beklemeden harekete geç.</small></div>
+        </div>
+
+        <div class="neo-featured">
+          <div class="neo-section-heading"><span class="neo-label">05 / ÖNE ÇIKANLAR</span><h2>SENİN İÇİN<br>SEÇTİK.</h2></div>
           <div class="featured-cards-grid" id="landing-featured-cards">
             <!-- Dynamic Featured Cards -->
           </div>
         </div>
+
+        <div class="neo-cta">
+          <div><span>HAZIR MISIN?</span><h2>SIRADAKİ<br>BÜYÜME SENİN.</h2></div>
+          <button class="btn" onclick="app.startNow()">ÜCRETSİZ HESAP OLUŞTUR <i class="fa-solid fa-arrow-right"></i></button>
+        </div>
       </div>
+
+      <footer class="neo-footer">
+        <div class="brand-wordmark">SMM<span>JET</span></div>
+        <p>Hızlı. Güvenli. Ölçülebilir.<br>Sosyal büyümede yeni standart.</p>
+        <div><a onclick="app.navigate('services')">Hizmetler</a><a onclick="app.navigate('blog')">Blog</a><a onclick="app.navigate('api-docs')">API</a><a onclick="app.navigate('tickets')">Destek</a></div>
+        <small>© 2026 SMMJET. Tüm hakları saklıdır.</small>
+      </footer>
     </section>
 
     <!-- 2. CLIENT DASHBOARD / NEW ORDER VIEW -->

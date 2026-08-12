@@ -275,7 +275,7 @@ class SmmApp {
         read_more: 'Devamını Oku', no_blog: 'Henüz yayınlanmış bir blog makalesi bulunmuyor.',
         standard: 'Standart', guaranteed: 'Garantili', order_now: 'Sipariş Ver',
         previous: 'Önceki', next: 'Sonraki', services_shown: 'servisten'
-        , 'home.badge': 'Otomatik SMM Sosyal Medya Hizmetleri', 'home.start': 'Hemen Başla', 'home.explore': 'Hizmetleri İncele',
+        , 'home.badge': 'Otomatik SMM Sosyal Medya Hizmetleri', 'home.start': 'Hizmetleri Keşfet', 'home.explore': 'Fiyatları İncele',
         'home.orders': 'Tamamlanan Sipariş', 'home.active_services': 'Aktif Servis Sayısı', 'home.users': 'Aktif Kullanıcı Sayısı',
         'home.starting_price': 'Başlayan Fiyatlar', 'home.happy_customers': 'Mutlu Müşteri',
         'home.completed_orders': 'Tamamlanan Siparişler', 'home.order_frequency': 'Sipariş Sıklığı',
@@ -289,7 +289,7 @@ class SmmApp {
         read_more: 'Read More', no_blog: 'No published blog posts yet.',
         standard: 'Standard', guaranteed: 'Guaranteed', order_now: 'Order Now',
         previous: 'Previous', next: 'Next', services_shown: 'services'
-        , 'home.badge': 'Automated SMM Social Media Services', 'home.start': 'Get Started', 'home.explore': 'Explore Services',
+        , 'home.badge': 'Automated SMM Social Media Services', 'home.start': 'Explore Services', 'home.explore': 'View Pricing',
         'home.orders': 'Completed Orders', 'home.active_services': 'Active Services', 'home.users': 'Active Users',
         'home.starting_price': 'Starting Prices', 'home.happy_customers': 'Happy Customers',
         'home.completed_orders': 'Completed Orders', 'home.order_frequency': 'Order Frequency',
@@ -795,16 +795,27 @@ class SmmApp {
     // Render max 8 popular services on landing
     const topServices = filtered.slice(0, 8);
 
+    // Hero'daki sipariş makinesi, seçili platformdaki ilk canlı servisi gösterir.
+    const previewService = topServices[0];
+    const machineService = document.getElementById('landing-machine-service');
+    const machinePlatform = document.getElementById('landing-machine-platform');
+    const machinePrice = document.getElementById('landing-machine-price');
+    if (previewService) {
+      if (machineService) machineService.textContent = previewService.name;
+      if (machinePlatform) machinePlatform.textContent = previewService.category_name || this.selectedPlatform || 'SMMJET';
+      if (machinePrice) machinePrice.textContent = this.formatServicePrice(previewService);
+    }
+
     if (topServices.length === 0) {
       tableBody.innerHTML = `<tr><td colspan="6" class="text-center">${this.ui('Bu platformda henüz servis bulunmuyor.', 'No services are available for this platform yet.')}</td></tr>`;
       return;
     }
 
-    tableBody.innerHTML = topServices.map(s => {
+    tableBody.innerHTML = topServices.map((s, index) => {
       const isRefill = s.refill == 1 || /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün/i.test(`${s.name} ${s.category_name}`);
       return `
         <tr>
-          <td class="cell-nowrap">#${s.id}</td>
+          <td class="cell-nowrap">${String(index + 1).padStart(2, '0')}</td>
           <td class="cell-service-title" title="${this.escapeHtml(s.name)}">${this.escapeHtml(s.name)}</td>
           <td class="cell-nowrap" style="color: var(--accent-cyan); font-weight: 700;">${this.formatServicePrice(s)}</td>
           <td class="cell-nowrap">${s.min_quantity} - ${s.max_quantity}</td>

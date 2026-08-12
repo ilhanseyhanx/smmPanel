@@ -1985,7 +1985,10 @@ body.admin-view-active .navbar {
 .neo-popular .neo-section-heading { position:sticky; top:120px; grid-column:1; grid-row:1 / span 2; container-type:inline-size; min-width:0; }
 /* Baslik boyutu sol sutunun genisligine gore olceklenir; "YÜKSELİYOR?" gibi
    uzun kelimeler ekran genisligine bagli olsaydi tasip listenin ustune binerdi. */
-.neo-popular .neo-section-heading h2 { font-size:clamp(1.8rem,13cqw,5.1rem); overflow-wrap:break-word; }
+/* Boyut, "YÜKSELİYOR?" tek satirda kalacak sekilde sinirlandi; daha sikisik
+   harf araligi sayesinde yazi 13cqw'ye gore buyuk gorunur. overflow-wrap
+   son care agi olarak durur (tasma tabloya binmesin diye). */
+.neo-popular .neo-section-heading h2 { font-size:clamp(1.9rem,13.8cqw,5.1rem); letter-spacing:-.075em; overflow-wrap:break-word; }
 .neo-popular .platform-tabs { grid-row:1; }
 .neo-popular .table-responsive { grid-row:2; }
 

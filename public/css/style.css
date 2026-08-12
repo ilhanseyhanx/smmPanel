@@ -1931,6 +1931,24 @@ body.admin-view-active .navbar {
 .machine-field,.machine-counter { min-height:48px; display:flex; align-items:center; border:2px solid #090909; background:#fff; }
 .machine-field { gap:10px; padding:0 13px; font-weight:700; }
 .machine-field span { flex:1; }.machine-field .fa-instagram { color:#ed2d2d; font-size:1.2rem; }
+/* Sipariş makinesindeki gerçek form kontrolleri, kutu tasarımına gömülü görünür. */
+.machine-field select {
+  flex:1; min-width:0; appearance:none; -webkit-appearance:none;
+  border:0; background:transparent; cursor:pointer;
+  font:inherit; font-weight:700; color:#090909;
+  padding:0; outline:none; text-overflow:ellipsis;
+}
+.machine-field select:focus-visible { outline:2px solid #1769e8; outline-offset:2px; }
+.machine-counter input {
+  flex:1; min-width:0; border:0; background:transparent; text-align:center;
+  font:900 1.15rem 'Archivo Black',sans-serif; color:#090909; outline:none;
+  -moz-appearance:textfield;
+}
+.machine-counter input::-webkit-outer-spin-button,
+.machine-counter input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.machine-counter input:focus-visible { outline:2px solid #1769e8; outline-offset:-2px; }
+.machine-limits { margin-top:8px; min-height:16px; font:600 .7rem 'IBM Plex Mono',monospace; color:#4b5563; }
+.machine-limits.is-invalid { color:#ed2d2d; font-weight:700; }
 .machine-counter { justify-content:space-between; }.machine-counter button { align-self:stretch; width:48px; border:0; background:#ffde17; font-size:1.4rem; font-weight:900; cursor:pointer; }.machine-counter button:first-child { border-right:2px solid #090909; }.machine-counter button:last-child { border-left:2px solid #090909; }
 .machine-total { margin:24px 0 14px; display:flex; justify-content:space-between; align-items:end; }.machine-total small { font:700 .66rem 'IBM Plex Mono',monospace; }.machine-total strong { color:#ed2d2d; font:900 2.15rem 'Archivo Black',sans-serif; }
 .machine-submit { width:100%; min-height:54px; display:flex; justify-content:space-between; align-items:center; padding:0 18px; border:3px solid #090909; background:#ed2d2d; color:#fff; box-shadow:6px 6px 0 #090909; font-weight:900; cursor:pointer; }

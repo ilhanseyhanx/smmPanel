@@ -777,6 +777,8 @@ class SmmApp {
       }
 
       if (data.stats) this.renderLandingMetrics(data.stats);
+      // Hero'daki sipariş makinesi canlı katalogla doldurulur.
+      this.populateOrderMachine();
     } catch (err) {
       console.error('Failed to load services:', err);
     }
@@ -824,6 +826,185 @@ class SmmApp {
     this.lastLandingStats = stats;
   }
 
+  // --- ANA SAYFA SİPARİŞ MAKİNESİ ---
+  // Hero'daki kutu gerçek katalogla çalışır: platform ve hizmet canlı
+  // servislerden doldurulur, fiyat seçime göre anlık hesaplanır.
+
+  localizedName(item, field = 'name') {
+    if (!item) return '';
+    return this.locale === 'en'
+      ? (item[`${field}_en`] || item[`${field}_tr`] || item[field] || '')
+      : (item[`${field}_tr`] || item[field] || '');
+  }
+
+  machineSelectedService() {
+    const select = document.getElementById('landing-machine-service');
+    if (!select) return null;
+    return this.allServices.find(s => s.id === parseInt(select.value, 10)) || null;
+  }
+
+  populateOrderMachine() {
+    const platformSelect = document.getElementById('landing-machine-platform');
+    if (!platformSelect) return;
+
+    // Yalnızca gerçekten servisi olan kategoriler listelenir.
+    const categories = (this.allCategories || []).filter(c =>
+      (this.allServices || []).some(s => s.category_id === c.id));
+
+    if (!categories.length) {
+      platformSelect.innerHTML = `<option value="">${this.ui('Servis yok', 'No services')}</option>`;
+      const serviceSelect = document.getElementById('landing-machine-service');
+      if (serviceSelect) serviceSelect.innerHTML = `<option value="">${this.ui('Servis yok', 'No services')}</option>`;
+      this.updateMachinePrice();
+      return;
+    }
+
+    const previous = platformSelect.value;
+    platformSelect.innerHTML = categories
+      .map(c => `<option value="${c.id}">${this.escapeHtml(this.localizedName(c))}</option>`)
+      .join('');
+    if (categories.some(c => String(c.id) === previous)) platformSelect.value = previous;
+
+    this.onMachinePlatformChange();
+  }
+
+  onMachinePlatformChange() {
+    const platformSelect = document.getElementById('landing-machine-platform');
+    const serviceSelect = document.getElementById('landing-machine-service');
+    if (!platformSelect || !serviceSelect) return;
+
+    const categoryId = parseInt(platformSelect.value, 10);
+    const services = (this.allServices || []).filter(s => s.category_id === categoryId);
+    const previous = serviceSelect.value;
+
+    serviceSelect.innerHTML = services
+      .map(s => `<option value="${s.id}">${this.escapeHtml(this.localizedName(s))}</option>`)
+      .join('');
+    if (services.some(s => String(s.id) === previous)) serviceSelect.value = previous;
+
+    // Kategoriye uygun marka simgesi
+    const icon = document.getElementById('landing-machine-icon');
+    if (icon) {
+      const label = (platformSelect.options[platformSelect.selectedIndex]?.text || '').toLowerCase();
+      const brands = {
+        instagram: 'fa-brands fa-instagram', tiktok: 'fa-brands fa-tiktok',
+        youtube: 'fa-brands fa-youtube', telegram: 'fa-brands fa-telegram',
+        facebook: 'fa-brands fa-facebook', twitter: 'fa-brands fa-x-twitter',
+        spotify: 'fa-brands fa-spotify', twitch: 'fa-brands fa-twitch',
+        linkedin: 'fa-brands fa-linkedin'
+      };
+      const match = Object.keys(brands).find(key => label.includes(key));
+      icon.className = match ? brands[match] : 'fa-solid fa-layer-group';
+    }
+
+    this.onMachineServiceChange();
+  }
+
+  onMachineServiceChange() {
+    const service = this.machineSelectedService();
+    const qtyInput = document.getElementById('landing-machine-qty');
+    if (service && qtyInput) {
+      qtyInput.min = service.min_quantity;
+      qtyInput.max = service.max_quantity;
+      qtyInput.value = this.clampMachineQty(Number(qtyInput.value) || service.min_quantity, service);
+    }
+    this.updateMachinePrice();
+  }
+
+  clampMachineQty(value, service = this.machineSelectedService()) {
+    if (!service) return Math.max(1, Math.round(Number(value) || 0));
+    const min = Number(service.min_quantity) || 1;
+    const max = Number(service.max_quantity) || min;
+    return Math.min(max, Math.max(min, Math.round(Number(value) || min)));
+  }
+
+  // Adım, servisin minimum miktarına göre belirlenir (çoğu serviste 100 gibi).
+  stepMachineQty(direction) {
+    const qtyInput = document.getElementById('landing-machine-qty');
+    const service = this.machineSelectedService();
+    if (!qtyInput || !service) return;
+    const step = Math.max(1, Number(service.min_quantity) || 100);
+    qtyInput.value = this.clampMachineQty((Number(qtyInput.value) || 0) + direction * step, service);
+    this.updateMachinePrice();
+  }
+
+  // Kullanıcı elle yazdığında sınırlara çekilir (yazarken değil, alandan çıkınca).
+  commitMachineQty() {
+    const qtyInput = document.getElementById('landing-machine-qty');
+    if (!qtyInput) return;
+    qtyInput.value = this.clampMachineQty(qtyInput.value);
+    this.updateMachinePrice();
+  }
+
+  updateMachinePrice() {
+    const priceEl = document.getElementById('landing-machine-price');
+    const limitsEl = document.getElementById('landing-machine-limits');
+    const qtyInput = document.getElementById('landing-machine-qty');
+    const service = this.machineSelectedService();
+    if (!priceEl) return;
+
+    if (!service) {
+      priceEl.textContent = this.locale === 'en' ? '$0.00' : '₺0,00';
+      if (limitsEl) limitsEl.textContent = '';
+      return;
+    }
+
+    const qty = Number(qtyInput?.value) || 0;
+    const charge = (Number(service.rate_per_1000) / 1000) * qty;
+    const usdCharge = (Number(service.rate_per_1000_usd_cents || 0) / 100000) * qty;
+    priceEl.textContent = this.locale === 'en' && usdCharge > 0
+      ? `$${usdCharge.toFixed(2)}`
+      : `₺${charge.toFixed(2)}`;
+
+    if (limitsEl) {
+      const min = Number(service.min_quantity) || 1;
+      const max = Number(service.max_quantity) || min;
+      const outOfRange = qty < min || qty > max;
+      limitsEl.classList.toggle('is-invalid', outOfRange);
+      limitsEl.textContent = this.ui(`Limit: ${min} - ${max}`, `Limit: ${min} - ${max}`);
+    }
+  }
+
+  // Kutudaki seçimi gerçek sipariş formuna taşır; oturum yoksa kayda yönlendirir.
+  async submitMachineOrder() {
+    const service = this.machineSelectedService();
+    if (!service) return showToast(this.ui('Önce bir hizmet seçin.', 'Please choose a service first.'), 'warning');
+
+    const qty = this.clampMachineQty(document.getElementById('landing-machine-qty')?.value, service);
+
+    if (!this.currentUser) {
+      try { await this.ready; } catch {}
+    }
+    if (!this.currentUser) {
+      this.pendingMachineOrder = { serviceId: service.id, quantity: qty };
+      showToast(this.ui('Siparişi tamamlamak için hesap oluşturun.', 'Create an account to complete your order.'), 'info');
+      return this.showAuthPage('register');
+    }
+
+    this.navigate('new-order');
+    setTimeout(() => this.applyMachineSelection(service.id, qty), 120);
+  }
+
+  applyMachineSelection(serviceId, quantity) {
+    const service = this.allServices.find(s => s.id === serviceId);
+    if (!service) return;
+    const categorySelect = document.getElementById('order-category-select');
+    const serviceSelect = document.getElementById('order-service-select');
+    const qtyInput = document.getElementById('order-qty-input');
+    if (categorySelect) {
+      categorySelect.value = service.category_id;
+      this.onCategoryChange();
+    }
+    if (serviceSelect) {
+      serviceSelect.value = service.id;
+      this.onServiceChange();
+    }
+    if (qtyInput) {
+      qtyInput.value = quantity;
+      this.calculateOrderCharge();
+    }
+  }
+
   // MAIN PLATFORMS CONFIG
   getMainPlatforms() {
     return [
@@ -864,17 +1045,6 @@ class SmmApp {
 
     // Render max 8 popular services on landing
     const topServices = filtered.slice(0, 8);
-
-    // Hero'daki sipariş makinesi, seçili platformdaki ilk canlı servisi gösterir.
-    const previewService = topServices[0];
-    const machineService = document.getElementById('landing-machine-service');
-    const machinePlatform = document.getElementById('landing-machine-platform');
-    const machinePrice = document.getElementById('landing-machine-price');
-    if (previewService) {
-      if (machineService) machineService.textContent = previewService.name;
-      if (machinePlatform) machinePlatform.textContent = previewService.category_name || this.selectedPlatform || 'SMMJET';
-      if (machinePrice) machinePrice.textContent = this.formatServicePrice(previewService);
-    }
 
     if (topServices.length === 0) {
       tableBody.innerHTML = `<tr><td colspan="6" class="text-center">${this.ui('Bu platformda henüz servis bulunmuyor.', 'No services are available for this platform yet.')}</td></tr>`;
@@ -3572,6 +3742,12 @@ class SmmApp {
         this.navigate('admin');
       } else {
         this.navigate('new-order');
+        // Sipariş makinesinden gelindiyse seçim forma taşınır.
+        if (this.pendingMachineOrder) {
+          const { serviceId, quantity } = this.pendingMachineOrder;
+          this.pendingMachineOrder = null;
+          setTimeout(() => this.applyMachineSelection(serviceId, quantity), 150);
+        }
       }
     } catch (err) {
       if (err.code === 'TWO_FACTOR_REQUIRED') {

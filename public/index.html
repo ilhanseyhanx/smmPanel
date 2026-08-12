@@ -94,14 +94,26 @@
         <div class="order-machine" aria-label="Hızlı sipariş önizlemesi">
           <div class="machine-cap"><span>SİPARİŞ MAKİNESİ</span><small><i></i> HAZIR</small></div>
           <div class="machine-body">
-            <label>PLATFORM</label>
-            <div class="machine-field"><i class="fa-brands fa-instagram"></i><span id="landing-machine-platform">Instagram</span><i class="fa-solid fa-chevron-down"></i></div>
-            <label>HİZMET</label>
-            <div class="machine-field"><span id="landing-machine-service">Instagram Takipçi</span><i class="fa-solid fa-chevron-down"></i></div>
-            <label>MİKTAR</label>
-            <div class="machine-counter"><button type="button">−</button><strong>1000</strong><button type="button">+</button></div>
-            <div class="machine-total"><small>TAHMİNİ FİYAT</small><strong id="landing-machine-price">₺48,90</strong></div>
-            <button class="machine-submit" onclick="app.startNow()">SİPARİŞ VER <i class="fa-solid fa-arrow-right"></i></button>
+            <label for="landing-machine-platform">PLATFORM</label>
+            <div class="machine-field">
+              <i class="fa-brands fa-instagram" id="landing-machine-icon"></i>
+              <select id="landing-machine-platform" aria-label="Platform" onchange="app.onMachinePlatformChange()"></select>
+              <i class="fa-solid fa-chevron-down"></i>
+            </div>
+            <label for="landing-machine-service">HİZMET</label>
+            <div class="machine-field">
+              <select id="landing-machine-service" aria-label="Hizmet" onchange="app.onMachineServiceChange()"></select>
+              <i class="fa-solid fa-chevron-down"></i>
+            </div>
+            <label for="landing-machine-qty">MİKTAR</label>
+            <div class="machine-counter">
+              <button type="button" aria-label="Azalt" onclick="app.stepMachineQty(-1)">−</button>
+              <input id="landing-machine-qty" type="number" inputmode="numeric" value="1000" aria-label="Miktar" oninput="app.updateMachinePrice()" onchange="app.commitMachineQty()">
+              <button type="button" aria-label="Artır" onclick="app.stepMachineQty(1)">+</button>
+            </div>
+            <div class="machine-limits"><span id="landing-machine-limits"></span></div>
+            <div class="machine-total"><small>TAHMİNİ FİYAT</small><strong id="landing-machine-price">₺0,00</strong></div>
+            <button class="machine-submit" onclick="app.submitMachineOrder()">SİPARİŞ VER <i class="fa-solid fa-arrow-right"></i></button>
           </div>
           <div class="machine-shadow"></div>
         </div>

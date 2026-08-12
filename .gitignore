@@ -1,0 +1,13 @@
+node_modules/
+.env
+*.log
+backups/
+coverage/
+
+# Calisma anindaki veritabani depoya girmez: parola ozetleri, kullanici ve
+# saglayici API anahtarlari icerir. Sema config/database.js icinde uretilir.
+database.sqlite
+database.sqlite-journal
+database.sqlite-shm
+database.sqlite-wal
+

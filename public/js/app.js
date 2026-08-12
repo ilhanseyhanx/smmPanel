@@ -472,6 +472,12 @@ class SmmApp {
       'YouTube hizmetleri →': 'YouTube services →',
       'Hepsini keşfet →': 'Explore all →',
 
+      // Liste bölümünün sol sütunu
+      'AKTİF SERVİS': 'ACTIVE SERVICES', 'BAŞLAYAN FİYAT': 'STARTING PRICE',
+      'SEÇİLİ PLATFORM': 'SELECTED PLATFORM', 'TÜM HİZMETLER': 'ALL SERVICES',
+      'Fiyatlar ve stok doğrudan sağlayıcı kataloğundan gelir.':
+        'Prices and availability come straight from the provider catalog.',
+
       // Canlı servisler + nasıl çalışır
       '03 / CANLI SERVİSLER': '03 / LIVE SERVICES',
       'BUGÜN NE': "WHAT'S TRENDING", 'YÜKSELİYOR?': 'TODAY?',
@@ -1042,6 +1048,7 @@ class SmmApp {
 
     // Filter services by platform keyword
     let filtered = this.filterServicesByPlatformKey(this.allServices, this.selectedPlatform);
+    this.updateLandingAside(filtered);
 
     // Render max 8 popular services on landing
     const topServices = filtered.slice(0, 8);
@@ -1098,9 +1105,40 @@ class SmmApp {
     try { return decodeURIComponent(String(value ?? '')); } catch { return String(value ?? ''); }
   }
 
-  filterLandingCategory(catName) {
+  // scrollToList: mozaik kartlarından gelindiğinde liste görünür alana getirilir.
+  filterLandingCategory(catName, scrollToList = false) {
     this.selectedPlatform = this.decodeArg(catName);
     this.renderLandingServices();
+    if (!scrollToList) return;
+    const target = document.getElementById('landing-live-services');
+    if (!target) return;
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+  }
+
+  // Liste bölümünün sol sütunundaki canlı özet.
+  updateLandingAside(filteredServices) {
+    const countEl = document.getElementById('landing-aside-services');
+    const priceEl = document.getElementById('landing-aside-price');
+    const platformEl = document.getElementById('landing-aside-platform');
+    if (!countEl && !priceEl && !platformEl) return;
+
+    const services = filteredServices || [];
+    const numberLocale = this.locale === 'en' ? 'en-US' : 'tr-TR';
+
+    if (countEl) countEl.textContent = services.length.toLocaleString(numberLocale);
+
+    if (priceEl) {
+      const rates = services.map(s => Number(s.rate_per_1000)).filter(r => Number.isFinite(r) && r > 0);
+      priceEl.textContent = rates.length
+        ? `₺${Math.min(...rates).toLocaleString(numberLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : '—';
+    }
+
+    if (platformEl) {
+      const active = this.getMainPlatforms().find(p => p.id === this.selectedPlatform);
+      platformEl.textContent = active ? active.name : (this.selectedPlatform || this.ui('Tümü', 'All'));
+    }
   }
 
   selectServiceForOrder(serviceId) {

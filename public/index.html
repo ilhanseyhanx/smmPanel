@@ -168,16 +168,34 @@
         </div>
 
         <div class="neo-service-mosaic">
-          <button class="mosaic-card mosaic-instagram" onclick="app.filterLandingCategory('Instagram')"><span>01</span><i class="fa-brands fa-instagram"></i><strong>PLANLA<br>YAYINLA<br>BÜYÜT</strong><small>Instagram hizmetleri →</small></button>
-          <button class="mosaic-card mosaic-tiktok" onclick="app.filterLandingCategory('TikTok')"><span>02</span><i class="fa-brands fa-tiktok"></i><strong>TRENDİ<br>YAKALA</strong><small>TikTok hizmetleri →</small></button>
-          <button class="mosaic-card mosaic-youtube" onclick="app.filterLandingCategory('YouTube')"><span>03</span><i class="fa-brands fa-youtube"></i><strong>VİDEONU<br>ÖNE ÇIKAR</strong><small>YouTube hizmetleri →</small></button>
+          <button class="mosaic-card mosaic-instagram" onclick="app.filterLandingCategory('Instagram', true)"><span>01</span><i class="fa-brands fa-instagram"></i><strong>PLANLA<br>YAYINLA<br>BÜYÜT</strong><small>Instagram hizmetleri →</small></button>
+          <button class="mosaic-card mosaic-tiktok" onclick="app.filterLandingCategory('TikTok', true)"><span>02</span><i class="fa-brands fa-tiktok"></i><strong>TRENDİ<br>YAKALA</strong><small>TikTok hizmetleri →</small></button>
+          <button class="mosaic-card mosaic-youtube" onclick="app.filterLandingCategory('YouTube', true)"><span>03</span><i class="fa-brands fa-youtube"></i><strong>VİDEONU<br>ÖNE ÇIKAR</strong><small>YouTube hizmetleri →</small></button>
           <button class="mosaic-card mosaic-more" onclick="app.navigate('services')"><span>04</span><i class="fa-solid fa-arrow-up-right-from-square"></i><strong>TÜM<br>ARAÇLAR</strong><small>Hepsini keşfet →</small></button>
         </div>
 
-        <div class="neo-popular">
+        <div class="neo-popular" id="landing-live-services">
           <div class="neo-section-heading">
             <span class="neo-label">03 / CANLI SERVİSLER</span>
             <h2>BUGÜN NE<br>YÜKSELİYOR?</h2>
+
+            <!-- Sol sütundaki boşluk canlı katalog özetiyle dolduruldu -->
+            <div class="neo-aside">
+              <div class="neo-aside-row">
+                <span>AKTİF SERVİS</span>
+                <strong id="landing-aside-services">—</strong>
+              </div>
+              <div class="neo-aside-row">
+                <span>BAŞLAYAN FİYAT</span>
+                <strong id="landing-aside-price">—</strong>
+              </div>
+              <div class="neo-aside-row">
+                <span>SEÇİLİ PLATFORM</span>
+                <strong id="landing-aside-platform">—</strong>
+              </div>
+              <p class="neo-aside-note">Fiyatlar ve stok doğrudan sağlayıcı kataloğundan gelir.</p>
+              <button class="neo-aside-cta" onclick="app.navigate('services')">TÜM HİZMETLER <i class="fa-solid fa-arrow-right"></i></button>
+            </div>
           </div>
           <div class="platform-tabs" id="landing-platform-tabs">
             <!-- Dynamic Category Filter Tabs -->

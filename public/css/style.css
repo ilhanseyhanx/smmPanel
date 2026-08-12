@@ -1969,13 +1969,35 @@ body.admin-view-active .navbar {
 .neo-landing .metric-item { min-height:125px; padding:20px 16px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:8px; border-right:2px solid #090909; }
 .neo-landing .metric-item:last-child { border:0; }.neo-landing .metric-icon-box { width:auto; height:auto; padding:0; border:0; background:transparent; color:#ed2d2d; font-size:1.35rem; }.neo-landing .metric-value { color:#090909; font:900 clamp(1.2rem,2vw,1.85rem) 'Archivo Black',sans-serif; }.neo-landing .metric-label { color:#090909; font:700 .67rem 'IBM Plex Mono',monospace; text-transform:uppercase; }
 
-.neo-service-mosaic { margin-bottom:100px; display:grid; grid-template-columns:1.15fr .7fr 1fr .72fr; grid-template-rows:380px; border:3px solid #090909; box-shadow:10px 10px 0 #090909; }
-.mosaic-card { position:relative; padding:24px; display:flex; flex-direction:column; align-items:flex-start; justify-content:space-between; border:0; border-right:3px solid #090909; color:#090909; text-align:left; cursor:pointer; overflow:hidden; }
-.mosaic-card:last-child { border:0; }.mosaic-card > span { position:absolute; top:14px; right:14px; padding:3px 7px; border:2px solid currentColor; font:800 .72rem 'IBM Plex Mono',monospace; }.mosaic-card > i { margin-top:5px; font-size:3rem; }.mosaic-card strong { font:900 clamp(2rem,3.2vw,3.4rem)/.88 'Archivo Black',sans-serif; letter-spacing:-.06em; }.mosaic-card small { font:700 .7rem 'IBM Plex Mono',monospace; }.mosaic-card:hover strong { transform:translateX(7px); }.mosaic-card strong { transition:transform .2s ease; }
+/* Sutunlar dengelendi: en uzun kelimeler (YAYINLA / VIDEONU / ARACLAR) en dar
+   sutunlara denk geldigi icin yazilar tasiyordu. */
+.neo-service-mosaic { margin-bottom:100px; display:grid; grid-template-columns:1.1fr .85fr 1.05fr .85fr; grid-template-rows:380px; border:3px solid #090909; box-shadow:10px 10px 0 #090909; }
+/* container-type: baslik boyutu kartin kendi genisligine gore olceklenir,
+   boylece dar kartta yazi kendiliginden kuculur ve tasma olmaz. */
+.mosaic-card { position:relative; container-type:inline-size; padding:24px; display:flex; flex-direction:column; align-items:flex-start; justify-content:space-between; border:0; border-right:3px solid #090909; color:#090909; text-align:left; cursor:pointer; overflow:hidden; }
+.mosaic-card:last-child { border:0; }.mosaic-card > span { position:absolute; top:14px; right:14px; padding:3px 7px; border:2px solid currentColor; font:800 .72rem 'IBM Plex Mono',monospace; }.mosaic-card > i { margin-top:5px; font-size:3rem; }.mosaic-card strong { max-width:100%; font:900 clamp(1.3rem,16cqw,3.2rem)/.9 'Archivo Black',sans-serif; letter-spacing:-.06em; overflow-wrap:break-word; }.mosaic-card small { font:700 .7rem 'IBM Plex Mono',monospace; }.mosaic-card:hover strong { transform:translateX(5px); }.mosaic-card strong { transition:transform .2s ease; }
 .mosaic-instagram { background:#1769e8;color:#fff; }.mosaic-tiktok { background:#ed2d2d;color:#fff; }.mosaic-youtube { background:#fff; }.mosaic-youtube > i { color:#ed2d2d; }.mosaic-more { background:#ffde17; }
 
-.neo-popular { position:relative; margin-bottom:100px; display:grid; grid-template-columns:minmax(230px,.38fr) minmax(0,1fr); gap:38px; align-items:start; }
-.neo-popular .neo-section-heading { position:sticky; top:120px; }
+/* scroll-margin-top: karttan gelen kaydirmada baslik yapiskan navbarin altinda kalmasin. */
+.neo-popular { position:relative; margin-bottom:100px; display:grid; grid-template-columns:minmax(230px,.38fr) minmax(0,1fr); gap:38px; align-items:start; scroll-margin-top:96px; }
+/* Sol sutun her iki satira birden yayilir: aksi halde yan panel 1. satiri
+   uzatir ve sagdaki tablo asagi kayar. */
+.neo-popular .neo-section-heading { position:sticky; top:120px; grid-column:1; grid-row:1 / span 2; }
+.neo-popular .platform-tabs { grid-row:1; }
+.neo-popular .table-responsive { grid-row:2; }
+
+/* Sol sutundaki canli katalog ozeti */
+.neo-aside { margin-top:26px; border:3px solid #090909; background:#fffef8; box-shadow:6px 6px 0 #090909; }
+.neo-aside-row { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:11px 14px; border-bottom:2px solid #090909; }
+.neo-aside-row span { font:700 .62rem 'IBM Plex Mono',monospace; color:#4b5563; letter-spacing:.04em; }
+.neo-aside-row strong { font:900 1.05rem 'Archivo Black',sans-serif; color:#090909; text-align:right; overflow-wrap:anywhere; }
+.neo-aside-note { padding:11px 14px; border-bottom:2px solid #090909; font:600 .68rem/1.45 'IBM Plex Mono',monospace; color:#4b5563; }
+.neo-aside-cta {
+  width:100%; min-height:46px; display:flex; justify-content:space-between; align-items:center;
+  padding:0 14px; border:0; background:#ffde17; color:#090909; cursor:pointer;
+  font:900 .78rem 'Archivo Black',sans-serif; letter-spacing:.02em;
+}
+.neo-aside-cta:hover { background:#ed2d2d; color:#fff; }
 .neo-popular .platform-tabs { grid-column:2; display:flex; gap:7px; overflow-x:auto; padding-bottom:12px; }
 .neo-popular .tab-btn { flex:none; padding:8px 12px; border:2px solid #090909; border-radius:0; background:#fff; color:#090909; font:700 .68rem 'IBM Plex Mono',monospace; box-shadow:3px 3px 0 #090909; }
 .neo-popular .tab-btn.active,.neo-popular .tab-btn:hover { background:#ffde17; color:#090909; }
@@ -2014,7 +2036,9 @@ body.admin-view-active .navbar {
   .neo-heading-split { align-items:start; flex-direction:column; }.neo-heading-split p { max-width:none; }
   .neo-landing .metrics-banner-card { grid-template-columns:1fr 1fr; }.neo-landing .metric-item { border-right:2px solid #090909!important; border-bottom:2px solid #090909; }.neo-landing .metric-item:nth-child(even) { border-right:0!important; }.neo-landing .metric-item:last-child { grid-column:1/-1; border-bottom:0; border-right:0!important; }
   .neo-service-mosaic { grid-template-columns:1fr; grid-template-rows:repeat(4,260px); }.mosaic-card { border-right:0; border-bottom:3px solid #090909!important; }.mosaic-card:last-child { border-bottom:0!important; }
-  .neo-popular { grid-template-columns:1fr; }.neo-popular .neo-section-heading { position:static; }.neo-popular .platform-tabs,.neo-popular .table-responsive { grid-column:1; }.neo-popular .table-responsive { overflow-x:auto; }.neo-popular .custom-table { min-width:760px; }
+  /* Tek sutuna dusunce satir atamalari sifirlanir; aksi halde baslik 2 satira
+     yayilip sekmelerle ayni hucreye denk gelir ve ust uste biner. */
+  .neo-popular { grid-template-columns:1fr; }.neo-popular .neo-section-heading { position:static; grid-column:1; grid-row:auto; }.neo-popular .platform-tabs,.neo-popular .table-responsive { grid-column:1; grid-row:auto; }.neo-popular .table-responsive { overflow-x:auto; }.neo-popular .custom-table { min-width:760px; }
   .neo-steps { grid-template-columns:1fr; gap:12px; }.neo-steps > div:nth-child(2),.neo-steps > div:nth-child(3) { transform:none; }
   .neo-trust { grid-template-columns:1fr; }.neo-trust > div { border-right:0; border-bottom:3px solid #090909; }.neo-trust > div:last-child { border-bottom:0; }
   .neo-cta { align-items:flex-start; flex-direction:column; }.neo-cta .btn { white-space:normal; }

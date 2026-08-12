@@ -437,7 +437,72 @@ class SmmApp {
       'Mesajınız': 'Your Message', 'Bileti Gönder': 'Submit Ticket',
       'Destek Bileti Detayı': 'Support Ticket Details', 'Cevabınızı yazın...': 'Write your reply...'
       , 'Kayıt ol': 'Register', 'Giriş yap': 'Login', 'Zaten hesabın var mı?': 'Already have an account?',
-      '#102 • Açık': '#102 • Open'
+      // Değerler sembol öneki OLMADAN yazılır: TreeWalker öneki
+      // (ör. "#", "©") çeviriye kendisi ekler, aksi halde iki kez çıkar.
+      '#102 • Açık': '102 • Open',
+
+      // --- Neo-brutalist açılış sayfası ---------------------------------
+      // Not: <br> ile bölünen başlıklar ayrı metin düğümleri oluşturur,
+      // bu yüzden her satır ayrı bir anahtar olarak çevrilir.
+      'SOSYAL BÜYÜME PLATFORMU': 'SOCIAL GROWTH PLATFORM',
+      'AKIŞTA KAL.': 'STAY IN FEED.', 'ÖNDE': 'STAY', 'KAL.': 'AHEAD.',
+      'Instagram, TikTok, YouTube ve diğer platformlarda görünürlüğünü saniyeler içinde artır.':
+        'Boost your visibility on Instagram, TikTok, YouTube and more within seconds.',
+      'kullanıcı büyümeyi SMMJET ile hızlandırıyor.': 'users accelerate their growth with SMMJET.',
+      '6 saniyede başlar!': 'Starts in 6 seconds!',
+
+      // Hero'daki sipariş makinesi
+      'SİPARİŞ MAKİNESİ': 'ORDER MACHINE', 'HAZIR': 'READY',
+      'HİZMET': 'SERVICE', 'MİKTAR': 'QUANTITY', 'TAHMİNİ FİYAT': 'ESTIMATED PRICE',
+      'SİPARİŞ VER': 'PLACE ORDER', 'Instagram Takipçi': 'Instagram Followers',
+
+      // Canlı veriler bölümü
+      '02 / CANLI VERİLER': '02 / LIVE DATA',
+      'Rakamlarla': 'SMMJET', 'SMMJET.': 'BY THE NUMBERS.',
+      'Panelde gördüğün tüm rakamlar doğrudan sistemden gelir. Süs değil, gerçek performans.':
+        'Every figure here comes straight from the system. Not decoration, real performance.',
+
+      // Servis mozaiği
+      'PLANLA': 'PLAN', 'YAYINLA': 'PUBLISH', 'BÜYÜT': 'GROW',
+      'TRENDİ': 'CATCH THE', 'YAKALA': 'TREND',
+      'VİDEONU': 'FEATURE YOUR', 'ÖNE ÇIKAR': 'VIDEO',
+      'TÜM': 'ALL', 'ARAÇLAR': 'TOOLS',
+      'Instagram hizmetleri →': 'Instagram services →',
+      'TikTok hizmetleri →': 'TikTok services →',
+      'YouTube hizmetleri →': 'YouTube services →',
+      'Hepsini keşfet →': 'Explore all →',
+
+      // Canlı servisler + nasıl çalışır
+      '03 / CANLI SERVİSLER': '03 / LIVE SERVICES',
+      'BUGÜN NE': "WHAT'S TRENDING", 'YÜKSELİYOR?': 'TODAY?',
+      '04 / NASIL ÇALIŞIR?': '04 / HOW IT WORKS?',
+      'Hizmeti seç': 'Pick a service',
+      'İhtiyacına uygun platformu ve servisi bul.': 'Find the platform and service that fits your needs.',
+      'Bilgileri gir': 'Enter the details',
+      'Kullanıcı adı veya bağlantını ekle.': 'Add your username or link.',
+      'Sonucu izle': 'Watch the results',
+      'Siparişini panelden anlık takip et.': 'Track your order live from the panel.',
+
+      // Güven bandı
+      '7/24 DESTEK': '24/7 SUPPORT', 'Gerçek insanlar, hızlı çözümler.': 'Real people, fast solutions.',
+      'GÜVENLİ ÖDEME': 'SECURE PAYMENT', 'Korunan ödeme altyapısı.': 'Protected payment infrastructure.',
+      'ANLIK BAŞLANGIÇ': 'INSTANT START', 'Beklemeden harekete geç.': 'Get moving without waiting.',
+
+      // Öne çıkanlar + kapanış
+      '05 / ÖNE ÇIKANLAR': '05 / FEATURED',
+      'SENİN İÇİN': 'PICKED', 'SEÇTİK.': 'FOR YOU.',
+      'HAZIR MISIN?': 'READY?', 'SIRADAKİ': 'THE NEXT', 'BÜYÜME SENİN.': 'GROWTH IS YOURS.',
+      'ÜCRETSİZ HESAP OLUŞTUR': 'CREATE A FREE ACCOUNT',
+
+      // Sipariş formu (iki nokta üst üste ayrı bir anahtar sayılır)
+      'Toplam Tutar:': 'Total Amount:',
+      // VIP rozetinin HTML'deki başlangıç değeri; giriş yapılınca JS günceller.
+      'BRONZ': 'BRONZE',
+
+      // Alt bilgi
+      'Hızlı. Güvenli. Ölçülebilir.': 'Fast. Secure. Measurable.',
+      'Sosyal büyümede yeni standart.': 'The new standard in social growth.',
+      '© 2026 SMMJET. Tüm hakları saklıdır.': '2026 SMMJET. All rights reserved.'
     };
     const placeholderEnglish = {
       '🔍 Servis ara...': '🔍 Search services...', 'Tüm Alt Kategoriler': 'All Subcategories',
@@ -490,6 +555,9 @@ class SmmApp {
     document.documentElement.lang = this.locale;
     this.applyTranslations();
     await this.loadServicesData();
+    // VIP rozeti gibi JS ile üretilen metinler yalnızca yeniden çizilince
+    // yeni dile geçer.
+    if (this.currentUser) await this.loadAccountSummary();
     if (this.currentView === 'blog') await this.loadBlogPosts();
     else if (this.currentView === 'blog-detail' && this.currentBlogSlug) await this.loadBlogPostDetail(this.currentBlogSlug);
     else if (this.currentView === 'services') this.renderFullServicesTable();
@@ -2542,18 +2610,20 @@ class SmmApp {
     if (spentEl) spentEl.innerText = `₺${totalSpent.toFixed(2)}`;
     if (!badge) return;
 
+    // Rozet metinleri JS ile üretildiği için TreeWalker çevirisine takılmaz;
+    // seçili dile göre burada üretilir.
     if (totalSpent >= 5000) {
       badge.className = 'vip-badge vip-elmas';
-      badge.innerHTML = '💎 ELMAS VIP';
+      badge.textContent = this.ui('💎 ELMAS VIP', '💎 DIAMOND VIP');
     } else if (totalSpent >= 1500) {
       badge.className = 'vip-badge vip-altin';
-      badge.innerHTML = '🥇 ALTIN VIP';
+      badge.textContent = this.ui('🥇 ALTIN VIP', '🥇 GOLD VIP');
     } else if (totalSpent >= 500) {
       badge.className = 'vip-badge vip-gumus';
-      badge.innerHTML = '🥈 GÜMÜŞ VIP';
+      badge.textContent = this.ui('🥈 GÜMÜŞ VIP', '🥈 SILVER VIP');
     } else {
       badge.className = 'vip-badge vip-bronz';
-      badge.innerHTML = '🥉 BRONZ VIP';
+      badge.textContent = this.ui('🥉 BRONZ VIP', '🥉 BRONZE VIP');
     }
   }
 

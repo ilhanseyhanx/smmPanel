@@ -39,8 +39,8 @@ async function createIframeToken({ user, amountKurus, merchantOid, userIp }) {
   const response = await axios.post('https://www.paytr.com/odeme/api/get-token', new URLSearchParams({
     ...fields,
     paytr_token: hmacBase64(hashValue, config.merchantKey),
-    merchant_ok_url: `${config.baseUrl.replace(/\/$/, '')}/#payment-success`,
-    merchant_fail_url: `${config.baseUrl.replace(/\/$/, '')}/#payment-failed`,
+    merchant_ok_url: `${config.baseUrl.replace(/\/$/, '')}/payment-success`,
+    merchant_fail_url: `${config.baseUrl.replace(/\/$/, '')}/payment-failed`,
     user_name: user.username,
     user_address: 'Online Hizmet',
     user_phone: '0000000000',

@@ -254,6 +254,10 @@ class SmmApp {
     this.debouncedFilterServicesTable = this.debounce(() => this.filterServicesTable(), 180);
     this.debouncedFilterExplorerTable = this.debounce(() => this.filterExplorerTable(), 180);
     this.debouncedFilterAdminAddedServices = this.debounce(() => this.filterAdminAddedServicesTable(), 180);
+    // Kullanici ve siparis aramalari sunucudan filtreli veri ceker; her tus
+    // vurusunda istek atmamak icin 300ms bekletilir.
+    this.debouncedAdminUsersSearch = this.debounce(() => this.loadAdminUsers(), 300);
+    this.debouncedAdminOrdersSearch = this.debounce(() => this.loadAdminOrders(), 300);
 
     // Oturum kontrolü asenkron tamamlanır; bekleyen işlemler bu sözü bekleyebilir.
     this.ready = this.init();
@@ -330,6 +334,9 @@ class SmmApp {
   }
 
   applyTranslations() {
+    // Yasal sayfalar gibi uzun iceriklerde ceviri sozluk yerine dil bloklariyla
+    // yapilir: .lang-tr / .lang-en gorunurlugu bu sinifla yonetilir.
+    document.body.classList.toggle('locale-en', this.locale === 'en');
     document.title = this.locale === 'en'
       ? 'SMM Panel - Automated Social Media Growth Panel'
       : 'SMM Panel - Otomatik Sosyal Medya Büyüme Paneli';
@@ -508,7 +515,40 @@ class SmmApp {
       // Alt bilgi
       'Hızlı. Güvenli. Ölçülebilir.': 'Fast. Secure. Measurable.',
       'Sosyal büyümede yeni standart.': 'The new standard in social growth.',
-      '© 2026 SMMJET. Tüm hakları saklıdır.': '2026 SMMJET. All rights reserved.'
+      '© 2026 SMMJET. Tüm hakları saklıdır.': '2026 SMMJET. All rights reserved.',
+      'Kullanım Şartları': 'Terms of Service',
+      'Gizlilik & KVKK': 'Privacy Policy',
+      'İade Politikası': 'Refund Policy',
+
+      // --- Bakiye yükleme ekranı (yöntem kartları + adımlar) -------------
+      'Ödeme yöntemini seç': 'Choose a payment method',
+      'Tutarı belirle': 'Set the amount',
+      'Ödemeye geç': 'Proceed to payment',
+      'Coin seç': 'Choose a coin',
+      'Aşağıdaki hesaba ödemeni yap': 'Send your payment to an account below',
+      'Ödemeni bildir': 'Notify us of your payment',
+      'Kredi / Banka Kartı': 'Credit / Debit Card',
+      'PayTR güvenli ödeme': 'Secure payment via PayTR',
+      'Kripto Para': 'Cryptocurrency',
+      'USDT, BTC ve 300+ coin': 'USDT, BTC and 300+ coins',
+      'Havale / Papara': 'Bank Transfer / Papara',
+      'Bildirim ile onaylanır': 'Approved via payment notice',
+      'Güvenli Öde — Kart': 'Pay Securely — Card',
+      "Kart bilgilerin PayTR'nin güvenli sayfasında işlenir; sitemizde saklanmaz.":
+        "Your card details are processed on PayTR's secure page; we never store them.",
+      'Ödemeyi yaptıktan sonra bu formu doldur; ekibimiz dakikalar içinde onaylar ve bakiyen yüklenir.':
+        'After sending your payment, fill in this form; our team approves it within minutes and your balance is added.',
+      'Promosyon Kuponu': 'Promotional Coupon',
+      'Coinler yükleniyor…': 'Loading coins…',
+
+      // --- Siparişlerim: Telegram bildirim kartı --------------------------
+      'Telegram Sipariş Bildirimleri': 'Telegram Order Notifications',
+      "Siparişin tamamlanınca veya durumu değişince Telegram'dan anında haber al.":
+        'Get instant Telegram updates when your order completes or its status changes.',
+
+      // --- Yasal sayfa başlıkları -----------------------------------------
+      'Gizlilik Politikası & KVKK Aydınlatma Metni': 'Privacy Policy & Data Protection Notice',
+      'İade ve İptal Politikası': 'Refund & Cancellation Policy'
     };
     const placeholderEnglish = {
       '🔍 Servis ara...': '🔍 Search services...', 'Tüm Alt Kategoriler': 'All Subcategories',
@@ -519,7 +559,8 @@ class SmmApp {
       'Örn: 150': 'e.g. 150', 'Örn: Ahmet Yılmaz': 'e.g. John Smith',
       'Kullanıcı adınızı yazın': 'Enter your username', 'ornek@domain.com': 'example@domain.com',
       'Örn: #1042': 'e.g. #1042',
-      'Lütfen yaşadığınız sorunu detaylıca açıklayın...': 'Please describe your issue in detail...'
+      'Lütfen yaşadığınız sorunu detaylıca açıklayın...': 'Please describe your issue in detail...',
+      'Kupon kodu: HOSGELDIN20': 'Coupon code: WELCOME20'
     };
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let node;
@@ -545,11 +586,16 @@ class SmmApp {
       const original = element.dataset.titleTr;
       element.setAttribute('title', this.locale === 'en' ? (english[original] || original) : original);
     });
+    // API dokumanlarindaki ornek adresler siteye gore dinamiktir:
+    // localhost yaziyorsa canli alan adiyla degistirilir.
+    const apiBaseSpan = document.getElementById('api-docs-base-url');
+    if (apiBaseSpan) apiBaseSpan.textContent = `${window.location.origin}/api/v2`;
     document.querySelectorAll('#view-api-docs pre').forEach(block => {
       if (!block.dataset.contentTr) block.dataset.contentTr = block.textContent;
-      block.textContent = this.locale === 'en'
+      const localized = this.locale === 'en'
         ? block.dataset.contentTr.replaceAll('/kullaniciadi', '/username')
         : block.dataset.contentTr;
+      block.textContent = localized.replaceAll('http://localhost:3000', window.location.origin);
     });
   }
 
@@ -568,8 +614,10 @@ class SmmApp {
     else if (this.currentView === 'blog-detail' && this.currentBlogSlug) await this.loadBlogPostDetail(this.currentBlogSlug);
     else if (this.currentView === 'services') this.renderFullServicesTable();
     else if (this.currentView === 'landing') this.renderLandingServices();
-    else if (this.currentView === 'orders' && this.currentUser) await this.loadUserOrders();
+    else if (this.currentView === 'orders' && this.currentUser) { await this.loadUserOrders(); this.loadTelegramConnectCard(); }
+    else if (this.currentView === 'add-funds') { this.initAddFundsView(); this.renderDepositBonusBanner(); }
     else if (this.currentView === 'tickets' && this.currentUser) await this.loadUserTickets();
+    else if (this.currentView === 'profile' && this.currentUser) await this.loadProfileView();
     else if (this.currentView === 'new-order') {
       this.populateOrderCategories();
       const categorySelect = document.getElementById('order-category-select');
@@ -590,13 +638,166 @@ class SmmApp {
   }
 
   formatServicePrice(service) {
+    // Aktif kampanya indirimi varsa dusen fiyat gosterilir (duz metin).
+    const rate = service?.discounted_rate_per_1000 ?? Number(service?.rate_per_1000 || 0);
     const usd = Number(service?.rate_per_1000_usd_cents || 0) / 100;
-    if (this.locale === 'en' && usd > 0) return `$${usd.toFixed(2)} / ₺${Number(service?.rate_per_1000 || 0).toFixed(2)}`;
-    return `₺${Number(service?.rate_per_1000 || 0).toFixed(2)}`;
+    if (this.locale === 'en' && usd > 0 && !service?.discount_percent) return `$${usd.toFixed(2)} / ₺${rate.toFixed(2)}`;
+    return `₺${rate.toFixed(2)}${service?.discount_percent ? ` (-%${service.discount_percent})` : ''}`;
+  }
+
+  // --- MOBİL MENÜ ---
+  // 1100px altinda .nav-links satir icine sigmadigi icin hamburger ile acilan
+  // bir panele donusur; burada yalnizca acma/kapama davranisi yonetilir.
+  setupMobileMenu() {
+    document.addEventListener('click', event => {
+      const navbar = document.querySelector('.navbar');
+      if (!navbar || !navbar.classList.contains('nav-open')) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target && (target.closest('#nav-toggle') || target.closest('#main-nav-links'))) return;
+      this.closeMobileMenu();
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') this.closeMobileMenu();
+    });
+    // Masaustu genislige donuldugunde panel durumu takili kalmamali.
+    window.addEventListener('resize', () => {
+      if (window.innerWidth > 1100) this.closeMobileMenu();
+    });
+  }
+
+  toggleMobileMenu(force) {
+    const navbar = document.querySelector('.navbar');
+    if (!navbar) return;
+    const open = typeof force === 'boolean' ? force : !navbar.classList.contains('nav-open');
+    navbar.classList.toggle('nav-open', open);
+
+    const toggle = document.getElementById('nav-toggle');
+    if (!toggle) return;
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.querySelector('i')?.classList.replace(
+      open ? 'fa-bars' : 'fa-xmark',
+      open ? 'fa-xmark' : 'fa-bars'
+    );
+  }
+
+  closeMobileMenu() {
+    this.toggleMobileMenu(false);
+  }
+
+  // Erisilebilirlik: gorunen <label> etiketlerini ayni gruptaki form alanina
+  // baglar (for="..."). Ekran okuyucular ve Lighthouse denetimleri icin.
+  // ---------------------------------------------------------------
+  // Cerez onayi
+  // Olcum (Analytics) cerezleri ancak ziyaretci acikca izin verdikten sonra
+  // yuklenir. Sunucu gtag betigini artik dogrudan basmaz; yalnizca olcum
+  // kimligini <meta name="analytics-id"> icinde birakir (bkz. server.js).
+  // ---------------------------------------------------------------
+  cookieConsentValue() {
+    try { return localStorage.getItem('cerezOnayi'); } catch { return null; }
+  }
+
+  initCookieConsent() {
+    const onay = this.cookieConsentValue();
+    if (onay === 'accepted') { this.loadAnalytics(); return; }
+    if (onay === 'rejected') return;
+    const bant = document.getElementById('cookie-consent');
+    if (bant) bant.hidden = false;
+  }
+
+  setCookieConsent(deger) {
+    try { localStorage.setItem('cerezOnayi', deger); } catch {}
+    const bant = document.getElementById('cookie-consent');
+    if (bant) bant.hidden = true;
+    if (deger === 'accepted') this.loadAnalytics();
+  }
+
+  loadAnalytics() {
+    if (this.analyticsLoaded) return;
+    const id = document.querySelector('meta[name="analytics-id"]')?.content;
+    if (!id) return;
+    this.analyticsLoaded = true;
+    const betik = document.createElement('script');
+    betik.async = true;
+    betik.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(id)}`;
+    document.head.appendChild(betik);
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = function () { window.dataLayer.push(arguments); };
+    window.gtag('js', new Date());
+    window.gtag('config', id, { anonymize_ip: true });
+  }
+
+  /** Blog yazisinin paylasim baglantilarini acik olan adrese gore gunceller. */
+  updateShareLinks(baslik) {
+    const adres = encodeURIComponent(window.location.href);
+    const metin = encodeURIComponent(baslik || document.title);
+    const hedefler = {
+      'share-x': `https://twitter.com/intent/tweet?url=${adres}&text=${metin}`,
+      'share-facebook': `https://www.facebook.com/sharer/sharer.php?u=${adres}`,
+      'share-whatsapp': `https://wa.me/?text=${metin}%20${adres}`,
+      'share-telegram': `https://t.me/share/url?url=${adres}&text=${metin}`
+    };
+    for (const [id, href] of Object.entries(hedefler)) {
+      const el = document.getElementById(id);
+      if (el) el.href = href;
+    }
+  }
+
+  async copyPageLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      showToast('Bağlantı kopyalandı.', 'success');
+    } catch {
+      showToast('Bağlantı kopyalanamadı.', 'error');
+    }
+  }
+
+  associateFormLabels() {
+    document.querySelectorAll('.form-group').forEach(group => {
+      const label = group.querySelector('label:not([for])');
+      const control = group.querySelector('input[id], select[id], textarea[id]');
+      if (label && control) label.htmlFor = control.id;
+    });
   }
 
   async init() {
+    this.setupMobileMenu();
     this.loadSavedTheme();
+    this.associateFormLabels();
+    this.initCookieConsent();
+
+    // Mobil tarayicilar geri/ileri gecislerde sayfayi bellekten (bfcache)
+    // geri getirir; eski sinyaller (bakiye, siparis durumu) ekranda kalir.
+    // Boyle bir geri donuste sayfa tazelenir.
+    window.addEventListener('pageshow', event => {
+      if (event.persisted) window.location.reload();
+    });
+
+    // Siparislerim ekrani aciksa durumlar 30 saniyede bir sunucudan tazelenir
+    // (admin onayi / iptali aninda kullaniciya yansisin diye).
+    setInterval(() => {
+      if (this.currentView === 'orders' && this.currentUser && document.visibilityState === 'visible') {
+        this.loadUserOrders();
+        // Iptal iadesi bakiyeye yansimis olabilir; ust bardaki bakiye de tazelenir.
+        API.getMe().then(res => { this.currentUser = res.user; this.updateUserHeader(); }).catch(() => {});
+      }
+    }, 30000);
+    // Destek sohbeti: Enter gonderir, Shift+Enter alt satir acar. Yazi alani
+    // icerige gore buyur.
+    const chatInput = document.getElementById('chat-reply-input');
+    if (chatInput) {
+      chatInput.addEventListener('input', () => this.autoGrowChatInput(chatInput));
+      chatInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          chatInput.form?.requestSubmit();
+        }
+      });
+    }
+    // Sekmeye geri donuldugunde sohbet aninda tazelensin (bekleme olmasin).
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && this.activeChatTicketId) this.refreshTicketChat(false);
+    });
+
     const languageSelector = document.getElementById('language-selector');
     if (languageSelector) languageSelector.value = this.locale;
     document.documentElement.lang = this.locale;
@@ -617,19 +818,45 @@ class SmmApp {
     // Load services data
     await this.loadServicesData();
 
-    // Route based on URL hash or default to landing
-    const hash = window.location.hash.replace('#', '') || 'landing';
-    const [route, query = ''] = hash.split('?');
+    // Adres cozumleme: temiz yol (/services gibi) esastir. Eski #hash linkleri
+    // (yer imleri, gonderilmis e-postalar) sessizce yeni bicime cevrilir.
+    let raw = window.location.pathname.replace(/^\/+|\/+$/g, '') + window.location.search;
+    const legacyHash = window.location.hash.replace(/^#/, '');
+    if (legacyHash) {
+      raw = legacyHash;
+      history.replaceState(null, '', '/' + legacyHash);
+    }
+    if (!raw) raw = 'landing';
+    const [route, query = ''] = raw.split('?');
     this.referralCode = new URLSearchParams(query).get('ref');
-    if (route.startsWith('blog/')) await this.loadBlogPostDetail(decodeURIComponent(route.slice(5)));
+    if (route.startsWith('blog/')) await this.loadBlogPostDetail(decodeURIComponent(route.slice(5)), false);
     else if (route === 'register') this.showAuthPage('register');
     else if (route === 'reset-password') await this.completePasswordReset(new URLSearchParams(query).get('token'));
     else if (route === 'verify-email') await this.completeEmailVerification(new URLSearchParams(query).get('token'));
     else {
-      this.navigate(route);
+      this.navigate(route, false);
       const linkedServiceId = Number(new URLSearchParams(query).get('service'));
       if (route === 'services' && linkedServiceId) this.openServiceFromBlog(linkedServiceId, false);
     }
+
+    // Giris sirasinda tam sayfa yuklemesi olduysa siparis makinesindeki secim
+    // burada forma tasinir.
+    try {
+      const bekleyen = sessionStorage.getItem('bekleyenMakineSecimi');
+      if (bekleyen) {
+        sessionStorage.removeItem('bekleyenMakineSecimi');
+        const { serviceId, quantity } = JSON.parse(bekleyen);
+        if (serviceId) setTimeout(() => this.applyMachineSelection(serviceId, quantity), 150);
+      }
+    } catch {}
+
+    // Tarayici geri/ileri dugmeleri: adres degisince ilgili gorunume gecilir.
+    window.addEventListener('popstate', () => {
+      const path = window.location.pathname.replace(/^\/+|\/+$/g, '') || 'landing';
+      const [popRoute] = path.split('?');
+      if (popRoute.startsWith('blog/')) this.loadBlogPostDetail(decodeURIComponent(popRoute.slice(5)), false);
+      else this.navigate(popRoute, false);
+    });
   }
 
   updateUserHeader() {
@@ -640,10 +867,10 @@ class SmmApp {
     if (this.currentUser) {
       badge.innerHTML = `
         <div class="balance-pill"><i class="fa-solid fa-wallet"></i> ₺${parseFloat(this.currentUser.balance).toFixed(2)}</div>
-        <span style="font-weight: 600; color: #fff; font-size: 0.9rem;">
+        <button class="btn btn-outline btn-sm" onclick="app.navigate('profile')" title="${this.ui('Profilim', 'My Profile')}">
           <i class="fa-solid fa-user-circle"></i> ${this.currentUser.username}
-        </span>
-        <button class="btn btn-outline btn-sm" onclick="app.logout()" title="Çıkış Yap">
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="app.logout()" title="Çıkış Yap" aria-label="Çıkış Yap">
           <i class="fa-solid fa-right-from-bracket"></i>
         </button>
       `;
@@ -690,10 +917,13 @@ class SmmApp {
     else this.showAuthPage('register');
   }
 
-  navigate(viewName) {
-    // Auth check for restricted views
-    if (['new-order', 'orders', 'add-funds', 'tickets'].includes(viewName) && !this.currentUser) {
-      this.showAuthModal('login');
+  navigate(viewName, push = true) {
+    // Yetki kontrolu ONCE calisir. Sunucu panel ici gorunumleri yalnizca
+    // oturum acmis ziyaretciye gonderdigi icin (bkz. utils/gatedMarkup.js),
+    // asagidaki "gorunum var mi" kontrolu once calissaydi cikis yapmis bir
+    // kullanici /orders adresinde giris ekrani yerine ana sayfayi gorurdu.
+    if (['new-order', 'orders', 'add-funds', 'tickets', 'profile'].includes(viewName) && !this.currentUser) {
+      this.showAuthPage('login');
       return;
     }
 
@@ -702,8 +932,19 @@ class SmmApp {
       return;
     }
 
+    // Oturum acildi ama sayfa oturumsuzken yuklendiyse gorunumun isaretlemesi
+    // henuz gelmemistir; tam yukleme ile sunucudan istenir.
+    if (!document.getElementById(`view-${viewName}`) && this.currentUser) {
+      window.location.assign(viewName === 'landing' ? '/' : `/${viewName}`);
+      return;
+    }
+
+    // Bilinmeyen adresler ana sayfaya duser (bos ekran yerine).
+    if (!document.getElementById(`view-${viewName}`)) viewName = 'landing';
+
     this.currentView = viewName;
-    window.location.hash = viewName;
+    // Temiz adres: #hash yerine gercek yol (ana sayfa "/", digerleri "/gorunum").
+    if (push) history.pushState({ view: viewName }, '', viewName === 'landing' ? '/' : `/${viewName}`);
     document.body.classList.toggle('admin-view-active', viewName === 'admin');
     document.body.classList.toggle('neo-app-active', viewName !== 'landing');
     document.body.dataset.activeView = viewName;
@@ -726,6 +967,8 @@ class SmmApp {
 
     // Update active nav link
     document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+    // Mobil panelden gelen gecislerde menu acik kalmamali.
+    this.closeMobileMenu();
 
     // View specific initialization
     if (viewName === 'landing') {
@@ -738,8 +981,16 @@ class SmmApp {
       this.renderFullServicesTable();
     } else if (viewName === 'new-order') {
       this.populateOrderCategories();
+    } else if (viewName === 'add-funds') {
+      this.initAddFundsView();
     } else if (viewName === 'orders') {
       this.loadUserOrders();
+      this.loadTelegramConnectCard();
+    } else if (viewName === 'profile') {
+      this.loadProfileView();
+      this.loadApiKey();
+    } else if (viewName === 'api-docs') {
+      this.loadApiKey();
     } else if (viewName === 'tickets') {
       this.loadUserTickets();
     } else if (viewName === 'admin') {
@@ -768,12 +1019,22 @@ class SmmApp {
         const textEl = document.getElementById('announcement-text');
         const announcementTr = data.settings.announcement_tr || data.settings.announcement;
         const announcementDefaultTr = '🚀 Bahar Kampanyası: Instagram ve TikTok Takipçi servislerinde %20 İndirim ve Anlık Teslimat!';
-        const announcement = this.locale === 'en'
+        const announcement = (this.locale === 'en'
           ? (data.settings.announcement_en || (announcementTr === announcementDefaultTr
             ? '🚀 Spring Campaign: 20% off Instagram and TikTok follower services with instant delivery!'
             : announcementTr))
-          : announcementTr;
-        if (textEl && announcement) textEl.innerText = announcement;
+          : announcementTr) || '';
+        const bar = document.getElementById('announcement-bar');
+        // Duyuru bosaltildiysa band tamamen gizlenir. Eskiden bos deger atlanip
+        // HTML'deki eski metin ekranda kaliyordu; duyuru bir turlu silinemiyordu.
+        if (announcement.trim()) {
+          if (textEl) textEl.innerText = announcement;
+          if (bar) bar.style.display = '';
+        } else if (bar) {
+          bar.style.display = 'none';
+        }
+        // Acilisa ozel kutlama modu: duyuru bandi animasyonlu kutlama stiline gecer.
+        if (bar) bar.classList.toggle('announcement-launch', data.settings.announcement_special === '1');
         const heroTitle = document.getElementById('landing-hero-title');
         const heroSubtitle = document.getElementById('landing-hero-subtitle');
         const localizedTitle = this.locale === 'en' ? data.settings.hero_title_en : (data.settings.hero_title_tr || data.settings.hero_title);
@@ -785,9 +1046,193 @@ class SmmApp {
       if (data.stats) this.renderLandingMetrics(data.stats);
       // Hero'daki sipariş makinesi canlı katalogla doldurulur.
       this.populateOrderMachine();
+
+      // Kampanya vitrini: popup, sosyal kanit seridi ve bakiye bonus bandi.
+      this.activePopup = data.popup || null;
+      this.depositBonus = data.depositBonus || null;
+      this.liveFeed = data.liveFeed || [];
+      this.reviews = data.reviews || [];
+      this.renderReviewsTicker();
+      this.renderServicesReviews();
+      this.paymentMethods = data.paymentMethods || {};
+      this.bankAccountsRaw = data.settings?.bank_accounts || '';
+      this.siteName = (data.settings?.site_name || 'Jet SMM Panel').trim();
+      this.blogAuthorName = (data.settings?.blog_author_name || '').trim();
+      this.blogAuthorUrl = (data.settings?.blog_author_url || '').trim();
+      if (data.settings?.telegram_link) this.updateTelegramLinks(data.settings.telegram_link);
+      this.renderSocialLinks(data.settings || {});
+      this.renderBusinessAddress(data.settings || {});
+      this.maybeShowPromoPopup();
+      this.startSocialProofTicker();
+      this.renderDepositBonusBanner();
     } catch (err) {
       console.error('Failed to load services:', err);
     }
+  }
+
+  // === KAMPANYA VİTRİNİ ======================================================
+
+  // Fiyat gosteriminde kullanilacak efektif (indirimliyse indirimli) 1000'lik fiyat.
+  effectiveRate(service) {
+    return service?.discounted_rate_per_1000 ?? Number(service?.rate_per_1000 || 0);
+  }
+
+  // Ustu cizili eski fiyat + indirimli fiyat + %chip (HTML dondurur).
+  renderPriceHtml(service) {
+    const current = `₺${this.effectiveRate(service).toFixed(2)}`;
+    if (!service?.discount_percent) return current;
+    return `<span class="price-strike">₺${Number(service.rate_per_1000).toFixed(2)}</span>${current}<span class="discount-chip">-%${service.discount_percent}</span>`;
+  }
+
+  // --- POPUP ---
+  maybeShowPromoPopup() {
+    const popup = this.activePopup;
+    const root = document.getElementById('promo-popup-root');
+    if (!popup || !root || root.childElementCount) return;
+    // Admin panelde calisirken popup gosterilmez.
+    if (this.currentUser?.role === 'admin') return;
+
+    // Gosterim sikligi: localStorage'daki son gosterim zamani esik altindaysa atla.
+    const storageKey = `promo_seen_${popup.id}`;
+    const lastSeen = Number(localStorage.getItem(storageKey) || 0);
+    const frequencyMs = (popup.popup_frequency_hours || 24) * 3600 * 1000;
+    if (Date.now() - lastSeen < frequencyMs) return;
+
+    const isDiscount = popup.type === 'service_discount';
+    const en = this.locale === 'en';
+    const isOpening = popup.popup_template === 'opening';
+    const badge = isDiscount ? `-%${popup.discount_percent}` : `+%${popup.bonus_percent}`;
+    const defaultTitle = isDiscount
+      ? (en ? `${popup.discount_percent}% OFF on ${popup.service_name}!` : `${popup.service_name} şimdi %${popup.discount_percent} indirimli!`)
+      : (en ? `${popup.bonus_percent}% bonus on every deposit!` : `Her bakiye yüklemene %${popup.bonus_percent} bonus!`);
+    const sub = isDiscount
+      ? (en ? 'Order through this campaign and the discount is applied automatically.' : 'Bu kampanyadan siparişe git, indirim otomatik uygulansın.')
+      : (en ? 'Top up now and the bonus lands instantly.' : 'Hemen bakiye yükle, bonus anında hesabına geçsin.');
+    const cta = isDiscount ? (en ? '🛒 Grab the Deal' : '🛒 İndirimi Kap') : (en ? '💳 Top Up Now' : '💳 Bakiye Yükle');
+    // Ozel baslik dile gore secilir: EN'de once popup_title_en, yoksa TR, yoksa otomatik.
+    const customTitle = en ? (popup.popup_title_en || popup.popup_title) : popup.popup_title;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'promo-overlay';
+    overlay.innerHTML = `
+      <div class="promo-box tpl-${this.escapeHtml(popup.popup_template || 'flash')}" role="dialog" aria-modal="true">
+        <button type="button" class="promo-close" aria-label="Kapat">✕</button>
+        ${isOpening ? `<div class="promo-ribbon">🎉 ${en ? 'GRAND OPENING SPECIAL' : 'AÇILIŞA ÖZEL'} 🎉</div>` : ''}
+        <div class="promo-badge">${this.escapeHtml(badge)}</div>
+        <div class="promo-title">${this.escapeHtml(customTitle || defaultTitle)}</div>
+        ${popup.popup_template === 'countdown' && popup.ends_at ? '<div class="promo-countdown" id="promo-countdown">--:--:--</div>' : ''}
+        <div class="promo-sub">${this.escapeHtml(sub)}</div>
+        <button type="button" class="promo-cta">${this.escapeHtml(cta)} <i class="fa-solid fa-arrow-right"></i></button>
+      </div>`;
+
+    const close = () => {
+      localStorage.setItem(storageKey, String(Date.now()));
+      if (this.promoCountdownTimer) clearInterval(this.promoCountdownTimer);
+      overlay.remove();
+    };
+    overlay.querySelector('.promo-close').onclick = close;
+    overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
+    overlay.querySelector('.promo-cta').onclick = () => {
+      API.campaignEvent(popup.id, 'click').catch(() => {});
+      close();
+      if (isDiscount) this.goToDiscountedOrder(popup.service_id);
+      else if (this.currentUser) this.navigate('add-funds');
+      else this.showAuthPage('register');
+    };
+
+    // Geri sayimli sablonda kalan sure canli islenir.
+    if (popup.popup_template === 'countdown' && popup.ends_at) {
+      const tick = () => {
+        const el = document.getElementById('promo-countdown');
+        if (!el) return;
+        const left = Math.max(0, new Date(popup.ends_at).getTime() - Date.now());
+        const h = Math.floor(left / 3600000), m = Math.floor(left % 3600000 / 60000), sn = Math.floor(left % 60000 / 1000);
+        el.textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sn).padStart(2, '0')}`;
+        if (left <= 0) { clearInterval(this.promoCountdownTimer); close(); }
+      };
+      this.promoCountdownTimer = setInterval(tick, 1000);
+      tick();
+    }
+
+    root.appendChild(overlay);
+    API.campaignEvent(popup.id, 'view').catch(() => {});
+  }
+
+  // Popup'tan tek tikla on secimli siparise gecis.
+  async goToDiscountedOrder(serviceId) {
+    if (!this.currentUser) { try { await this.ready; } catch {} }
+    if (this.currentUser) {
+      this.navigate('new-order');
+      setTimeout(() => {
+        const service = this.allServices.find(s => s.id === Number(serviceId));
+        this.applyMachineSelection(Number(serviceId), service?.min_quantity || 100);
+      }, 150);
+    } else {
+      // Kayit sonrasi secim forma tasinir (siparis makinesiyle ayni akis).
+      const service = this.allServices.find(s => s.id === Number(serviceId));
+      this.pendingMachineOrder = { serviceId: Number(serviceId), quantity: service?.min_quantity || 100 };
+      this.showAuthPage('register');
+    }
+  }
+
+  // --- SOSYAL KANIT ŞERİDİ ---
+  startSocialProofTicker() {
+    const root = document.getElementById('social-proof-ticker');
+    if (!root || !this.liveFeed?.length) return;
+    if (sessionStorage.getItem('proof_dismissed') === '1') return;
+    if (this.proofTimer) return; // zaten calisiyor
+
+    let index = 0;
+    const timeAgo = createdAt => {
+      const minutes = Math.max(1, Math.round((Date.now() - new Date(createdAt + 'Z').getTime()) / 60000));
+      if (this.locale === 'en') return minutes < 60 ? `${minutes} min ago` : `${Math.round(minutes / 60)} hr ago`;
+      return minutes < 60 ? `${minutes} dk önce` : `${Math.round(minutes / 60)} saat önce`;
+    };
+    const show = () => {
+      // Admin panelinde serit gosterilmez.
+      if (document.body.classList.contains('admin-view-active')) { root.style.display = 'none'; return; }
+      const item = this.liveFeed[index % this.liveFeed.length];
+      index++;
+      root.innerHTML = `
+        <div class="proof-card">
+          <i class="fa-solid fa-bolt proof-icon"></i>
+          <div>
+            <strong>${this.escapeHtml(item.username)} ${this.locale === 'en' ? 'ordered' : 'sipariş verdi'}</strong>
+            <small>${Number(item.quantity).toLocaleString(this.locale === 'en' ? 'en-US' : 'tr-TR')} × ${this.escapeHtml(String(item.service_name).slice(0, 42))} • ${timeAgo(item.created_at)}</small>
+          </div>
+          <button type="button" class="proof-close" aria-label="Kapat">✕</button>
+        </div>`;
+      root.style.display = 'block';
+      root.querySelector('.proof-close').onclick = () => {
+        sessionStorage.setItem('proof_dismissed', '1');
+        clearInterval(this.proofTimer);
+        this.proofTimer = null;
+        root.style.display = 'none';
+      };
+      // 6 sn goster, 9 sn ara ver.
+      setTimeout(() => { if (root.style.display !== 'none' && !document.body.classList.contains('admin-view-active')) root.style.display = 'none'; }, 6000);
+    };
+    show();
+    this.proofTimer = setInterval(show, 15000);
+  }
+
+  // --- BAKİYE BONUS BANDI ---
+  renderDepositBonusBanner() {
+    const banner = document.getElementById('deposit-bonus-banner');
+    if (!banner) return;
+    if (!this.depositBonus) { banner.style.display = 'none'; banner.innerHTML = ''; return; }
+    const bonus = this.depositBonus;
+    const min = Number(bonus.min_deposit) > 0
+      ? (this.locale === 'en' ? ` (min ₺${bonus.min_deposit})` : ` (en az ₺${bonus.min_deposit})`)
+      : '';
+    banner.innerHTML = `
+      <div class="bonus-banner">
+        <i class="fa-solid fa-gift"></i>
+        <div>${this.locale === 'en'
+          ? `Active campaign: <strong>+${bonus.bonus_percent}% bonus</strong> on every deposit${min}. Applied automatically!`
+          : `Aktif kampanya: Her bakiye yüklemene <strong>+%${bonus.bonus_percent} bonus</strong>${min}. Otomatik uygulanır!`}</div>
+      </div>`;
+    banner.style.display = 'block';
   }
 
   // --- ANA SAYFA CANLI METRİK ŞERİDİ ---
@@ -956,9 +1401,10 @@ class SmmApp {
     }
 
     const qty = Number(qtyInput?.value) || 0;
-    const charge = (Number(service.rate_per_1000) / 1000) * qty;
+    // Kampanya indirimi varsa makine fiyati da indirimli hesaplanir.
+    const charge = (this.effectiveRate(service) / 1000) * qty;
     const usdCharge = (Number(service.rate_per_1000_usd_cents || 0) / 100000) * qty;
-    priceEl.textContent = this.locale === 'en' && usdCharge > 0
+    priceEl.textContent = this.locale === 'en' && usdCharge > 0 && !service.discount_percent
       ? `$${usdCharge.toFixed(2)}`
       : `₺${charge.toFixed(2)}`;
 
@@ -1063,8 +1509,8 @@ class SmmApp {
       return `
         <tr>
           <td class="cell-nowrap">${String(index + 1).padStart(2, '0')}</td>
-          <td class="cell-service-title" title="${this.escapeHtml(s.name)}">${this.escapeHtml(s.name)}</td>
-          <td class="cell-nowrap" style="color: var(--accent-cyan); font-weight: 700;">${this.formatServicePrice(s)}</td>
+          <td class="cell-service-title" title="${this.escapeHtml(s.name)}"><span class="service-name-clamp">${this.escapeHtml(s.name)}</span></td>
+          <td class="cell-nowrap price-cell">${s.discount_percent ? this.renderPriceHtml(s) : this.formatServicePrice(s)}</td>
           <td class="cell-nowrap">${s.min_quantity} - ${s.max_quantity}</td>
           <td class="cell-nowrap">
             ${isRefill ? `<span class="badge badge-completed"><i class="fa-solid fa-shield-check"></i> ${this.t('guaranteed')}</span>` : `<span class="badge badge-pending">${this.t('standard')}</span>`}
@@ -1143,7 +1589,7 @@ class SmmApp {
 
   selectServiceForOrder(serviceId) {
     if (!this.currentUser) {
-      this.showAuthModal('login');
+      this.showAuthPage('login');
       return;
     }
     this.navigate('new-order');
@@ -1199,6 +1645,7 @@ class SmmApp {
       document.getElementById('service-desc').innerText = this.ui('Servis bulunamadı.', 'Service not found.');
       document.getElementById('service-rate').innerText = this.locale === 'en' ? '$0.00 / ₺0.00' : '₺0.00';
       document.getElementById('service-limits').innerText = '0 - 0';
+      this.updateOrderLinkHint(null);
       return;
     }
 
@@ -1206,7 +1653,46 @@ class SmmApp {
     document.getElementById('service-rate').innerText = this.formatServicePrice(service);
     document.getElementById('service-limits').innerText = `${service.min_quantity} - ${service.max_quantity}`;
 
+    this.updateOrderLinkHint(service);
     this.calculateOrderCharge();
+  }
+
+  // Secilen servisin profil mi yoksa gonderi linki mi istedigini onceden soyler.
+  // Sunucu tarafinda da ayni kontrol var; bu yalnizca kullaniciyi hata almadan
+  // once uyarmak icin.
+  updateOrderLinkHint(service) {
+    const hint = document.getElementById('order-link-hint');
+    const input = document.getElementById('order-link-input');
+    if (!hint) return;
+    if (!service) { hint.style.display = 'none'; return; }
+
+    const text = `${service.name || ''} ${service.category_name || ''}`
+      .replace(/İ/g, 'I').replace(/ı/g, 'i').toLowerCase();
+
+    const profilServisi = /follower|subscriber|abone|takipci|takipçi|member|üye|uye|\bfan/.test(text);
+    const hikayeServisi = /stor(y|ies)|hikaye|hikâye/.test(text);
+    const gonderiServisi = /like|beğeni|begeni|view|izlen|comment|yorum|share|paylaş|repost|retweet|save/.test(text);
+
+    let mesaj = '', ipucu = '';
+    if (hikayeServisi) {
+      mesaj = this.ui('Bu servis HİKÂYE bağlantısı istiyor.', 'This service needs a STORY link.');
+      ipucu = 'https://instagram.com/stories/kullaniciadi/123...';
+    } else if (profilServisi) {
+      mesaj = this.ui('Bu servis PROFİL bağlantısı veya kullanıcı adı istiyor. Gönderi linki göndermeyin.',
+        'This service needs a PROFILE link or username. Do not send a post link.');
+      ipucu = 'https://instagram.com/kullaniciadi';
+    } else if (gonderiServisi) {
+      mesaj = this.ui('Bu servis GÖNDERİ/VİDEO bağlantısı istiyor. Profil linki göndermeyin.',
+        'This service needs a POST/VIDEO link. Do not send a profile link.');
+      ipucu = 'https://instagram.com/p/Cxxxxxxxxxx/';
+    } else {
+      hint.style.display = 'none';
+      return;
+    }
+
+    hint.innerHTML = `<i class="fa-solid fa-circle-info"></i> <strong>${this.escapeHtml(mesaj)}</strong><br>${this.ui('Örnek', 'Example')}: ${this.escapeHtml(ipucu)}`;
+    hint.style.display = 'block';
+    if (input) input.placeholder = ipucu;
   }
 
   calculateOrderCharge() {
@@ -1219,7 +1705,9 @@ class SmmApp {
       return;
     }
 
-    let charge = (service.rate_per_1000 / 1000) * qty;
+    // Kampanya indirimi varsa siparis formu da indirimli fiyati kullanir
+    // (sunucu tarafi hesapla birebir ayni).
+    let charge = (this.effectiveRate(service) / 1000) * qty;
 
     const isDrip = document.getElementById('drip-feed-checkbox')?.checked;
     if (isDrip) {
@@ -1243,7 +1731,7 @@ class SmmApp {
     const dripInterval = isDrip ? parseInt(document.getElementById('drip-interval-input').value, 10) : null;
 
     try {
-      const res = await API.createOrder(service_id, link, quantity, dripRuns, dripInterval);
+      const res = await API.createOrder(service_id, link, quantity, dripRuns, dripInterval, this.locale === 'en' ? 'en' : 'tr');
       showToast(res.message, 'success');
       this.currentUser.balance = res.new_balance;
       this.updateUserHeader();
@@ -1342,8 +1830,8 @@ class SmmApp {
       return `
         <tr>
           <td class="cell-nowrap">#${s.id}</td>
-          <td class="cell-service-title" title="${this.escapeHtml(s.name)}">${this.escapeHtml(s.name)}</td>
-          <td class="cell-nowrap" style="color: var(--accent-cyan); font-weight: 700;">${this.formatServicePrice(s)}</td>
+          <td class="cell-service-title" title="${this.escapeHtml(s.name)}"><span class="service-name-clamp">${this.escapeHtml(s.name)}</span></td>
+          <td class="cell-nowrap price-cell">${s.discount_percent ? this.renderPriceHtml(s) : this.formatServicePrice(s)}</td>
           <td class="cell-nowrap">${s.min_quantity} - ${s.max_quantity}</td>
           <td class="cell-nowrap">
             ${isRefill ? `<span class="badge badge-completed"><i class="fa-solid fa-shield-check"></i> ${this.t('guaranteed')}</span>` : `<span class="badge badge-pending">${this.t('standard')}</span>`}
@@ -1376,6 +1864,10 @@ class SmmApp {
     const tbody = document.getElementById('user-orders-tbody');
     try {
       const res = await API.getOrders(this.locale);
+      // Deneyim paylasimi karti: tamamlanmis siparisi olan kullaniciya gorunur
+      // (sunucu ayrica "siparis basina bir yorum" kuralini uygular).
+      const reviewCard = document.getElementById('review-invite-card');
+      if (reviewCard) reviewCard.style.display = (res.orders || []).some(o => o.status === 'completed') ? 'block' : 'none';
       if (!res.orders || res.orders.length === 0) {
         tbody.innerHTML = `<tr><td colspan="8" class="text-center">${this.ui('Henüz bir siparişiniz bulunmamaktadır.', 'You do not have any orders yet.')}</td></tr>`;
         return;
@@ -1385,7 +1877,8 @@ class SmmApp {
         let badgeClass = 'badge-pending';
         let statusText = this.ui('Beklemede', 'Pending');
         if (o.status === 'completed') { badgeClass = 'badge-completed'; statusText = this.ui('Tamamlandı', 'Completed'); }
-        else if (o.status === 'processing') { badgeClass = 'badge-processing'; statusText = this.ui('İşleniyor', 'Processing'); }
+        else if (o.status === 'processing' || o.status === 'in_progress') { badgeClass = 'badge-processing'; statusText = this.ui('İşleniyor', 'Processing'); }
+        else if (o.status === 'partial') { badgeClass = 'badge-processing'; statusText = this.ui('Kısmi Tamamlandı', 'Partially Completed'); }
         else if (o.status === 'canceled') { badgeClass = 'badge-canceled'; statusText = this.ui('İptal Edildi', 'Canceled'); }
 
         return `
@@ -1418,18 +1911,366 @@ class SmmApp {
   }
 
   // --- ADD FUNDS & COUPON LOGIC ---
+  // === BAKİYE YÜKLEME EKRANI =================================================
+
+  // Gorunum acildiginda: yapilandirilmamis yontem kartlari gizlenir, gorunur
+  // ilk yontem secili hale getirilir.
+  initAddFundsView() {
+    const methods = this.paymentMethods || {};
+    const tiles = document.querySelectorAll('#pay-method-tiles .pay-tile');
+    let firstVisible = null;
+    tiles.forEach(tile => {
+      const method = tile.dataset.method;
+      // Havale/Papara her zaman acik; kart ve kripto yapilandirmaya bagli.
+      const visible = method === 'bank' || (method === 'paytr' ? methods.paytr !== false : methods.crypto === true);
+      tile.style.display = visible ? '' : 'none';
+      if (visible && !firstVisible) firstVisible = method;
+    });
+    const current = this.selectedPayMethod;
+    const currentVisible = current && [...tiles].some(t => t.dataset.method === current && t.style.display !== 'none');
+    this.selectPayMethod(currentVisible ? current : (firstVisible || 'bank'));
+    // Onceki oturumdan kalan kripto bekleme kutusu temizlenir.
+    const waitBox = document.getElementById('crypto-wait-box');
+    if (waitBox && !this.cryptoPollTimer) { waitBox.style.display = 'none'; waitBox.innerHTML = ''; }
+    this.renderBankAccounts();
+  }
+
+  // Admin panelde tanimlanan Havale/Papara hesaplarini (IBAN dahil) isler ve
+  // bildirim formundaki banka secimini ayni listeyle doldurur.
+  // Satir bicimi: "Banka Adı | Hesap Sahibi | IBAN veya Papara No"
+  renderBankAccounts() {
+    const container = document.getElementById('deposit-bank-accounts');
+    const select = document.getElementById('notif-bank-select');
+    if (!container) return;
+
+    const accounts = String(this.bankAccountsRaw || '')
+      .split('\n')
+      .map(line => line.split('|').map(part => part.trim()))
+      .filter(parts => parts[0] && parts.length >= 2)
+      .map(parts => ({ bank: parts[0], holder: parts.length >= 3 ? parts[1] : '', iban: parts[parts.length - 1] }));
+
+    if (!accounts.length) {
+      container.innerHTML = `<p style="font-size: .85rem; color: var(--text-dim);">${this.ui(
+        'Hesap bilgileri yakında eklenecek. Şimdilik destek ekibiyle iletişime geçebilirsin.',
+        'Account details will be added soon. Please contact support in the meantime.'
+      )}</p>`;
+      return;
+    }
+
+    container.innerHTML = accounts.map(account => `
+      <div class="bank-account-card">
+        <i class="fa-solid ${/papara/i.test(account.bank) ? 'fa-wallet' : 'fa-building-columns'} bank-ico"></i>
+        <div class="bank-info">
+          <strong>${this.escapeHtml(account.bank)}</strong>
+          ${account.holder ? `<small>${this.escapeHtml(account.holder)}</small>` : ''}
+          <div class="bank-iban">${this.escapeHtml(account.iban)}</div>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="app.copyIban('${this.escapeHtml(account.iban)}', this)">
+          <i class="fa-solid fa-copy"></i> ${this.ui('Kopyala', 'Copy')}
+        </button>
+      </div>
+    `).join('');
+
+    // Bildirim formundaki secenekler de ayni hesaplardan gelir.
+    if (select) {
+      select.innerHTML = accounts
+        .map(account => `<option value="${this.escapeHtml(`${account.bank} (${account.iban})`.slice(0, 120))}">${this.escapeHtml(account.bank)}${account.holder ? ` — ${this.escapeHtml(account.holder)}` : ''}</option>`)
+        .join('');
+    }
+  }
+
+  async copyIban(iban, button) {
+    try {
+      await navigator.clipboard.writeText(iban.replace(/\s+/g, ''));
+      const original = button.innerHTML;
+      button.innerHTML = `<i class="fa-solid fa-check"></i> ${this.ui('Kopyalandı', 'Copied')}`;
+      setTimeout(() => { button.innerHTML = original; }, 1800);
+    } catch {
+      showToast(this.ui('Kopyalanamadı; adresi elle seçip kopyalayabilirsin.', 'Could not copy; please select and copy the address manually.'), 'warning');
+    }
+  }
+
+  // Yontem bazli alt limit: kripto blockchain ucretleri nedeniyle yuksektir.
+  // Kripto icin secili coinin sunucudan cekilen gercek limiti kullanilir.
+  depositMinFor(method) {
+    return method === 'crypto' ? (this.coinMinTry || 400) : 10;
+  }
+
+  // Secili coinin TL alt limitini ceker; gelince tum tutar arayuzunu tazeler.
+  async refreshCoinMin() {
+    if (!this.selectedCoin) return;
+    const coinAtRequest = this.selectedCoin;
+    try {
+      const res = await API.getCryptoMin(coinAtRequest);
+      // Kullanici bu arada baska coine gectiyse sonuc uygulanmaz.
+      if (this.selectedCoin !== coinAtRequest) return;
+      this.coinMinTry = Number(res.min_try) || 400;
+    } catch {
+      this.coinMinTry = 400;
+    }
+    this.applyDepositMinUi();
+  }
+
+  // Alt limit degistiginde hizli secim haplari, placeholder ve not guncellenir.
+  applyDepositMinUi() {
+    if (this.selectedPayMethod !== 'crypto') return;
+    const min = this.depositMinFor('crypto');
+    document.querySelectorAll('.amount-chips button').forEach(chip => {
+      chip.style.display = Number(chip.dataset.amount) < min ? 'none' : '';
+    });
+    const amountInput = document.getElementById('payment-amount-input');
+    if (amountInput) { amountInput.min = min; amountInput.placeholder = String(min); }
+    const note = document.getElementById('deposit-method-note');
+    if (note) {
+      const coin = (this.cryptoCoins || []).find(c => c.code === this.selectedCoin);
+      const coinName = coin ? `${coin.label} (${coin.network})` : this.ui('Bu coin', 'This coin');
+      note.textContent = this.ui(
+        `${coinName} için minimum ₺${min}. Sana özel adres ve QR kod oluşturulur; gönderim onaylanınca bakiyen otomatik yüklenir.`,
+        `Minimum for ${coinName}: ₺${min}. A unique address and QR code will be generated; your balance is added automatically once the transfer is confirmed.`
+      );
+    }
+    this.validateDepositAmount();
+  }
+
+  selectPayMethod(method) {
+    this.selectedPayMethod = method;
+    document.querySelectorAll('#pay-method-tiles .pay-tile').forEach(tile => {
+      tile.classList.toggle('active', tile.dataset.method === method);
+    });
+    const amountArea = document.getElementById('deposit-amount-area');
+    const bankArea = document.getElementById('deposit-bank-area');
+    if (amountArea) amountArea.style.display = method === 'bank' ? 'none' : 'block';
+    if (bankArea) bankArea.style.display = method === 'bank' ? 'block' : 'none';
+
+    // Alt limitin altindaki hizli secim duymeleri bu yontemde gizlenir.
+    const min = this.depositMinFor(method);
+    document.querySelectorAll('.amount-chips button').forEach(chip => {
+      chip.style.display = Number(chip.dataset.amount) < min ? 'none' : '';
+    });
+    const amountInput = document.getElementById('payment-amount-input');
+    if (amountInput) {
+      amountInput.min = min;
+      amountInput.placeholder = String(min === 400 ? 400 : 100);
+    }
+    this.validateDepositAmount();
+
+    // Coin secici yalnizca kripto yonteminde gorunur; adim numarasi kayar.
+    const coinPicker = document.getElementById('crypto-coin-picker');
+    if (coinPicker) coinPicker.style.display = method === 'crypto' ? 'block' : 'none';
+    const payStepNum = document.getElementById('deposit-pay-step-num');
+    if (payStepNum) payStepNum.textContent = method === 'crypto' ? '4' : '3';
+    if (method === 'crypto') this.loadCryptoCoins();
+
+    const submit = document.getElementById('deposit-submit-btn');
+    const note = document.getElementById('deposit-method-note');
+    if (submit && note) {
+      if (method === 'crypto') {
+        submit.innerHTML = `<i class="fa-brands fa-bitcoin"></i> ${this.ui('Ödeme Adresi Oluştur', 'Generate Payment Address')}`;
+        note.textContent = this.ui(
+          'Sana özel adres ve QR kod oluşturulur; gönderim onaylanınca bakiyen otomatik yüklenir.',
+          'A unique address and QR code will be generated for you; your balance is added automatically once the transfer is confirmed.'
+        );
+      } else {
+        submit.innerHTML = `<i class="fa-solid fa-lock"></i> ${this.ui('Güvenli Öde — Kart', 'Pay Securely — Card')}`;
+        note.textContent = this.ui(
+          "Kart bilgilerin PayTR'nin güvenli sayfasında işlenir; sitemizde saklanmaz.",
+          "Your card details are processed on PayTR's secure page; we never store them."
+        );
+      }
+    }
+    // Coin listesi onbellekteyse alt limit arayuzu hemen tazelenir
+    // (yeni yukleniyorsa selectCoin zinciri zaten tazeleyecek).
+    if (method === 'crypto' && this.cryptoCoins) this.applyDepositMinUi();
+  }
+
+  // --- KRİPTO: COİN SEÇİMİ + SİTE İÇİ ÖDEME EKRANI ---
+
+  async loadCryptoCoins() {
+    if (this.cryptoCoins) { this.renderCoinChips(); return; }
+    try {
+      const res = await API.getCryptoCurrencies();
+      this.cryptoCoins = res.coins || [];
+      // Onerilen coin (USDT TRC-20) varsayilan secimdir; limiti de hemen cekilir.
+      const defaultCoin = (this.cryptoCoins.find(c => c.recommended) || this.cryptoCoins[0])?.code || null;
+      if (defaultCoin) this.selectCoin(defaultCoin);
+    } catch (err) {
+      const chips = document.getElementById('coin-chips');
+      if (chips) chips.innerHTML = `<span style="color: var(--danger); font-size: .85rem;">${this.ui('Coin listesi alınamadı', 'Could not load coins')}: ${this.escapeHtml(err.message)}</span>`;
+    }
+  }
+
+  renderCoinChips() {
+    const chips = document.getElementById('coin-chips');
+    if (!chips || !this.cryptoCoins) return;
+    chips.innerHTML = this.cryptoCoins.map(coin => `
+      <button type="button" class="coin-chip${coin.code === this.selectedCoin ? ' active' : ''}" onclick="app.selectCoin('${this.escapeHtml(coin.code)}')">
+        <strong>${this.escapeHtml(coin.label)}</strong>
+        <small>${this.escapeHtml(coin.network)}</small>
+        ${coin.recommended ? `<em>${this.ui('ÖNERİLEN', 'RECOMMENDED')}</em>` : ''}
+      </button>
+    `).join('');
+  }
+
+  selectCoin(code) {
+    this.selectedCoin = code;
+    this.renderCoinChips();
+    // Coin degisince o coinin gercek TL alt limiti cekilir.
+    this.coinMinTry = null;
+    this.applyDepositMinUi();
+    this.refreshCoinMin();
+  }
+
+  // Site ici odeme paneli: QR + adres + net miktar + canli durum satiri.
+  renderCryptoPaymentPanel(payment) {
+    const box = document.getElementById('crypto-wait-box');
+    if (!box) return;
+    const coin = (this.cryptoCoins || []).find(c => c.code === payment.pay_currency) || { label: String(payment.pay_currency).toUpperCase(), network: '' };
+    const amountText = `${payment.pay_amount} ${coin.label}`;
+    box.style.display = 'block';
+    box.innerHTML = `
+      <div class="crypto-pay-panel">
+        <div class="crypto-pay-head">
+          <i class="fa-brands fa-bitcoin"></i>
+          <div><strong>${this.ui(`₺${Number(payment.amount_try).toFixed(2)} karşılığı ödeme`, `Payment worth ₺${Number(payment.amount_try).toFixed(2)}`)}</strong><br>
+          <small>${this.ui(
+            `Aşağıdaki adrese <b>tam olarak ${this.escapeHtml(amountText)}</b> gönder — tek seferde, tek işlemle.`,
+            `Send <b>exactly ${this.escapeHtml(amountText)}</b> to the address below — in a single transaction.`
+          )}</small></div>
+        </div>
+        <div class="crypto-pay-grid">
+          <img class="crypto-qr" src="${payment.qr}" alt="${this.ui('Ödeme adresi QR kodu', 'Payment address QR code')}">
+          <div class="crypto-pay-fields">
+            <label>${this.ui('Gönderilecek Miktar', 'Amount to Send')}</label>
+            <div class="crypto-copy-row">
+              <b>${this.escapeHtml(amountText)}</b>
+              <button type="button" class="btn btn-outline btn-sm" onclick="app.copyIban('${payment.pay_amount}', this)"><i class="fa-solid fa-copy"></i></button>
+            </div>
+            <label>${this.ui('Adres', 'Address')} <span class="crypto-net">${this.escapeHtml(coin.network)}</span></label>
+            <div class="crypto-copy-row crypto-addr">
+              <span>${this.escapeHtml(payment.pay_address)}</span>
+              <button type="button" class="btn btn-outline btn-sm" onclick="app.copyIban('${this.escapeHtml(payment.pay_address)}', this)"><i class="fa-solid fa-copy"></i></button>
+            </div>
+            <div class="crypto-status-line" id="crypto-status-line">
+              <i class="fa-solid fa-hourglass-half fa-spin"></i> ${this.ui(
+                'Ödeme bekleniyor… Onay gelince bakiyen otomatik yüklenecek, bu sayfayı kapatabilirsin.',
+                'Waiting for payment… Your balance will be added automatically once confirmed; you can close this page.'
+              )}
+            </div>
+            <small class="crypto-warn-note">${this.ui(
+              `⚠️ Yalnızca <b>${this.escapeHtml(coin.network || coin.label)}</b> ağından gönder; farklı ağdan gönderilen para kaybolur. Eksik gönderilen tutar otomatik yüklenmez.`,
+              `⚠️ Send only via the <b>${this.escapeHtml(coin.network || coin.label)}</b> network; funds sent over a different network are lost. Underpaid amounts are not credited automatically.`
+            )}</small>
+          </div>
+        </div>
+      </div>`;
+    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  setDepositAmount(amount) {
+    const input = document.getElementById('payment-amount-input');
+    if (input) input.value = amount;
+    document.querySelectorAll('.amount-chips button').forEach(chip => {
+      chip.classList.toggle('active', Number(chip.dataset.amount) === amount);
+    });
+    this.validateDepositAmount();
+  }
+
+  // Tutar yazilirken canli dogrulama: alt limitin altinda kirmizi uyari
+  // gosterilir ve odeme dugmesi kilitlenir.
+  validateDepositAmount() {
+    const input = document.getElementById('payment-amount-input');
+    const warning = document.getElementById('deposit-amount-warning');
+    const submit = document.getElementById('deposit-submit-btn');
+    if (!input || !warning) return;
+    const min = this.depositMinFor(this.selectedPayMethod);
+    const amount = parseFloat(input.value);
+    const tooLow = input.value !== '' && (!Number.isFinite(amount) || amount < min);
+
+    warning.style.display = tooLow ? 'flex' : 'none';
+    if (tooLow) {
+      const message = this.selectedPayMethod === 'crypto'
+        ? this.ui(
+          `Kripto ödemelerde minimum tutar <b>₺${min}</b>'dür (blockchain ağ ücretleri nedeniyle). Daha düşük tutar için kart veya havale kullanabilirsin.`,
+          `The minimum for crypto payments is <b>₺${min}</b> (due to blockchain network fees). For smaller amounts use card or bank transfer.`)
+        : this.ui(`Minimum yükleme tutarı <b>₺${min}</b>'dur.`, `The minimum top-up amount is <b>₺${min}</b>.`);
+      warning.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ${message}`;
+    }
+    if (submit) {
+      submit.disabled = tooLow;
+      submit.style.opacity = tooLow ? '.5' : '';
+      submit.style.cursor = tooLow ? 'not-allowed' : '';
+    }
+  }
+
   async handleAddFunds(e) {
     e.preventDefault();
     const amount = parseFloat(document.getElementById('payment-amount-input').value);
-    const method = document.getElementById('payment-method-select').value;
-
-    try {
-      if (method !== 'paytr') throw new Error('Bu ödeme yöntemi henüz etkin değil.');
-      const res = await API.createPaytrPayment(amount);
-      window.location.assign(res.iframe_url);
-    } catch (err) {
-      showToast(`Bakiye eklenemedi: ${err.message}`, 'error');
+    const minAmount = this.depositMinFor(this.selectedPayMethod);
+    if (!Number.isFinite(amount) || amount < minAmount) {
+      this.validateDepositAmount();
+      showToast(this.ui(`Bu yöntem için en az ₺${minAmount} girmelisin.`, `Enter at least ₺${minAmount} for this method.`), 'warning');
+      return;
     }
+
+    const submitBtn = document.getElementById('deposit-submit-btn');
+    try {
+      if (this.selectedPayMethod === 'crypto') {
+        if (!this.selectedCoin) {
+          showToast(this.ui('Önce bir coin seç.', 'Choose a coin first.'), 'warning');
+          return;
+        }
+        // Adres olusturma birkac saniye surebilir; cift tiklamayi engelle.
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${this.ui('Adres oluşturuluyor…', 'Generating address…')}`; }
+        const res = await API.createCryptoPayment(amount, this.selectedCoin);
+        // Odeme ekrani sitenin icinde cizilir; harici sayfa acilmaz.
+        this.renderCryptoPaymentPanel(res);
+        this.watchCryptoPayment(res.merchant_oid, amount);
+      } else {
+        const res = await API.createPaytrPayment(amount);
+        window.location.assign(res.iframe_url);
+      }
+    } catch (err) {
+      showToast(this.ui(`Bakiye eklenemedi: ${err.message}`, `Could not add funds: ${err.message}`), 'error');
+    } finally {
+      if (submitBtn && this.selectedPayMethod === 'crypto') {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<i class="fa-brands fa-bitcoin"></i> ${this.ui('Ödeme Adresi Oluştur', 'Generate Payment Address')}`;
+      }
+    }
+  }
+
+  // Kripto odemesinin sonucunu arka planda yoklar; paneldeki durum satirini
+  // gunceller, tamamlaninca bakiyeyi tazeler.
+  watchCryptoPayment(merchantOid, amount) {
+    const box = document.getElementById('crypto-wait-box');
+    if (this.cryptoPollTimer) clearInterval(this.cryptoPollTimer);
+    const startedAt = Date.now();
+    this.cryptoPollTimer = setInterval(async () => {
+      // 1 saat sonra yoklama durdurulur (IPN yine de bakiyeyi yukler).
+      if (Date.now() - startedAt > 3600000) { clearInterval(this.cryptoPollTimer); this.cryptoPollTimer = null; return; }
+      try {
+        const res = await API.getCryptoPaymentStatus(merchantOid);
+        if (res.status === 'completed') {
+          clearInterval(this.cryptoPollTimer);
+          this.cryptoPollTimer = null;
+          if (box) box.innerHTML = `
+            <div class="crypto-wait success">
+              <i class="fa-solid fa-circle-check"></i>
+              <div><strong>${this.ui('Ödeme tamamlandı! 🎉', 'Payment completed! 🎉')}</strong><br><small>${this.ui(`₺${Number(res.amount).toFixed(2)} bakiyene eklendi.`, `₺${Number(res.amount).toFixed(2)} was added to your balance.`)}</small></div>
+            </div>`;
+          showToast(this.ui(`₺${Number(res.amount).toFixed(2)} bakiyene eklendi! 🪙`, `₺${Number(res.amount).toFixed(2)} added to your balance! 🪙`), 'success');
+          try { const me = await API.getMe(); this.currentUser = me.user; this.updateUserHeader(); } catch {}
+        } else if (res.status === 'failed') {
+          clearInterval(this.cryptoPollTimer);
+          this.cryptoPollTimer = null;
+          // Panel yerinde kalir; durum satiri neden basarisiz oldugunu soyler.
+          const reason = res.failure_reason || this.ui('bilinmeyen neden', 'unknown reason');
+          const statusLine = document.getElementById('crypto-status-line');
+          if (statusLine) statusLine.innerHTML = `<i class="fa-solid fa-circle-xmark" style="color: var(--danger);"></i> ${this.ui(`Ödeme tamamlanamadı: ${this.escapeHtml(reason)}. Destek ekibiyle iletişime geçebilirsin.`, `Payment failed: ${this.escapeHtml(reason)}. You can contact our support team.`)}`;
+          showToast(this.ui(`Kripto ödemesi tamamlanamadı: ${reason}`, `Crypto payment failed: ${reason}`), 'error');
+        }
+      } catch {}
+    }, 8000);
   }
 
   async handleRedeemCoupon(e) {
@@ -1515,50 +2356,171 @@ class SmmApp {
     }
   }
 
+  // --- DESTEK SOHBETI --------------------------------------------------------
+  // Eskiden mesajlar yalnizca pencere acilirken bir kez cekiliyordu; karsi
+  // taraf yazdiginda ekranda hicbir sey olmuyor, pencereyi kapatip acmak
+  // gerekiyordu. Artik pencere acikken duzenli araliklarla yenilenir.
+
   async openTicketChatModal(ticketId) {
     this.activeChatTicketId = ticketId;
+    this.chatSignature = undefined;
     document.getElementById('modal-ticket-chat').classList.add('active');
-    document.getElementById('chat-messages-container').innerHTML = `<div class="text-center p-20"><i class="fa-solid fa-spinner fa-spin"></i> ${this.ui('Mesajlar yükleniyor...', 'Loading messages...')}</div>`;
+    const container = document.getElementById('chat-messages-container');
+    container.innerHTML = `<div class="chat-loading"><i class="fa-solid fa-spinner fa-spin"></i> ${this.ui('Mesajlar yükleniyor...', 'Loading messages...')}</div>`;
 
+    const yuklendi = await this.refreshTicketChat(true);
+    if (yuklendi) {
+      this.startTicketChatPolling();
+      document.getElementById('chat-reply-input')?.focus();
+    }
+  }
+
+  // Yenileme: yalnizca degisiklik varsa yeniden cizer, boylece yazi secimi ve
+  // kaydirma konumu bos yere bozulmaz.
+  async refreshTicketChat(ilkYukleme = false) {
+    const ticketId = this.activeChatTicketId;
+    if (!ticketId) return false;
     try {
       const res = await API.getTicketDetails(ticketId);
-      document.getElementById('chat-ticket-subject').innerText = this.localizeTicketSubject(res.ticket.subject);
-      document.getElementById('chat-ticket-info').innerText = `#${res.ticket.id} • ${this.localizeTicketStatus(res.ticket.status)}`;
+      if (this.activeChatTicketId !== ticketId) return false; // pencere degismis
 
-      document.getElementById('chat-messages-container').innerHTML = res.messages.map(m => `
-        <div style="margin-bottom: 12px; display: flex; flex-direction: column; align-items: ${m.sender_role === 'admin' ? 'flex-start' : 'flex-end'};">
-          <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 3px;">
-            ${m.sender_role === 'admin' ? this.ui('🛡️ Müşteri Temsilcisi', '🛡️ Support Representative') : `👤 ${this.escapeHtml(m.username)}`} • ${new Date(m.created_at).toLocaleTimeString(this.locale === 'en' ? 'en-US' : 'tr-TR', { hour: '2-digit', minute: '2-digit' })}
-          </div>
-          <div style="padding: 10px 14px; border-radius: 12px; max-width: 80%; font-size: 0.9rem; background: ${m.sender_role === 'admin' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(168, 85, 247, 0.2)'}; border: 1px solid ${m.sender_role === 'admin' ? 'rgba(99, 102, 241, 0.4)' : 'rgba(168, 85, 247, 0.4)'}; color: #fff; white-space: pre-wrap;">
-            ${this.escapeHtml(m.message)}
-          </div>
-        </div>
-      `).join('');
+      const subject = document.getElementById('chat-ticket-subject');
+      const info = document.getElementById('chat-ticket-info');
+      if (subject) subject.innerText = this.localizeTicketSubject(res.ticket.subject);
+      if (info) info.innerText = `#${res.ticket.id} • ${this.localizeTicketStatus(res.ticket.status)}`;
 
-      const container = document.getElementById('chat-messages-container');
-      container.scrollTop = container.scrollHeight;
+      const mesajlar = res.messages || [];
+      const sonId = mesajlar.length ? mesajlar[mesajlar.length - 1].id : 0;
+      const imza = `${mesajlar.length}:${sonId}`;
+      if (!ilkYukleme && imza === this.chatSignature) return true; // degisiklik yok
+      this.chatSignature = imza;
+
+      this.renderTicketMessages(mesajlar, { ilkYukleme });
+      return true;
     } catch (err) {
-      showToast(`Mesajlar çekilemedi: ${err.message}`, 'error');
+      if (ilkYukleme) showToast(`${this.ui('Mesajlar çekilemedi', 'Messages could not be loaded')}: ${err.message}`, 'error');
+      return false;
+    }
+  }
+
+  renderTicketMessages(mesajlar, { ilkYukleme = false } = {}) {
+    const container = document.getElementById('chat-messages-container');
+    if (!container) return;
+    // Kullanici yukari kaydirip eski mesaji okuyorsa asagi zorlamayiz.
+    const dipteMi = ilkYukleme ||
+      (container.scrollHeight - container.scrollTop - container.clientHeight) < 60;
+
+    if (!mesajlar.length) {
+      container.innerHTML = `<div class="chat-empty">${this.ui('Henüz mesaj yok. İlk mesajı siz yazın.', 'No messages yet. Send the first one.')}</div>`;
+      return;
+    }
+
+    const tarihMetni = value => new Date(value).toLocaleDateString(this.locale === 'en' ? 'en-GB' : 'tr-TR',
+      { day: 'numeric', month: 'long', year: 'numeric' });
+    const saatMetni = value => new Date(value).toLocaleTimeString(this.locale === 'en' ? 'en-US' : 'tr-TR',
+      { hour: '2-digit', minute: '2-digit' });
+
+    // Bize ait mesaj = oturumdaki rolle ayni taraftan gelen mesaj.
+    const benAdminMiyim = this.currentUser?.role === 'admin';
+    let oncekiGun = '';
+    let oncekiTaraf = '';
+
+    container.innerHTML = mesajlar.map(m => {
+      const adminMesaji = m.sender_role === 'admin';
+      const bana = adminMesaji === benAdminMiyim;
+      const gun = tarihMetni(m.created_at);
+      const gunAyraci = gun !== oncekiGun ? `<div class="chat-day"><span>${this.escapeHtml(gun)}</span></div>` : '';
+      // Ayni kisinin ard arda mesajlarinda isim tekrar yazilmaz.
+      const taraf = `${m.sender_role}:${gun}`;
+      const basligiGoster = taraf !== oncekiTaraf || gunAyraci;
+      oncekiGun = gun;
+      oncekiTaraf = taraf;
+
+      const kim = adminMesaji
+        ? this.ui('Müşteri Temsilcisi', 'Support')
+        : this.escapeHtml(m.username || this.ui('Müşteri', 'Customer'));
+
+      return `${gunAyraci}
+        <div class="chat-row ${bana ? 'chat-row-mine' : 'chat-row-theirs'}">
+          ${basligiGoster ? `<div class="chat-meta">
+            <span class="chat-who">${adminMesaji ? '<i class="fa-solid fa-headset"></i> ' : ''}${kim}</span>
+          </div>` : ''}
+          <div class="chat-bubble">${this.escapeHtml(m.message)}<span class="chat-time">${saatMetni(m.created_at)}</span></div>
+        </div>`;
+    }).join('');
+
+    if (dipteMi) container.scrollTop = container.scrollHeight;
+    else this.showNewMessageJump();
+  }
+
+  showNewMessageJump() {
+    const container = document.getElementById('chat-messages-container');
+    if (!container || document.getElementById('chat-jump-btn')) return;
+    const btn = document.createElement('button');
+    btn.id = 'chat-jump-btn';
+    btn.type = 'button';
+    btn.className = 'chat-jump';
+    btn.innerHTML = `<i class="fa-solid fa-arrow-down"></i> ${this.ui('Yeni mesaj', 'New message')}`;
+    btn.onclick = () => {
+      container.scrollTop = container.scrollHeight;
+      btn.remove();
+    };
+    container.parentElement?.appendChild(btn);
+  }
+
+  startTicketChatPolling() {
+    this.stopTicketChatPolling();
+    // 4 saniye: anlik hissettirecek kadar sik, sunucuyu yormayacak kadar seyrek.
+    this.chatPollTimer = setInterval(() => {
+      // Sekme arka plandayken sorgu atmaya gerek yok.
+      if (document.hidden) return;
+      if (!document.getElementById('modal-ticket-chat')?.classList.contains('active')) {
+        this.stopTicketChatPolling();
+        return;
+      }
+      this.refreshTicketChat(false);
+    }, 4000);
+  }
+
+  stopTicketChatPolling() {
+    if (this.chatPollTimer) {
+      clearInterval(this.chatPollTimer);
+      this.chatPollTimer = null;
     }
   }
 
   async handleSendTicketReply(e) {
     e.preventDefault();
     const input = document.getElementById('chat-reply-input');
-    const message = input.value;
+    const button = document.getElementById('chat-send-btn');
+    const message = input.value.trim();
     if (!message || !this.activeChatTicketId) return;
 
+    // Cift gonderim engellenir; yavas baglantida iki kez basilabiliyordu.
+    input.disabled = true;
+    if (button) button.disabled = true;
     try {
       await API.replyTicket(this.activeChatTicketId, message);
       input.value = '';
-      await this.openTicketChatModal(this.activeChatTicketId);
+      this.autoGrowChatInput(input);
+      await this.refreshTicketChat(true);
       if (this.currentUser && this.currentUser.role !== 'admin') {
         await this.loadUserTickets();
       }
     } catch (err) {
-      showToast(`Cevap gönderilemedi: ${err.message}`, 'error');
+      showToast(`${this.ui('Cevap gönderilemedi', 'Reply could not be sent')}: ${err.message}`, 'error');
+    } finally {
+      input.disabled = false;
+      if (button) button.disabled = false;
+      input.focus();
     }
+  }
+
+  // Yazi alani icerige gore buyur (tek satirdan basla, uzadikca acil).
+  autoGrowChatInput(input) {
+    if (!input) return;
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(120, input.scrollHeight)}px`;
   }
 
   // --- ADMIN PANEL LOGIC ---
@@ -1569,9 +2531,10 @@ class SmmApp {
     const mobileNav = document.querySelector('.admin-mobile-nav');
     if (mobileNav) mobileNav.value = tabName;
 
-    ['dashboard', 'providers', 'services', 'deposits', 'coupons', 'tickets', 'landing-design', 'ai-studio', 'users', 'orders', 'site-settings', 'reset'].forEach(tab => {
-      const el = document.getElementById(`admin-tab-${tab}`);
-      if (el) el.style.display = (tab === tabName) ? 'block' : 'none';
+    // Sekme listesi DOM'dan okunur. Elle yazilan listede yeni sekmeyi eklemeyi
+    // unutmak tum panelleri gizleyip bos (beyaz) ekran birakiyordu.
+    document.querySelectorAll('#view-admin [id^="admin-tab-"]').forEach(el => {
+      el.style.display = (el.id === `admin-tab-${tabName}`) ? 'block' : 'none';
     });
 
     // Open every admin panel at its real top and clear nested table scroll.
@@ -1584,26 +2547,247 @@ class SmmApp {
     if (tabName === 'dashboard') this.loadAdminStats();
     if (tabName === 'providers') this.loadAdminProviders();
     if (tabName === 'services') this.loadAdminAddedServices();
+    if (tabName === 'statistics') this.loadAdminStatistics();
     if (tabName === 'deposits') this.loadAdminPaymentNotifications();
     if (tabName === 'coupons') this.loadAdminCoupons();
+    if (tabName === 'campaigns') this.loadAdminCampaigns();
+    if (tabName === 'email-marketing') this.loadAdminEmailMarketing();
     if (tabName === 'tickets') this.loadAdminTickets();
+    if (tabName === 'reviews') this.loadAdminReviews();
     if (tabName === 'landing-design') this.loadAdminLandingDesign();
     if (tabName === 'ai-studio') this.loadAiStudio();
     if (tabName === 'users') this.loadAdminUsers();
     if (tabName === 'orders') this.loadAdminOrders();
-    if (tabName === 'site-settings') this.loadAdminSettings();
+    if (tabName === 'site-settings') {
+      this.loadAdminSettings();
+      // Sekme hangi yoldan acilirsa acilsin (mobil secim kutusu dahil) bolum
+      // gorunumu ve aktif buton isaretleri senkron kalir.
+      this.showSettingsSection(this.currentSettingsSection || 'general');
+    }
+    // Alt menu yalnizca ayarlar sekmesindeyken acik durur; baska sekmeye
+    // gecildiginde kenar cubugu sade kalsin diye kapanir.
+    this.setSettingsMenuOpen(tabName === 'site-settings');
+  }
+
+  // --- SİTE AYARLARI ALT BÖLÜMLERİ ---
+  // Ana "Site Ayarları" butonu akordeon gibi calisir: kapaliysa alt menuyu
+  // acip ayarlar sekmesine gecer, acik ise yalnizca alt menuyu kapatir.
+  toggleSettingsMenu() {
+    const open = !document.getElementById('settings-subnav')?.classList.contains('open');
+    this.setSettingsMenuOpen(open);
+    if (open) this.openSettingsSection(this.currentSettingsSection || 'general');
+  }
+
+  setSettingsMenuOpen(open) {
+    document.getElementById('settings-subnav')?.classList.toggle('open', open);
+    document.querySelector('#view-admin [data-admin-tab="site-settings"]')?.classList.toggle('submenu-open', open);
+  }
+
+  // Kenar cubugundaki alt kategori butonlari: once ayarlar sekmesine gecer,
+  // sonra istenen bolumu gosterir.
+  openSettingsSection(section) {
+    this.currentSettingsSection = section;
+    this.switchAdminTab('site-settings');
+  }
+
+  showSettingsSection(section) {
+    this.currentSettingsSection = section;
+    document.querySelectorAll('#admin-tab-site-settings .settings-section').forEach(el => {
+      el.style.display = el.dataset.section === section ? '' : 'none';
+    });
+    // Hem kenar cubugu alt butonlari hem sekme cubugu ayni data ozniteligini kullanir.
+    document.querySelectorAll('[data-settings-section]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.settingsSection === section);
+    });
+    // Guvenlik bolumunun kendi formu var; genel kaydet dugmesi orada gizlenir.
+    const saveBtn = document.getElementById('settings-save-btn');
+    if (saveBtn) saveBtn.style.display = section === 'security' ? 'none' : '';
+  }
+
+  // --- ISTATISTIK PANELI ----------------------------------------------------
+  // Tablolar sayfa basina 10 kayit gosterir; siralama sunucudan zaten en cok
+  // satilan / en cok okunan seklinde gelir.
+  // Sayfa basina kayit sayisi (istatistik tablolari).
+  get statPageSize() { return 10; }
+
+  // Servis katalogundaki sayfalama ile ayni gorunum; tek yerden uretilir.
+  renderStatPagination(boxId, totalItems, currentPage, onPageFn) {
+    const box = document.getElementById(boxId);
+    if (!box) return;
+    const pageSize = this.statPageSize;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+
+    if (totalItems <= pageSize) { box.innerHTML = ''; return; }
+
+    const first = (currentPage - 1) * pageSize + 1;
+    const last = Math.min(currentPage * pageSize, totalItems);
+
+    // Uzun listelerde tum numaralari basmamak icin aktif sayfanin etrafinda pencere
+    const pages = [];
+    for (let p = 1; p <= totalPages; p++) {
+      if (p === 1 || p === totalPages || (p >= currentPage - 2 && p <= currentPage + 2)) pages.push(p);
+      else if (pages[pages.length - 1] !== '...') pages.push('...');
+    }
+
+    const btn = (label, page, { disabled = false, active = false } = {}) =>
+      `<button type="button" class="btn btn-sm ${active ? 'btn-primary' : 'btn-outline'}"
+        ${disabled ? 'disabled' : `onclick="app.${onPageFn}(${page})"`}
+        style="min-width:36px;${disabled ? 'opacity:.4;cursor:not-allowed;' : ''}">${label}</button>`;
+
+    box.innerHTML = `
+      <div style="font-size:.82rem;color:var(--text-muted);">
+        ${first}-${last} / <strong style="color:#fff;">${totalItems}</strong>
+        <span style="color:var(--text-dim);">(${this.ui('sayfa', 'page')} ${currentPage}/${totalPages})</span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        ${btn('<i class="fa-solid fa-angle-left"></i>', currentPage - 1, { disabled: currentPage === 1 })}
+        ${pages.map(p => p === '...'
+          ? '<span style="color:var(--text-dim);padding:0 4px;">…</span>'
+          : btn(p, p, { active: p === currentPage })).join('')}
+        ${btn('<i class="fa-solid fa-angle-right"></i>', currentPage + 1, { disabled: currentPage === totalPages })}
+      </div>`;
+  }
+
+  setStatServicesPage(page) { this.statServicesPage = page; this.renderStatServicesPage(); }
+  setStatBlogPage(page) { this.statBlogPage = page; this.renderStatBlogPage(); }
+
+  renderStatServicesPage() {
+    const tbody = document.getElementById('stat-services-tbody');
+    if (!tbody) return;
+    const list = this.statServices || [];
+    const pageSize = this.statPageSize;
+    const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+    const page = Math.min(Math.max(this.statServicesPage || 1, 1), totalPages);
+    this.statServicesPage = page;
+
+    const sayi = n => Number(n || 0).toLocaleString('tr-TR');
+    const dilim = list.slice((page - 1) * pageSize, page * pageSize);
+
+    tbody.innerHTML = dilim.length ? dilim.map((s, i) => `
+      <tr>
+        <td class="cell-nowrap" style="color:var(--text-dim);">${(page - 1) * pageSize + i + 1}</td>
+        <td class="cell-truncate" style="font-weight:600;">
+          ${this.escapeHtml(s.name_tr || s.name)}
+          <small style="display:block;color:var(--text-dim);">#${s.id}${s.status ? '' : ' · pasif'}</small>
+        </td>
+        <td class="cell-nowrap"><span class="badge badge-processing">${this.escapeHtml(s.category_name || '-')}</span></td>
+        <td class="cell-nowrap" style="font-size:.85rem;color:var(--text-dim);">${this.escapeHtml(s.provider_name || 'Manuel')}</td>
+        <td class="cell-nowrap"><strong style="color:var(--accent-cyan);font-size:1.05rem;">${sayi(s.order_count)}</strong> kez</td>
+        <td class="cell-nowrap">${sayi(s.total_quantity)}</td>
+        <td class="cell-nowrap" style="color:var(--success);font-weight:700;">₺${Number(s.net_revenue || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td class="cell-nowrap" style="font-size:.8rem;color:var(--text-dim);">${s.last_ordered_at ? new Date(s.last_ordered_at).toLocaleDateString('tr-TR') : '-'}</td>
+      </tr>`).join('')
+      : '<tr><td colspan="8" class="text-center">Henüz satın alınan servis yok. Sipariş geldikçe burada listelenir.</td></tr>';
+
+    this.renderStatPagination('stat-services-pagination', list.length, page, 'setStatServicesPage');
+  }
+
+  renderStatBlogPage() {
+    const tbody = document.getElementById('stat-blog-tbody');
+    if (!tbody) return;
+    const list = this.statBlogPosts || [];
+    const pageSize = this.statPageSize;
+    const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+    const page = Math.min(Math.max(this.statBlogPage || 1, 1), totalPages);
+    this.statBlogPage = page;
+
+    const sayi = n => Number(n || 0).toLocaleString('tr-TR');
+    const dilim = list.slice((page - 1) * pageSize, page * pageSize);
+
+    tbody.innerHTML = dilim.length ? dilim.map((p, i) => `
+      <tr>
+        <td class="cell-nowrap" style="color:var(--text-dim);">${(page - 1) * pageSize + i + 1}</td>
+        <td class="cell-truncate" style="font-weight:600;">
+          ${this.escapeHtml(p.title || '-')}
+          <small style="display:block;color:var(--text-dim);">/blog/${this.escapeHtml(p.slug || '')}</small>
+        </td>
+        <td class="cell-nowrap"><span class="badge badge-processing">${this.escapeHtml(p.category || '-')}</span></td>
+        <td class="cell-nowrap"><span class="badge ${p.status === 'published' ? 'badge-completed' : 'badge-pending'}">${p.status === 'published' ? 'Yayında' : 'Taslak'}</span></td>
+        <td class="cell-nowrap"><strong style="color:var(--accent-cyan);font-size:1.05rem;">${sayi(p.views)}</strong> kez</td>
+        <td class="cell-nowrap" style="font-size:.8rem;color:var(--text-dim);">${p.published_at ? new Date(p.published_at).toLocaleDateString('tr-TR') : '-'}</td>
+      </tr>`).join('')
+      : '<tr><td colspan="6" class="text-center">Henüz blog yazısı yok.</td></tr>';
+
+    this.renderStatPagination('stat-blog-pagination', list.length, page, 'setStatBlogPage');
+  }
+
+  async loadAdminStatistics() {
+    const servicesTbody = document.getElementById('stat-services-tbody');
+    const blogTbody = document.getElementById('stat-blog-tbody');
+    if (!servicesTbody || !blogTbody) return;
+
+    servicesTbody.innerHTML = '<tr><td colspan="8" class="text-center"><i class="fa-solid fa-spinner fa-spin"></i> Yükleniyor...</td></tr>';
+    blogTbody.innerHTML = '<tr><td colspan="6" class="text-center"><i class="fa-solid fa-spinner fa-spin"></i> Yükleniyor...</td></tr>';
+
+    try {
+      const data = await API.getAdminStatistics();
+      const sayi = n => Number(n || 0).toLocaleString('tr-TR');
+      const setText = (id, value) => { const el = document.getElementById(id); if (el) el.innerText = value; };
+
+      setText('stat-visitors-daily', sayi(data.visitors.daily));
+      setText('stat-visitors-weekly', sayi(data.visitors.weekly));
+      setText('stat-visitors-monthly', sayi(data.visitors.monthly));
+      setText('stat-visitors-total', sayi(data.visitors.total));
+
+      // Veriyi sakla; sayfa degistirilirken sunucuya tekrar gidilmez.
+      this.statServices = data.services || [];
+      this.statBlogPosts = data.blog?.posts || [];
+      this.statServicesPage = 1;
+      this.statBlogPage = 1;
+
+      setText('stat-services-summary',
+        this.statServices.length
+          ? `${sayi(this.statServices.length)} farklı servis satın alındı · toplam ${sayi(data.totals.valid_orders)} sipariş`
+          : '');
+      setText('stat-blog-summary',
+        this.statBlogPosts.length
+          ? `${sayi(this.statBlogPosts.length)} yazı · ${sayi(data.blog.published)} yayında · toplam ${sayi(data.blog.total_views)} görüntülenme`
+          : '');
+
+      this.renderStatServicesPage();
+      this.renderStatBlogPage();
+
+    } catch (err) {
+      servicesTbody.innerHTML = `<tr><td colspan="8" class="text-center" style="color:var(--danger);">${this.escapeHtml(err.message)}</td></tr>`;
+      blogTbody.innerHTML = `<tr><td colspan="6" class="text-center" style="color:var(--danger);">İstatistikler yüklenemedi.</td></tr>`;
+    }
   }
 
   async loadAdminStats() {
     try {
       const data = await API.getAdminStats();
-      document.getElementById('admin-stat-revenue').innerText = `₺${parseFloat(data.stats.total_revenue).toFixed(2)}`;
-      document.getElementById('admin-stat-orders').innerText = data.stats.total_orders;
-      document.getElementById('admin-stat-users').innerText = data.stats.total_users;
+      const lira = value => `₺${Number(value || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      const setStat = (id, value) => { const el = document.getElementById(id); if (el) el.innerText = value; };
+
+      setStat('admin-stat-revenue', lira(data.stats.total_revenue));
+      // Tedarikciye giden para: ustte saglayiciya gercekten odenen doviz,
+      // altinda panel kuruyla TL karsiligi.
+      const dolar = value => `$${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      setStat('admin-stat-provider-cost', dolar(data.stats.provider_cost_usd));
+      setStat('admin-stat-provider-cost-try', `≈ ${lira(data.stats.provider_cost)}`);
+      setStat('admin-stat-profit', lira(data.stats.net_profit));
+      // Kar hesabi guncel saglayici fiyatina dayanir; kapsam disinda kalan
+      // siparis varsa etikette belirtilir.
+      const costLbl = document.getElementById('admin-stat-provider-cost-lbl');
+      if (costLbl) {
+        costLbl.innerText = data.stats.orders_without_cost > 0
+          ? `Tedarikçiye Giden • ${data.stats.orders_without_cost} siparişin maliyeti bilinmiyor`
+          : `Tedarikçiye Giden (kur: ${data.stats.usd_try_rate})`;
+      }
+
+      setStat('admin-stat-orders', data.stats.total_orders);
+      setStat('admin-stat-orders-completed', data.stats.completed_orders);
+      setStat('admin-stat-orders-active', data.stats.active_orders);
+      setStat('admin-stat-orders-partial', data.stats.partial_orders);
+      setStat('admin-stat-orders-canceled', data.stats.canceled_orders);
+      setStat('admin-stat-orders-failed', data.stats.failed_orders);
+      setStat('admin-stat-users', data.stats.total_users);
       const ticketCount = document.getElementById('admin-nav-tickets-count');
       const depositCount = document.getElementById('admin-nav-deposits-count');
       if (ticketCount) ticketCount.textContent = data.stats.pending_tickets || '';
       if (depositCount) depositCount.textContent = data.stats.pending_deposits || '';
+
+      this.renderProfitChart(data.dailySeries || []);
 
       const recentTbody = document.getElementById('admin-recent-orders-tbody');
       recentTbody.innerHTML = data.recentOrders.map(o => `
@@ -1618,6 +2802,280 @@ class SmmApp {
       `).join('');
     } catch (err) {
       console.error('Admin stats failed:', err);
+    }
+  }
+
+  // Son 30 gunun ciro/kar cubuklari; harici kutuphane yerine saf SVG.
+  renderProfitChart(series) {
+    const container = document.getElementById('admin-profit-chart');
+    if (!container) return;
+    if (!series.length || series.every(d => !d.revenue && !d.profit)) {
+      container.innerHTML = '<p style="color: var(--text-dim); font-size: .85rem; padding: 14px 0;">Henüz grafik için yeterli sipariş verisi yok.</p>';
+      return;
+    }
+    const W = 900, H = 220, PAD = 34, innerH = H - PAD - 18;
+    const max = Math.max(...series.map(d => Math.max(d.revenue, d.profit, 0)), 1);
+    const min = Math.min(...series.map(d => Math.min(d.profit, 0)), 0);
+    const range = max - min || 1;
+    const yOf = value => 12 + innerH * (1 - (value - min) / range);
+    const zeroY = yOf(0);
+    const slot = (W - PAD - 8) / series.length;
+    const barW = Math.max(4, slot * 0.32);
+
+    let bars = '';
+    series.forEach((d, i) => {
+      const x = PAD + i * slot;
+      const tip = `${d.day}\nCiro: ₺${d.revenue.toFixed(2)}\nKâr: ₺${d.profit.toFixed(2)}`;
+      const rTop = Math.min(yOf(d.revenue), zeroY), rH = Math.max(1, Math.abs(zeroY - yOf(d.revenue)));
+      const pTop = Math.min(yOf(d.profit), zeroY), pH = Math.max(1, Math.abs(zeroY - yOf(d.profit)));
+      bars += `<g><title>${tip}</title>
+        <rect x="${x.toFixed(1)}" y="${rTop.toFixed(1)}" width="${barW.toFixed(1)}" height="${rH.toFixed(1)}" rx="2" fill="rgba(139,92,246,.65)"/>
+        <rect x="${(x + barW + 1.5).toFixed(1)}" y="${pTop.toFixed(1)}" width="${barW.toFixed(1)}" height="${pH.toFixed(1)}" rx="2" fill="${d.profit >= 0 ? 'rgba(16,185,129,.85)' : 'rgba(239,68,68,.85)'}"/>
+      </g>`;
+      // Her 5 gunde bir tarih etiketi (gg.aa)
+      if (i % 5 === 0 || i === series.length - 1) {
+        const [, month, dayNum] = d.day.split('-');
+        bars += `<text x="${(x + barW).toFixed(1)}" y="${H - 4}" text-anchor="middle" font-size="9" fill="var(--text-dim)">${dayNum}.${month}</text>`;
+      }
+    });
+
+    container.innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" style="width: 100%; min-width: 640px; height: auto; display: block;" role="img" aria-label="Son 30 gün ciro ve kâr grafiği">
+        <line x1="${PAD}" y1="${zeroY.toFixed(1)}" x2="${W - 4}" y2="${zeroY.toFixed(1)}" stroke="rgba(148,163,184,.25)" stroke-width="1"/>
+        <text x="4" y="${(yOf(max) + 4).toFixed(1)}" font-size="10" fill="var(--text-dim)">₺${Math.round(max)}</text>
+        <text x="4" y="${(zeroY + 4).toFixed(1)}" font-size="10" fill="var(--text-dim)">₺0</text>
+        ${bars}
+      </svg>`;
+  }
+
+  // === KAMPANYA YÖNETİMİ (ADMIN) ============================================
+
+  onCampaignTypeChange() {
+    const type = document.getElementById('campaign-type')?.value;
+    const discountFields = document.getElementById('campaign-discount-fields');
+    const bonusFields = document.getElementById('campaign-bonus-fields');
+    if (discountFields) discountFields.style.display = type === 'service_discount' ? 'grid' : 'none';
+    if (bonusFields) bonusFields.style.display = type === 'deposit_bonus' ? 'grid' : 'none';
+  }
+
+  onCampaignPopupToggle() {
+    const fields = document.getElementById('campaign-popup-fields');
+    if (fields) fields.style.display = document.getElementById('campaign-popup-enabled')?.checked ? 'block' : 'none';
+  }
+
+  async loadAdminCampaigns() {
+    // Servis secim listesi aktif katalogla doldurulur.
+    const serviceSelect = document.getElementById('campaign-service');
+    if (serviceSelect && !serviceSelect.options.length) {
+      serviceSelect.innerHTML = this.allServices
+        .map(s => `<option value="${s.id}">#${s.id} — ${this.escapeHtml(String(s.name).slice(0, 70))} (₺${Number(s.rate_per_1000).toFixed(2)})</option>`)
+        .join('');
+    }
+
+    // Pazarlama otomasyon anahtarlari ve ust duyuru alanlari mevcut
+    // ayarlarla senkronlanir.
+    try {
+      const settingsRes = await API.getSettings();
+      const s = settingsRes.settings || {};
+      const proof = document.getElementById('setting-social-proof');
+      const reminder = document.getElementById('setting-reminder-email');
+      if (proof) proof.checked = s.social_proof_enabled !== '0';
+      if (reminder) reminder.checked = s.reminder_email_enabled === '1';
+      if (document.getElementById('camp-announcement-tr')) document.getElementById('camp-announcement-tr').value = s.announcement_tr || s.announcement || '';
+      if (document.getElementById('camp-announcement-en')) document.getElementById('camp-announcement-en').value = s.announcement_en || '';
+      if (document.getElementById('camp-announcement-special')) document.getElementById('camp-announcement-special').checked = s.announcement_special === '1';
+    } catch {}
+
+    const tbody = document.getElementById('admin-campaigns-tbody');
+    if (!tbody) return;
+    try {
+      const res = await API.getAdminCampaigns();
+      if (!res.campaigns.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center">Henüz kampanya yok. Yukarıdan ilk kampanyanı oluştur!</td></tr>';
+        return;
+      }
+      const now = Date.now();
+      tbody.innerHTML = res.campaigns.map(c => {
+        const expired = c.ends_at && new Date(c.ends_at).getTime() < now;
+        const detail = c.type === 'service_discount'
+          ? `🏷️ ${this.escapeHtml(String(c.service_name || '#' + c.service_id).slice(0, 44))} → <b>-%${c.discount_percent}</b>`
+          : `🎁 Bakiye bonusu <b>+%${c.bonus_percent}</b>${c.min_deposit_kurus ? ` (min ₺${(c.min_deposit_kurus / 100).toFixed(0)})` : ''}`;
+        const popupStat = c.popup_enabled
+          ? `👁 ${c.views} • 🖱 ${c.clicks}${c.conversions !== null && c.conversions !== undefined ? ` • 🛒 ${c.conversions}` : ''}`
+          : '<span style="color: var(--text-dim);">Popup kapalı</span>';
+        return `
+        <tr${!c.status || expired ? ' style="opacity:.55;"' : ''}>
+          <td>#${c.id}</td>
+          <td style="font-weight: 700;">${this.escapeHtml(c.name)}</td>
+          <td style="font-size: .85rem;">${detail}</td>
+          <td class="cell-nowrap" style="font-size: .8rem;">${c.ends_at ? new Date(c.ends_at).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' }) : 'Süresiz'}${expired ? ' <span class="badge badge-canceled">Bitti</span>' : ''}</td>
+          <td class="cell-nowrap" style="font-size: .8rem;">${popupStat}</td>
+          <td>${c.status ? '<span class="badge badge-completed">Aktif</span>' : '<span class="badge badge-pending">Durduruldu</span>'}</td>
+          <td class="cell-nowrap" style="text-align: right;">
+            <button class="btn btn-outline btn-sm" onclick="app.toggleCampaign(${c.id}, ${c.status ? 0 : 1})" title="${c.status ? 'Durdur' : 'Aktifleştir'}">
+              <i class="fa-solid ${c.status ? 'fa-pause' : 'fa-play'}"></i>
+            </button>
+            <button class="btn btn-outline btn-sm" style="color: var(--danger); border-color: var(--danger);" onclick="app.removeCampaign(${c.id}, '${this.escapeHtml(c.name)}')" title="Sil">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </td>
+        </tr>`;
+      }).join('');
+    } catch (err) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center">Kampanyalar yüklenemedi.</td></tr>';
+    }
+  }
+
+  async handleCreateCampaign(e) {
+    e.preventDefault();
+    const type = document.getElementById('campaign-type').value;
+    const endsRaw = document.getElementById('campaign-ends').value;
+    const payload = {
+      name: document.getElementById('campaign-name').value,
+      type,
+      service_id: type === 'service_discount' ? Number(document.getElementById('campaign-service').value) || null : null,
+      discount_percent: type === 'service_discount' ? Number(document.getElementById('campaign-discount').value) || null : null,
+      bonus_percent: type === 'deposit_bonus' ? Number(document.getElementById('campaign-bonus').value) || null : null,
+      min_deposit: type === 'deposit_bonus' ? Number(document.getElementById('campaign-min-deposit').value) || null : null,
+      // datetime-local yerel saattir; sunucu UTC karsilastirdigi icin ISO'ya cevrilir.
+      ends_at: endsRaw ? new Date(endsRaw).toISOString() : null,
+      popup_enabled: document.getElementById('campaign-popup-enabled').checked,
+      popup_template: document.querySelector('input[name="campaign-template"]:checked')?.value || 'flash',
+      popup_title: document.getElementById('campaign-popup-title').value || null,
+      popup_title_en: document.getElementById('campaign-popup-title-en').value || null,
+      popup_frequency_hours: Number(document.getElementById('campaign-popup-frequency').value) || 24
+    };
+    try {
+      const res = await API.createCampaign(payload);
+      showToast(res.message, 'success');
+      e.target.reset();
+      this.onCampaignTypeChange();
+      this.onCampaignPopupToggle();
+      this.loadAdminCampaigns();
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
+    }
+  }
+
+  async toggleCampaign(id, status) {
+    try {
+      const res = await API.setCampaignStatus(id, status);
+      showToast(res.message, 'success');
+      this.loadAdminCampaigns();
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
+    }
+  }
+
+  async removeCampaign(id, name) {
+    const confirmed = await confirmDialog(`"${name}" kampanyası silinecek. Emin misin?`,
+      { title: 'Kampanyayı sil', icon: 'fa-trash', danger: true, confirmText: 'Sil' });
+    if (!confirmed) return;
+    try {
+      const res = await API.deleteCampaign(id);
+      showToast(res.message, 'success');
+      this.loadAdminCampaigns();
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
+    }
+  }
+
+  // Kampanyalar sekmesindeki ust duyuru karti: yalnizca duyuru anahtarlarini
+  // kaydeder (Site Ayarlari'ndaki buyuk formdan ve popup'lardan bagimsiz).
+  async saveAnnouncementFromCampaigns() {
+    const announcementTr = document.getElementById('camp-announcement-tr').value.trim();
+    const announcementEn = document.getElementById('camp-announcement-en').value.trim();
+    const special = document.getElementById('camp-announcement-special').checked;
+    try {
+      await API.saveSettings({
+        announcement_tr: announcementTr,
+        announcement_en: announcementEn,
+        announcement_special: special ? '1' : '0'
+      });
+      // Bant aninda guncellenir; sayfa yenilemeye gerek kalmaz.
+      const textEl = document.getElementById('announcement-text');
+      const bar = document.getElementById('announcement-bar');
+      const localized = this.locale === 'en' ? (announcementEn || announcementTr) : announcementTr;
+      if (localized) {
+        if (textEl) textEl.innerText = localized;
+        if (bar) bar.style.display = '';
+      } else if (bar) {
+        bar.style.display = 'none';   // duyuru bosaltildi -> band kalksin
+      }
+      bar?.classList.toggle('announcement-launch', special);
+      // Site Ayarlari'ndaki es alanlar da senkron kalsin (aciksa).
+      if (document.getElementById('setting-announcement-tr')) document.getElementById('setting-announcement-tr').value = announcementTr;
+      if (document.getElementById('setting-announcement-en')) document.getElementById('setting-announcement-en').value = announcementEn;
+      if (document.getElementById('setting-announcement-special')) document.getElementById('setting-announcement-special').checked = special;
+      showToast(localized ? 'Duyuru bandı güncellendi ve yayında! 📣' : 'Duyuru bandı kaldırıldı.', 'success');
+    } catch (err) {
+      showToast(`Duyuru kaydedilemedi: ${err.message}`, 'error');
+    }
+  }
+
+  async saveMarketingToggles() {
+    try {
+      const res = await API.saveSettings({
+        social_proof_enabled: document.getElementById('setting-social-proof').checked ? '1' : '0',
+        reminder_email_enabled: document.getElementById('setting-reminder-email').checked ? '1' : '0'
+      });
+      showToast(res.message, 'success');
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
+    }
+  }
+
+  // === TELEGRAM BAĞLANTI KARTI (Siparişlerim) ================================
+
+  async loadTelegramConnectCard() {
+    const card = document.getElementById('telegram-connect-card');
+    if (!card || !this.currentUser) return;
+    const statusEl = document.getElementById('telegram-connect-status');
+    const actionsEl = document.getElementById('telegram-connect-actions');
+    try {
+      const res = await API.getTelegramStatus();
+      card.style.display = 'block';
+      if (res.connected) {
+        statusEl.innerHTML = this.ui(
+          `✅ Bağlı${res.telegram_username ? `: <b>@${this.escapeHtml(res.telegram_username)}</b>` : ''} — sipariş durumu değişince Telegram'dan mesaj alacaksın.`,
+          `✅ Connected${res.telegram_username ? `: <b>@${this.escapeHtml(res.telegram_username)}</b>` : ''} — you'll get a Telegram message whenever your order status changes.`
+        );
+        actionsEl.innerHTML = `<button class="btn btn-outline btn-sm" onclick="app.disconnectTelegram()"><i class="fa-solid fa-link-slash"></i> ${this.ui('Bağlantıyı Kes', 'Disconnect')}</button>`;
+      } else {
+        statusEl.innerHTML = this.ui(
+          'Siparişin tamamlanınca, kısmen teslim edilince veya iptal olunca Telegram\'dan anında haber al.',
+          'Get instant Telegram updates when your order is completed, partially delivered, or canceled.'
+        );
+        actionsEl.innerHTML = `
+          <button class="btn btn-primary btn-sm" onclick="app.connectTelegram()"><i class="fa-brands fa-telegram"></i> ${this.ui("Telegram'a Bağlan", 'Connect Telegram')}</button>
+          <button class="btn btn-outline btn-sm" onclick="app.loadTelegramConnectCard()" title="${this.ui('Bağlantıyı kontrol et', 'Check connection')}"><i class="fa-solid fa-rotate"></i></button>`;
+      }
+    } catch {
+      // Bot yapilandirilmamissa kart tamamen gizlenir; musteriyi yormayalim.
+      card.style.display = 'none';
+    }
+  }
+
+  async connectTelegram() {
+    try {
+      const res = await API.createTelegramLinkCode();
+      window.open(res.link, '_blank', 'noopener');
+      showToast(this.ui(
+        'Telegram açıldı! Botta "BAŞLAT / START" düğmesine bas, sonra buraya dönüp 🔄 ile kontrol et. Bağlantı 1 dakika içinde tamamlanır.',
+        'Telegram opened! Tap "START" in the bot, then come back and press 🔄 to check. The link completes within a minute.'
+      ), 'info', 9000);
+    } catch (err) {
+      showToast(this.ui(`Telegram bağlantısı başlatılamadı: ${err.message}`, `Could not start Telegram linking: ${err.message}`), 'error');
+    }
+  }
+
+  async disconnectTelegram() {
+    try {
+      const res = await API.disconnectTelegram();
+      showToast(res.message, 'success');
+      this.loadTelegramConnectCard();
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
     }
   }
 
@@ -1657,6 +3115,9 @@ class SmmApp {
 
     try {
       const res = await API.getRawProviderServices(providerId);
+      // Saglayicinin para birimi ve panel kuru: fiyat hesabi bunlara dayanir.
+      this.explorerCurrency = String(res.currency || 'USD').toUpperCase();
+      this.explorerUsdTryRate = Number(res.usd_try_rate) > 0 ? Number(res.usd_try_rate) : 35;
       const rawList = res.services || [];
       // Pre-compute lowercase searchIndex for 60fps instant searching
       this.currentExplorerServices = rawList.map(s => {
@@ -1912,8 +3373,12 @@ class SmmApp {
         const item = (this.currentExplorerServices || []).find(s => s._sId.toString() === sId.toString());
         if (!item) continue;
 
-        // Rate calculated in ₺ (assume 1 USD ~ 35 TRY if cost is in USD, or rate * profitMultiplier)
-        const costInTry = item._rate > 1 ? item._rate : item._rate * 35;
+        // Saglayici fiyati sabit para birimindedir (genelde USD). Once panelin
+        // kuruyla TL'ye cevrilir, sonra kar marji uygulanir. Eskiden "fiyat 1'den
+        // buyukse zaten TL'dir" varsayimi vardi; 1.50 $'lik servis 1,50 ₺ sanilip
+        // zararina satiliyordu.
+        const cost = Number(item._rate) || 0;
+        const costInTry = this.explorerCurrency === 'TRY' ? cost : cost * this.explorerUsdTryRate;
         const sellRate = (costInTry * profitMultiplier).toFixed(2);
         const isRefill = /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün/i.test(`${item._name} ${item._cat}`);
 
@@ -1923,8 +3388,13 @@ class SmmApp {
             provider_service_id: item._sId,
             category_name: item._cat,
             name: item._name,
-            rate_per_1000: sellRate > 1 ? sellRate : 10.00,
-            rate_per_1000_usd: (Number(item._rate || 0) * profitMultiplier).toFixed(4),
+            rate_per_1000: Number(sellRate) > 0 ? sellRate : 10.00,
+            rate_per_1000_usd: (this.explorerCurrency === 'TRY'
+              ? (costInTry / (this.explorerUsdTryRate || 1)) * profitMultiplier
+              : cost * profitMultiplier).toFixed(4),
+            // Kar/zarar raporunun calismasi icin saglayici maliyeti de kaydedilir.
+            provider_cost_rate: cost,
+            provider_cost_currency: this.explorerCurrency,
             min_quantity: item._min,
             max_quantity: item._max,
             refill: isRefill ? 1 : 0
@@ -2012,6 +3482,7 @@ class SmmApp {
         ...s,
         _searchIndex: `${s.id} ${s.name || ''} ${s.category_name || ''} ${s.provider_name || ''}`.toLowerCase()
       }));
+      this.syncAdminServicesProviderFilter();
       this.filterAdminAddedServicesTable();
     } catch (err) {
       tbody.innerHTML = `<tr><td colspan="12" class="text-center" style="color: var(--danger);">Servisler yüklenemedi.</td></tr>`;
@@ -2029,6 +3500,8 @@ class SmmApp {
       const res = await API.refreshAdminProviderPrices();
       showToast(res.message, 'success');
       await this.loadAdminAddedServices();
+      // Kar/zarar raporu bu maliyete dayanir; maliyet degisince ozet de tazelenmeli.
+      await this.loadAdminStats();
     } catch (err) {
       showToast(`Sağlayıcı fiyatları güncellenemedi: ${err.message}`, 'error');
     } finally {
@@ -2178,30 +3651,203 @@ class SmmApp {
     }
   }
 
+  // --- EXCEL DISA AKTARMA ---
+  // Buton, indirme suresince kilitlenir; boylece cift tiklamada iki istek gitmez.
+  async runExcelExport(button, task, successMessage) {
+    const original = button ? button.innerHTML : null;
+    if (button) {
+      button.disabled = true;
+      button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Excel hazırlanıyor...';
+    }
+    try {
+      const fileName = await task();
+      showToast(`${successMessage} (${fileName})`, 'success');
+    } catch (err) {
+      showToast(`Excel indirilemedi: ${err.message}`, 'error');
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.innerHTML = original;
+      }
+    }
+  }
+
+  exportAdminServicesExcel(scope, event) {
+    const labels = { active: 'Aktif servisler indirildi.', passive: 'Pasif servisler indirildi.', all: 'Tüm servisler indirildi.' };
+    return this.runExcelExport(event?.currentTarget, () => API.exportAdminServices(scope), labels[scope] || 'Liste indirildi.');
+  }
+
+  exportProviderCatalogExcel(event) {
+    const providerId = this.currentExplorerProviderId;
+    if (!providerId) {
+      showToast('Önce bir sağlayıcı kataloğu açın.', 'warning');
+      return;
+    }
+    return this.runExcelExport(event?.currentTarget, () => API.exportProviderServices(providerId), 'Sağlayıcı kataloğu indirildi.');
+  }
+
+  // Servis kataloğu: aktif/pasif sekmesi, sağlayıcı filtresi ve 50'lik sayfalama.
+  providerLabelOf(service) {
+    return service.provider_name || 'Manuel Eklenen';
+  }
+
+  syncAdminServicesProviderFilter() {
+    const select = document.getElementById('admin-services-provider-filter');
+    if (!select) return;
+    const names = [...new Set((this.currentAdminAddedServices || []).map(s => this.providerLabelOf(s)))].sort((a, b) => a.localeCompare(b, 'tr'));
+    const previous = this.adminServicesProviderFilter || 'all';
+    select.innerHTML = `<option value="all">🏷️ Tüm Sağlayıcılar</option>` +
+      names.map(n => `<option value="${this.escapeHtml(n)}">${this.escapeHtml(n)}</option>`).join('');
+    // Sağlayıcı silinmişse seçim "all"a döner, aksi halde korunur.
+    select.value = names.includes(previous) ? previous : 'all';
+    this.adminServicesProviderFilter = select.value;
+  }
+
+  switchAdminServicesStatus(status) {
+    this.adminServicesStatusFilter = status;
+    this.adminServicesPage = 1;
+    document.getElementById('admin-services-tab-active')?.classList.toggle('active', status === 1);
+    document.getElementById('admin-services-tab-passive')?.classList.toggle('active', status === 0);
+    this.filterAdminAddedServicesTable();
+  }
+
+  onAdminServicesProviderChange() {
+    this.adminServicesProviderFilter = document.getElementById('admin-services-provider-filter')?.value || 'all';
+    this.adminServicesPage = 1;
+    this.filterAdminAddedServicesTable();
+  }
+
+  setAdminServicesPage(page) {
+    this.adminServicesPage = page;
+    this.filterAdminAddedServicesTable();
+    document.getElementById('admin-tab-services')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  renderAdminServicesPagination(totalItems, totalPages, currentPage, pageSize) {
+    const box = document.getElementById('admin-services-pagination');
+    if (!box) return;
+    if (totalItems === 0) { box.innerHTML = ''; return; }
+
+    const firstItem = (currentPage - 1) * pageSize + 1;
+    const lastItem = Math.min(currentPage * pageSize, totalItems);
+
+    // Uzun listelerde tüm sayfa numaralarını basmamak için aktif sayfanın etrafında pencere.
+    const pages = [];
+    const windowSize = 2;
+    for (let p = 1; p <= totalPages; p++) {
+      if (p === 1 || p === totalPages || (p >= currentPage - windowSize && p <= currentPage + windowSize)) pages.push(p);
+      else if (pages[pages.length - 1] !== '...') pages.push('...');
+    }
+
+    const btn = (label, page, opts = {}) => {
+      const { disabled = false, active = false, title = '' } = opts;
+      return `<button type="button" class="btn btn-sm ${active ? 'btn-primary' : 'btn-outline'}"
+        ${disabled ? 'disabled' : `onclick="app.setAdminServicesPage(${page})"`}
+        ${title ? `title="${title}"` : ''}
+        style="min-width: 38px; ${disabled ? 'opacity:.4; cursor:not-allowed;' : ''}">${label}</button>`;
+    };
+
+    box.innerHTML = `
+      <div style="font-size: 0.85rem; color: var(--text-muted);">
+        Toplam <strong style="color:#fff;">${totalItems}</strong> servis · ${firstItem}-${lastItem} arası gösteriliyor
+        <span style="color: var(--text-dim);">(sayfa ${currentPage}/${totalPages})</span>
+      </div>
+      <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+        ${btn('<i class="fa-solid fa-angle-left"></i>', currentPage - 1, { disabled: currentPage === 1, title: 'Önceki' })}
+        ${pages.map(p => p === '...'
+          ? `<span style="color: var(--text-dim); padding: 0 4px;">…</span>`
+          : btn(p, p, { active: p === currentPage })).join('')}
+        ${btn('<i class="fa-solid fa-angle-right"></i>', currentPage + 1, { disabled: currentPage === totalPages, title: 'Sonraki' })}
+      </div>`;
+  }
+
   filterAdminAddedServicesTable() {
     const search = (document.getElementById('admin-added-services-search')?.value || '').trim().toLowerCase();
     const tbody = document.getElementById('admin-added-services-tbody');
+    if (!tbody) return;
 
-    if (!this.currentAdminAddedServices || this.currentAdminAddedServices.length === 0) {
+    const statusFilter = this.adminServicesStatusFilter ?? 1;
+    const providerFilter = this.adminServicesProviderFilter || 'all';
+    const pageSize = 50;
+    const all = this.currentAdminAddedServices || [];
+
+    const activeTotal = all.filter(s => Number(s.status) === 1).length;
+    const passiveTotal = all.length - activeTotal;
+    const activeBadge = document.getElementById('admin-services-active-count');
+    const passiveBadge = document.getElementById('admin-services-passive-count');
+    if (activeBadge) activeBadge.innerText = activeTotal;
+    if (passiveBadge) passiveBadge.innerText = passiveTotal;
+
+    if (all.length === 0) {
       tbody.innerHTML = `<tr><td colspan="12" class="text-center">Sitenize eklenmiş hiç servis bulunmuyor. Sağlayıcılar sekmesinden servis seçerek ekleyebilirsiniz.</td></tr>`;
+      this.renderAdminServicesPagination(0, 0, 1, pageSize);
       this.updateSelectedServicesCount();
       return;
     }
 
-    let filtered = this.currentAdminAddedServices;
+    let filtered = all.filter(s => Number(s.status) === statusFilter);
+    if (providerFilter !== 'all') filtered = filtered.filter(s => this.providerLabelOf(s) === providerFilter);
     if (search) {
       filtered = filtered.filter(s => s._searchIndex ? s._searchIndex.includes(search) : (s.name || '').toLowerCase().includes(search));
     }
 
-    const renderList = filtered.slice(0, 100);
+    // Sağlayıcıya göre grupla (grup içinde en yeni servis üstte kalsın).
+    filtered = [...filtered].sort((a, b) => {
+      const cmp = this.providerLabelOf(a).localeCompare(this.providerLabelOf(b), 'tr');
+      return cmp !== 0 ? cmp : Number(b.id) - Number(a.id);
+    });
 
-    if (renderList.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="12" class="text-center">Aramanızla eşleşen servis bulunamadı.</td></tr>`;
+    if (filtered.length === 0) {
+      const emptyMsg = statusFilter === 1
+        ? 'Bu filtreyle eşleşen aktif servis bulunamadı.'
+        : 'Pasife alınmış servis bulunmuyor.';
+      tbody.innerHTML = `<tr><td colspan="12" class="text-center">${emptyMsg}</td></tr>`;
+      this.renderAdminServicesPagination(0, 0, 1, pageSize);
       this.updateSelectedServicesCount();
       return;
     }
 
+    const totalPages = Math.ceil(filtered.length / pageSize);
+    // Filtre daraldığında mevcut sayfa listenin dışında kalabilir.
+    let currentPage = this.adminServicesPage || 1;
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+    this.adminServicesPage = currentPage;
+
+    const renderList = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+    const groupCounts = new Map();
+    for (const s of filtered) {
+      const label = this.providerLabelOf(s);
+      groupCounts.set(label, (groupCounts.get(label) || 0) + 1);
+    }
+    // Tek sağlayıcı varken grup başlığı gereksiz gürültü olur.
+    const showProviderGroups = groupCounts.size > 1;
+    let lastProvider = null;
+
     tbody.innerHTML = renderList.map(s => {
+      let groupHeader = '';
+      const providerLabel = this.providerLabelOf(s);
+      if (showProviderGroups && providerLabel !== lastProvider) {
+        const countInGroup = groupCounts.get(providerLabel);
+        groupHeader = `
+      <tr class="provider-group-row">
+        <td colspan="12" style="background: rgba(139, 92, 246, 0.12); border-top: 2px solid var(--primary); font-weight: 800; color: #fff; padding: 10px 14px;">
+          <i class="fa-solid fa-server" style="color: var(--accent-cyan);"></i>
+          ${this.escapeHtml(providerLabel)}
+          <span class="badge badge-processing" style="margin-left: 8px;">${countInGroup} servis</span>
+        </td>
+      </tr>`;
+        lastProvider = providerLabel;
+      }
+      return groupHeader + this.renderAdminServiceRow(s);
+    }).join('');
+
+    this.renderAdminServicesPagination(filtered.length, totalPages, currentPage, pageSize);
+    this.updateSelectedServicesCount();
+  }
+
+  renderAdminServiceRow(s) {
       const providerCost = Number(s.provider_cost_rate);
       const hasProviderCost = s.provider_id && Number.isFinite(providerCost) && providerCost >= 0;
       const providerCurrency = String(s.provider_cost_currency || 'USD').toUpperCase();
@@ -2220,7 +3866,10 @@ class SmmApp {
         <td class="cell-nowrap">#${s.id}</td>
         <td class="cell-nowrap"><span class="badge badge-processing">${this.escapeHtml(s.category_name)}</span></td>
         <td class="cell-truncate" style="font-weight: 600;"><strong>${this.escapeHtml(s.name_tr || s.name)}</strong><small style="display:block;color:var(--text-dim);">${this.escapeHtml(s.name_en || '')}</small></td>
-        <td class="cell-nowrap" style="font-size: 0.85rem; color: var(--text-dim);">${this.escapeHtml(s.provider_name || 'Manuel')} (#${this.escapeHtml(s.provider_service_id || '-')})</td>
+        <td class="cell-nowrap" style="font-size: 0.85rem;">
+          <strong style="color: var(--accent-cyan);">${this.escapeHtml(s.provider_name || 'Manuel Eklenen')}</strong>
+          <small style="display:block;color:var(--text-dim);">Servis #${this.escapeHtml(s.provider_service_id || '-')}</small>
+        </td>
         <td class="cell-nowrap">${costLabel}</td>
         <td class="cell-nowrap" style="color: var(--success); font-weight: 700;">₺${parseFloat(s.rate_per_1000).toFixed(2)}</td>
         <td class="cell-nowrap" style="color: var(--accent-cyan); font-weight: 700;">$${(Number(s.rate_per_1000_usd_cents || 0) / 100).toFixed(2)}</td>
@@ -2246,9 +3895,6 @@ class SmmApp {
         </td>
       </tr>
     `;
-    }).join('');
-
-    this.updateSelectedServicesCount();
   }
 
   // --- BULK SERVICE MANAGEMENT HELPERS ---
@@ -2319,7 +3965,7 @@ class SmmApp {
     // Yıkıcı işlem: onay ve "SİL" yazma adımı tek diyalogda birleştirildi,
     // yazılan kelime diyalog kapanmadan doğrulanır.
     const typed = await promptDialog(
-      'Sitedeki TÜM servisler pasife alınacak. Bu işlemi geri alamazsınız.\n\nOnaylamak için aşağıya SİL yazın.',
+      'Sitedeki TÜM servisler kalıcı olarak SİLİNECEK.\n\nYalnızca sipariş geçmişi olan servisler silinemez; onlar geçmiş kayıtları bozulmasın diye pasife alınır.\n\nBu işlemi geri alamazsınız. Onaylamak için aşağıya SİL yazın.',
       {
         title: '⚠️ Tüm servisleri sil',
         icon: 'fa-triangle-exclamation',
@@ -2396,6 +4042,8 @@ class SmmApp {
     const newStatus = currentStatus ? 0 : 1;
     try {
       await API.updateAdminService(serviceId, { name, rate_per_1000: rate, min_quantity: min, max_quantity: max, status: newStatus });
+      // Servis artik acik olan sekmeden cikacagi icin nereye tasindigi soylenir.
+      showToast(newStatus ? 'Servis aktif edildi ve "Aktif Servisler" sekmesine taşındı.' : 'Servis pasife alındı ve "Pasif Servisler" sekmesine taşındı.', 'success');
       await this.loadAdminAddedServices();
       await this.loadServicesData();
     } catch (err) {
@@ -2473,23 +4121,144 @@ class SmmApp {
 
   async loadAdminUsers() {
     const tbody = document.getElementById('admin-users-tbody');
+    const q = document.getElementById('admin-users-search')?.value.trim() || '';
     try {
-      const res = await API.getAdminUsers();
+      const res = await API.getAdminUsers(q);
+      if (!res.users.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center">${q ? 'Aramanla eşleşen kullanıcı bulunamadı.' : 'Henüz kullanıcı yok.'}</td></tr>`;
+        return;
+      }
       tbody.innerHTML = res.users.map(u => `
-        <tr>
+        <tr${u.banned ? ' style="opacity:.6;"' : ''}>
           <td>#${u.id}</td>
           <td style="font-weight: 700;">${this.escapeHtml(u.username)}</td>
           <td>${this.escapeHtml(u.email)}</td>
           <td><span class="badge ${u.role === 'admin' ? 'badge-processing' : 'badge-completed'}">${this.escapeHtml(u.role)}</span></td>
+          <td>${u.banned ? '<span class="badge badge-canceled">Banlı</span>' : '<span class="badge badge-completed">Aktif</span>'}</td>
           <td style="color: var(--success); font-weight: 700;">₺${parseFloat(u.balance).toFixed(2)}</td>
-          <td>
-            <button class="btn btn-outline btn-sm" onclick="app.editUserBalance(${u.id}, 'add')">+ Bakiye</button>
-            <button class="btn btn-outline btn-sm" onclick="app.editUserBalance(${u.id}, 'subtract')">- Bakiye</button>
+          <td style="white-space: nowrap;">
+            <button class="btn btn-cyan btn-sm" onclick="app.openAssignService(${u.id}, '${this.escapeHtml(u.username)}')" title="Kullanıcıya hizmet ata"><i class="fa-solid fa-gift"></i> Hizmet Ata</button>
+            <button class="btn btn-outline btn-sm" onclick="app.editUserBalance(${u.id}, 'add')" title="Bakiye ekle">+ Bakiye</button>
+            <button class="btn btn-outline btn-sm" onclick="app.editUserBalance(${u.id}, 'subtract')" title="Bakiye düş">- Bakiye</button>
+            ${u.role === 'admin' ? '' : `
+            <button class="btn btn-outline btn-sm" onclick="app.changeUserPassword(${u.id}, '${this.escapeHtml(u.username)}')" title="Şifre değiştir"><i class="fa-solid fa-key"></i></button>
+            <button class="btn btn-outline btn-sm" onclick="app.toggleUserBan(${u.id}, '${this.escapeHtml(u.username)}', ${u.banned ? 'false' : 'true'})" title="${u.banned ? 'Banı kaldır' : 'Banla'}">
+              <i class="fa-solid ${u.banned ? 'fa-unlock' : 'fa-ban'}"></i>
+            </button>
+            <button class="btn btn-outline btn-sm" style="color: var(--danger); border-color: var(--danger);" onclick="app.deleteUserAccount(${u.id}, '${this.escapeHtml(u.username)}')" title="Kullanıcıyı sil"><i class="fa-solid fa-trash"></i></button>`}
           </td>
         </tr>
       `).join('');
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="6" class="text-center">Kullanıcılar yüklenemedi.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center">Kullanıcılar yüklenemedi.</td></tr>`;
+    }
+  }
+
+  // --- KULLANICIYA HIZMET ATAMA (Admin) ---
+  openAssignService(userId, username) {
+    this.assignServiceTargetUser = { id: userId, username };
+    document.getElementById('assign-service-username').textContent = username;
+    const select = document.getElementById('assign-service-select');
+    const activeServices = (this.allServices || []).filter(s => s.status === undefined || s.status == 1);
+    select.innerHTML = activeServices.map(s =>
+      `<option value="${s.id}">#${s.id} — ${this.escapeHtml(s.name)} (₺${Number(s.rate_per_1000).toFixed(2)}/1000)</option>`
+    ).join('');
+    document.getElementById('assign-service-link').value = '';
+    document.getElementById('assign-service-qty').value = '';
+    document.getElementById('assign-service-charge').value = 'gift';
+    this.onAssignServiceChange();
+    document.getElementById('modal-assign-service').classList.add('active');
+  }
+
+  onAssignServiceChange() {
+    const serviceId = Number(document.getElementById('assign-service-select')?.value);
+    const service = (this.allServices || []).find(s => s.id === serviceId);
+    const limitsEl = document.getElementById('assign-service-limits');
+    const totalEl = document.getElementById('assign-service-total');
+    const qtyInput = document.getElementById('assign-service-qty');
+    if (!service) { if (limitsEl) limitsEl.textContent = ''; if (totalEl) totalEl.textContent = '₺0.00'; return; }
+    limitsEl.textContent = `Limit: ${service.min_quantity} - ${service.max_quantity}`;
+    qtyInput.min = service.min_quantity;
+    qtyInput.max = service.max_quantity;
+    if (!qtyInput.value) qtyInput.value = service.min_quantity;
+    const qty = Number(qtyInput.value) || 0;
+    const chargeMode = document.getElementById('assign-service-charge').value;
+    const total = chargeMode === 'charge' ? (Number(service.rate_per_1000) * qty) / 1000 : 0;
+    totalEl.textContent = `₺${total.toFixed(2)}`;
+  }
+
+  async handleAssignServiceSubmit(e) {
+    e.preventDefault();
+    const target = this.assignServiceTargetUser;
+    if (!target) return;
+    const service_id = Number(document.getElementById('assign-service-select').value);
+    const link = document.getElementById('assign-service-link').value.trim();
+    const quantity = Number(document.getElementById('assign-service-qty').value);
+    const charge_user = document.getElementById('assign-service-charge').value === 'charge';
+    const confirmed = await confirmDialog(
+      `"${target.username}" kullanıcısına ${quantity} adet sipariş oluşturulacak ve sağlayıcıya iletilecek.\n\nÜcretlendirme: ${charge_user ? 'kullanıcının bakiyesinden düşülecek' : 'HEDİYE (ücret alınmayacak)'}. Devam edilsin mi?`,
+      { title: 'Hizmet atamasını onayla', icon: 'fa-gift', confirmText: 'Oluştur ve Gönder' }
+    );
+    if (!confirmed) return;
+    try {
+      const res = await API.assignUserOrder(target.id, { service_id, link, quantity, charge_user });
+      showToast(res.message, 'success');
+      this.closeModal('modal-assign-service');
+      this.loadAdminUsers();
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
+    }
+  }
+
+  async toggleUserBan(userId, username, banned) {
+    const confirmed = await confirmDialog(
+      banned
+        ? `"${username}" kullanıcısı banlanacak: giriş yapamaz, açık oturumları anında kapanır. Devam edilsin mi?`
+        : `"${username}" kullanıcısının banı kaldırılacak ve yeniden giriş yapabilecek. Devam edilsin mi?`,
+      { title: banned ? 'Kullanıcıyı banla' : 'Banı kaldır', icon: banned ? 'fa-ban' : 'fa-unlock', danger: banned, confirmText: banned ? 'Banla' : 'Banı Kaldır' }
+    );
+    if (!confirmed) return;
+    try {
+      const res = await API.setUserBan(userId, banned);
+      showToast(res.message, 'success');
+      this.loadAdminUsers();
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
+    }
+  }
+
+  async changeUserPassword(userId, username) {
+    const newPassword = await promptDialog(
+      `"${username}" kullanıcısı için yeni şifreyi girin. Kullanıcının açık oturumları kapatılır.`,
+      {
+        title: 'Kullanıcı şifresini değiştir',
+        icon: 'fa-key',
+        confirmText: 'Şifreyi Değiştir',
+        placeholder: 'En az 10 karakter',
+        validate: value => String(value).length >= 10 ? null : 'Şifre en az 10 karakter olmalıdır.'
+      }
+    );
+    if (!newPassword) return;
+    try {
+      const res = await API.setUserPassword(userId, newPassword);
+      showToast(res.message, 'success');
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
+    }
+  }
+
+  async deleteUserAccount(userId, username) {
+    const confirmed = await confirmDialog(
+      `"${username}" kullanıcısı; siparişleri, ödemeleri ve destek talepleriyle birlikte KALICI olarak silinecek. Bu işlem geri alınamaz! Emin misin?`,
+      { title: 'Kullanıcıyı sil', icon: 'fa-trash', danger: true, confirmText: 'Kalıcı Olarak Sil' }
+    );
+    if (!confirmed) return;
+    try {
+      const res = await API.deleteUser(userId);
+      showToast(res.message, 'success');
+      this.loadAdminUsers();
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
     }
   }
 
@@ -2521,22 +4290,41 @@ class SmmApp {
 
   async loadAdminOrders() {
     const tbody = document.getElementById('admin-all-orders-tbody');
+    const q = document.getElementById('admin-orders-search')?.value.trim() || '';
     try {
-      const res = await API.getAdminOrders();
-      tbody.innerHTML = res.orders.map(o => `
+      const res = await API.getAdminOrders(q);
+      if (!res.orders.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center">${q ? 'Aramanla eşleşen sipariş bulunamadı.' : 'Henüz sipariş yok.'}</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = res.orders.map(o => {
+        const badgeClass = o.status === 'completed' ? 'badge-completed'
+          : (o.status === 'processing' || o.status === 'in_progress') ? 'badge-processing'
+          : (o.status === 'failed' || o.status === 'canceled') ? 'badge-canceled'
+          : 'badge-pending';
+        // Hata/iptal sebebi durumun hemen altinda gorunur (saglayici mesaji dahil).
+        const reason = o.failure_reason
+          ? `<div style="font-size:.72rem;color:var(--danger);margin-top:4px;max-width:240px;white-space:normal;line-height:1.35;">${this.escapeHtml(o.failure_reason)}</div>`
+          : '';
+        // Mudahale butonlari yalnizca hala akista olan siparislerde gorunur.
+        // failed: islem hic yapilmadi, tutar iade edildi -> mudahale edilemez.
+        // completed/canceled: is bitti -> buton gereksiz.
+        const canAct = ['pending', 'processing', 'in_progress'].includes(o.status);
+        const actions = canAct
+          ? `<button class="btn btn-primary btn-sm" onclick="app.updateOrderStatus(${o.id}, 'completed')">Tamamla</button>
+             <button class="btn btn-outline btn-sm" onclick="app.updateOrderStatus(${o.id}, 'canceled')">İptal & İade</button>`
+          : `<span style="color:var(--text-dim);font-size:.8rem;">${o.status === 'failed' ? 'İade edildi' : '—'}</span>`;
+        return `
         <tr>
           <td>#${o.id}</td>
           <td>${this.escapeHtml(o.username)}</td>
           <td style="font-size: 0.85rem;">${this.escapeHtml(o.service_name)}</td>
           <td>${this.renderOrderLink(o.link, 40, '0.8rem')}</td>
           <td>${o.quantity}</td>
-          <td><span class="badge ${o.status === 'completed' ? 'badge-completed' : 'badge-pending'}">${this.escapeHtml(o.status)}</span></td>
-          <td>
-            <button class="btn btn-primary btn-sm" onclick="app.updateOrderStatus(${o.id}, 'completed')">Tamamla</button>
-            <button class="btn btn-outline btn-sm" onclick="app.updateOrderStatus(${o.id}, 'canceled')">İptal & İade</button>
-          </td>
-        </tr>
-      `).join('');
+          <td><span class="badge ${badgeClass}">${this.escapeHtml(o.status)}</span>${reason}</td>
+          <td>${actions}</td>
+        </tr>`;
+      }).join('');
     } catch (err) {
       tbody.innerHTML = `<tr><td colspan="7" class="text-center">Siparişler yüklenemedi.</td></tr>`;
     }
@@ -2649,17 +4437,56 @@ class SmmApp {
       tbody.innerHTML = res.coupons.map(c => `
         <tr>
           <td>#${c.id}</td>
-          <td><strong style="color: var(--accent-cyan); font-size: 1.1rem; letter-spacing: 1px;">${this.escapeHtml(c.code)}</strong></td>
+          <td>
+            <strong style="color: var(--accent-cyan); font-size: 1.1rem; letter-spacing: 1px;">${this.escapeHtml(c.code)}</strong>
+            ${c.code_en ? `<small style="display:block; color: var(--text-dim);">🇬🇧 ${this.escapeHtml(c.code_en)}</small>` : ''}
+          </td>
           <td style="color: var(--success); font-weight: 700;">₺${parseFloat(c.amount).toFixed(2)}</td>
           <td>${c.used_count} / ${c.max_uses} Kullanım</td>
           <td style="font-size: 0.85rem;">${new Date(c.created_at).toLocaleDateString('tr-TR')}</td>
-          <td style="text-align: right;">
+          <td style="text-align: right; white-space: nowrap;">
+            <button class="btn btn-outline btn-sm" onclick="app.showCouponUsages(${c.id})" title="Kimler kullandı?"><i class="fa-solid fa-users"></i> Kullananlar</button>
             <button class="btn btn-outline btn-sm" onclick="app.handleDeleteCoupon(${c.id})" style="color: var(--danger);"><i class="fa-solid fa-trash"></i> Sil</button>
           </td>
         </tr>
       `).join('');
     } catch (err) {
       tbody.innerHTML = `<tr><td colspan="6" class="text-center">Kuponlar yüklenemedi.</td></tr>`;
+    }
+  }
+
+  // Secilen kuponu kimlerin kullandigini tablo altindaki kartta listeler.
+  async showCouponUsages(couponId) {
+    const card = document.getElementById('coupon-usages-card');
+    const body = document.getElementById('coupon-usages-body');
+    if (!card || !body) return;
+    card.style.display = 'block';
+    body.innerHTML = '<p style="color: var(--text-dim);"><i class="fa-solid fa-spinner fa-spin"></i> Yükleniyor…</p>';
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    try {
+      const res = await API.getCouponUsages(couponId);
+      const title = `${res.coupon.code}${res.coupon.code_en ? ` / ${res.coupon.code_en}` : ''}`;
+      if (!res.usages.length) {
+        body.innerHTML = `<p style="margin:0;"><b>${this.escapeHtml(title)}</b> kuponunu henüz kimse kullanmamış.</p>`;
+        return;
+      }
+      body.innerHTML = `
+        <p style="margin: 0 0 12px;"><b>${this.escapeHtml(title)}</b> — toplam <b>${res.usages.length}</b> kullanım:</p>
+        <div class="table-responsive" style="max-height: 320px;">
+          <table class="custom-table">
+            <thead><tr><th>Kullanıcı</th><th>E-Posta</th><th>Kullanım Tarihi</th></tr></thead>
+            <tbody>
+              ${res.usages.map(u => `
+                <tr>
+                  <td style="font-weight: 700;">${this.escapeHtml(u.username)}</td>
+                  <td>${this.escapeHtml(u.email)}</td>
+                  <td class="cell-nowrap">${new Date(u.used_at + 'Z').toLocaleString('tr-TR', { dateStyle: 'medium', timeStyle: 'short' })}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    } catch (err) {
+      body.innerHTML = `<p style="color: var(--danger); margin:0;">Kullanım listesi alınamadı: ${this.escapeHtml(err.message)}</p>`;
     }
   }
 
@@ -2670,11 +4497,12 @@ class SmmApp {
   async handleSaveNewCoupon(e) {
     e.preventDefault();
     const code = document.getElementById('new-coupon-code').value;
+    const code_en = document.getElementById('new-coupon-code-en').value.trim() || null;
     const amount = document.getElementById('new-coupon-amount').value;
     const max_uses = document.getElementById('new-coupon-max').value;
 
     try {
-      const res = await API.addAdminCoupon(code, amount, max_uses);
+      const res = await API.addAdminCoupon(code, amount, max_uses, code_en);
       showToast(res.message, 'success');
       this.closeModal('modal-add-coupon');
       await this.loadAdminCoupons();
@@ -2694,6 +4522,229 @@ class SmmApp {
       } catch (err) {
         showToast(`Hata: ${err.message}`, 'error');
       }
+    }
+  }
+
+  // === E-POSTA PAZARLAMA (ADMIN) ============================================
+
+  async loadAdminEmailMarketing() {
+    // Istatistikler + gonderim gecmisi
+    try {
+      const stats = await API.getEmailStats();
+      const set = (id, value) => { const el = document.getElementById(id); if (el) el.innerText = value; };
+      set('email-stat-sent', stats.totals.sent);
+      set('email-stat-failed', stats.totals.failed);
+      set('email-stat-audience', stats.audience);
+      set('email-stat-optout', stats.opted_out);
+
+      const batchesTbody = document.getElementById('email-batches-tbody');
+      if (batchesTbody) {
+        batchesTbody.innerHTML = stats.batches.length ? stats.batches.map(b => `
+          <tr>
+            <td class="cell-nowrap" style="font-size:.82rem;">${new Date(b.started_at + 'Z').toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })}</td>
+            <td style="font-weight:700;">${this.escapeHtml(b.template_name || '—')}</td>
+            <td>${b.total}</td>
+            <td style="color: var(--success); font-weight:700;">${b.sent}</td>
+            <td style="color: ${b.failed > 0 ? 'var(--danger)' : 'var(--text-dim)'}; font-weight:700;">${b.failed}</td>
+            <td style="text-align:right;">${b.failed > 0 ? `<button class="btn btn-outline btn-sm" onclick="app.showEmailBatchFailures('${this.escapeHtml(b.batch_id)}')"><i class="fa-solid fa-magnifying-glass"></i> Hatalar</button>` : ''}</td>
+          </tr>`).join('')
+          : '<tr><td colspan="6" class="text-center">Henüz gönderim yapılmadı.</td></tr>';
+      }
+    } catch {}
+
+    // Sablonlar
+    try {
+      const res = await API.getEmailTemplates();
+      this.emailTemplates = res.templates || [];
+      const select = document.getElementById('email-send-template');
+      if (select) select.innerHTML = this.emailTemplates.map(t => `<option value="${t.id}">${this.escapeHtml(t.name)}</option>`).join('');
+      const tbody = document.getElementById('email-templates-tbody');
+      if (tbody) {
+        tbody.innerHTML = this.emailTemplates.map(t => `
+          <tr>
+            <td>#${t.id}</td>
+            <td style="font-weight:700;">${this.escapeHtml(t.name)}</td>
+            <td style="font-size:.85rem;">${this.escapeHtml(String(t.subject).slice(0, 70))}</td>
+            <td style="text-align:right; white-space:nowrap;">
+              <button class="btn btn-outline btn-sm" onclick="app.previewEmailTemplate(${t.id})" title="Önizle"><i class="fa-solid fa-eye"></i></button>
+              <button class="btn btn-outline btn-sm" onclick="app.editEmailTemplate(${t.id})" title="Düzenle"><i class="fa-solid fa-pen"></i></button>
+              <button class="btn btn-outline btn-sm" onclick="app.testEmailTemplate(${t.id})" title="Kendime test gönder"><i class="fa-solid fa-paper-plane"></i></button>
+              <button class="btn btn-outline btn-sm" style="color: var(--danger);" onclick="app.deleteEmailTemplateConfirm(${t.id}, '${this.escapeHtml(t.name)}')" title="Sil"><i class="fa-solid fa-trash"></i></button>
+            </td>
+          </tr>`).join('');
+      }
+    } catch {}
+
+    // Secmeli gonderim icin alici havuzu
+    try {
+      const res = await API.getAdminUsers('');
+      this.emailRecipients = (res.users || []).filter(u => u.role === 'client' && !u.banned);
+      if (!this.emailSelectedIds) this.emailSelectedIds = new Set();
+      this.renderEmailRecipients();
+    } catch {}
+  }
+
+  renderEmailRecipients() {
+    const list = document.getElementById('email-recipient-list');
+    if (!list || !this.emailRecipients) return;
+    const query = (document.getElementById('email-recipient-search')?.value || '').toLowerCase().trim();
+    const visible = this.emailRecipients.filter(u =>
+      !query || u.username.toLowerCase().includes(query) || String(u.email).toLowerCase().includes(query));
+    this.emailVisibleIds = visible.map(u => u.id);
+    if (!visible.length) {
+      list.innerHTML = '<p style="margin:6px; color: var(--text-dim); font-size:.85rem;">Eşleşen kullanıcı yok.</p>';
+      return;
+    }
+    list.innerHTML = visible.map(u => `
+      <label style="display:flex; align-items:center; gap:10px; padding:6px 8px; cursor:pointer; font-size:.87rem;">
+        <input type="checkbox" ${this.emailSelectedIds.has(u.id) ? 'checked' : ''} onchange="app.toggleEmailRecipient(${u.id}, this.checked)">
+        <b>${this.escapeHtml(u.username)}</b>
+        <span style="color: var(--text-dim); font-size:.8rem;">${this.escapeHtml(u.email)}</span>
+      </label>`).join('');
+  }
+
+  toggleEmailRecipient(userId, checked) {
+    if (checked) this.emailSelectedIds.add(userId);
+    else this.emailSelectedIds.delete(userId);
+  }
+
+  filterEmailRecipients() { this.renderEmailRecipients(); }
+
+  toggleAllEmailRecipients() {
+    const checked = document.getElementById('email-recipient-selectall')?.checked;
+    (this.emailVisibleIds || []).forEach(id => {
+      if (checked) this.emailSelectedIds.add(id);
+      else this.emailSelectedIds.delete(id);
+    });
+    this.renderEmailRecipients();
+  }
+
+  toggleEmailRecipientMode() {
+    const mode = document.querySelector('input[name="email-recipient-mode"]:checked')?.value;
+    const picker = document.getElementById('email-recipient-picker');
+    if (picker) picker.style.display = mode === 'selected' ? 'block' : 'none';
+  }
+
+  // Sablon onizlemesi: yer tutucular ornek verilerle doldurulur.
+  previewEmailTemplate(templateId) {
+    const id = templateId ?? Number(document.getElementById('email-send-template')?.value);
+    const template = (this.emailTemplates || []).find(t => t.id === Number(id));
+    if (!template) { showToast('Önce bir şablon seç.', 'warning'); return; }
+    const sample = text => String(text)
+      .replaceAll('{kullanici_adi}', this.currentUser?.username || 'ornek_kullanici')
+      .replaceAll('{site_adi}', this.siteName || 'SMMJET')
+      .replaceAll('{site_link}', window.location.origin);
+    document.getElementById('email-preview-subject').textContent = sample(template.subject);
+    document.getElementById('email-preview-body').innerHTML = sample(template.body);
+    const card = document.getElementById('email-preview-card');
+    card.style.display = 'block';
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  newEmailTemplate() {
+    document.getElementById('email-editor-id').value = '';
+    document.getElementById('email-editor-name').value = '';
+    document.getElementById('email-editor-subject').value = '';
+    document.getElementById('email-editor-body').value = '';
+    document.getElementById('email-editor-title').innerHTML = '<i class="fa-solid fa-pen"></i> Yeni Şablon';
+    const card = document.getElementById('email-editor-card');
+    card.style.display = 'block';
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  editEmailTemplate(id) {
+    const template = (this.emailTemplates || []).find(t => t.id === id);
+    if (!template) return;
+    document.getElementById('email-editor-id').value = template.id;
+    document.getElementById('email-editor-name').value = template.name;
+    document.getElementById('email-editor-subject').value = template.subject;
+    document.getElementById('email-editor-body').value = template.body;
+    document.getElementById('email-editor-title').innerHTML = `<i class="fa-solid fa-pen"></i> Şablonu Düzenle: ${this.escapeHtml(template.name)}`;
+    const card = document.getElementById('email-editor-card');
+    card.style.display = 'block';
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  async handleSaveEmailTemplate() {
+    const id = document.getElementById('email-editor-id').value;
+    const payload = {
+      name: document.getElementById('email-editor-name').value,
+      subject: document.getElementById('email-editor-subject').value,
+      body: document.getElementById('email-editor-body').value
+    };
+    if (!payload.name.trim() || !payload.subject.trim() || payload.body.trim().length < 10) {
+      showToast('Şablon adı, konu ve içerik zorunludur.', 'warning');
+      return;
+    }
+    try {
+      const res = id ? await API.updateEmailTemplate(id, payload) : await API.createEmailTemplate(payload);
+      showToast(res.message, 'success');
+      document.getElementById('email-editor-card').style.display = 'none';
+      this.loadAdminEmailMarketing();
+    } catch (err) {
+      showToast(`Şablon kaydedilemedi: ${err.message}`, 'error');
+    }
+  }
+
+  async deleteEmailTemplateConfirm(id, name) {
+    if (!await confirmDialog(`"${name}" şablonu silinecek. Emin misin?`, { title: 'Şablonu sil', danger: true, confirmText: 'Sil' })) return;
+    try {
+      const res = await API.deleteEmailTemplate(id);
+      showToast(res.message, 'success');
+      this.loadAdminEmailMarketing();
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
+    }
+  }
+
+  async testEmailTemplate(id) {
+    try {
+      const res = await API.testEmailTemplate(id);
+      showToast(res.message, 'success');
+    } catch (err) {
+      showToast(`Test başarısız: ${err.message}`, 'error');
+    }
+  }
+
+  async handleSendEmailBlast() {
+    const templateId = Number(document.getElementById('email-send-template')?.value);
+    if (!templateId) { showToast('Önce bir şablon seç.', 'warning'); return; }
+    const mode = document.querySelector('input[name="email-recipient-mode"]:checked')?.value || 'all';
+    const userIds = mode === 'selected' ? [...this.emailSelectedIds] : [];
+    if (mode === 'selected' && !userIds.length) { showToast('En az bir alıcı seç.', 'warning'); return; }
+
+    const template = (this.emailTemplates || []).find(t => t.id === templateId);
+    const who = mode === 'all' ? 'TÜM uygun kullanıcılara' : `seçtiğin ${userIds.length} kullanıcıya`;
+    if (!await confirmDialog(`"${template?.name}" şablonu ${who} gönderilecek. Bu işlem geri alınamaz. Başlatılsın mı?`,
+      { title: 'Toplu e-posta gönder', icon: 'fa-paper-plane', confirmText: 'Gönder' })) return;
+
+    try {
+      const res = await API.sendEmailBlast({ template_id: templateId, mode, user_ids: userIds });
+      showToast(res.message, 'success', 7000);
+      // Gonderim arka planda surer; kisa bir gecikmeyle istatistikleri tazele.
+      setTimeout(() => this.loadAdminEmailMarketing(), 4000);
+    } catch (err) {
+      showToast(`Gönderim başlatılamadı: ${err.message}`, 'error');
+    }
+  }
+
+  async showEmailBatchFailures(batchId) {
+    const box = document.getElementById('email-failures-box');
+    if (!box) return;
+    box.style.display = 'block';
+    box.innerHTML = '<p style="color: var(--text-dim);"><i class="fa-solid fa-spinner fa-spin"></i> Yükleniyor…</p>';
+    try {
+      const res = await API.getEmailFailures(batchId);
+      box.innerHTML = res.failures.length ? `
+        <h4 style="margin-bottom: 10px; font-size: .95rem; color: var(--danger);">❌ Bu gönderimdeki hatalar (${res.failures.length})</h4>
+        <div class="table-responsive" style="max-height: 240px;">
+          <table class="custom-table">
+            <thead><tr><th>E-Posta</th><th>Hata</th></tr></thead>
+            <tbody>${res.failures.map(f => `<tr><td>${this.escapeHtml(f.email)}</td><td style="font-size:.8rem;">${this.escapeHtml(f.error || '—')}</td></tr>`).join('')}</tbody>
+          </table>
+        </div>` : '<p style="margin:0;">Bu gönderimde hata yok. 🎉</p>';
+    } catch (err) {
+      box.innerHTML = `<p style="color: var(--danger); margin:0;">Hata listesi alınamadı: ${this.escapeHtml(err.message)}</p>`;
     }
   }
 
@@ -2725,9 +4776,6 @@ class SmmApp {
     }
   }
 
-  closeModal(modalId) {
-    document.getElementById(modalId).classList.remove('active');
-  }
 
   async handleAuthSubmit(e) {
     e.preventDefault();
@@ -2838,12 +4886,17 @@ class SmmApp {
   // --- REFERRAL & API KEY HELPERS ---
   copyRefLink() {
     const input = document.getElementById('user-ref-link-input');
-    if (input) {
-      input.value = `${window.location.origin}/#register?ref=${encodeURIComponent(this.currentUser?.username || '')}`;
-      input.select();
-      navigator.clipboard.writeText(input.value);
-      showToast('Referans linkiniz kopyalandı! Arkadaşlarınızla paylaşarak %5 komisyon kazanmaya başlayabilirsiniz.', 'success');
-    }
+    if (!input) return;
+    const code = this.referralData?.code || this.currentUser?.username || '';
+    if (!code) return;
+    input.value = `${window.location.origin}/register?ref=${encodeURIComponent(code)}`;
+    input.select();
+    navigator.clipboard.writeText(input.value);
+    const rate = this.referralData?.commission_rate ?? 5;
+    showToast(this.ui(
+      `Davet linkiniz kopyalandı! Paylaştığınız kişilerin tamamlanan siparişlerinden %${rate} komisyon kazanırsınız.`,
+      `Your invite link was copied! You earn ${rate}% commission on completed orders from people you invite.`
+    ), 'success');
   }
 
   async claimRefBalance() {
@@ -2864,12 +4917,99 @@ class SmmApp {
       const summary = await API.getAccountSummary();
       this.updateUserVipRank(summary.total_spent || 0);
       const refInput = document.getElementById('user-ref-link-input');
-      if (refInput) refInput.value = `${window.location.origin}/#register?ref=${encodeURIComponent(summary.referral_code)}`;
+      if (refInput) refInput.value = `${window.location.origin}/register?ref=${encodeURIComponent(summary.referral_code)}`;
       const refBalance = document.getElementById('user-ref-balance');
       if (refBalance) refBalance.innerText = `₺${Number(summary.referral_balance).toFixed(2)}`;
     } catch (err) {
       console.error('Account summary could not be loaded:', err.message);
     }
+    await this.loadReferralPanel();
+  }
+
+  // --- REFERANS PANELI (gercek veriler) --------------------------------------
+
+  async loadReferralPanel() {
+    if (!this.currentUser || !document.getElementById('ref-stat-invited')) return;
+    try {
+      const data = await API.getReferralOverview();
+      this.referralData = data;
+      this.referralPage = 1;
+      this.renderReferralPanel();
+    } catch (err) {
+      console.error('Referral panel could not be loaded:', err.message);
+    }
+  }
+
+  renderReferralPanel() {
+    const data = this.referralData;
+    if (!data) return;
+    const money = value => `₺${Number(value || 0).toFixed(2)}`;
+    const setText = (id, value) => { const el = document.getElementById(id); if (el) el.innerText = value; };
+
+    setText('ref-intro-text', this.ui(
+      `Özel davet linkinizle arkadaşlarınızı davet edin, tamamlanan her siparişlerinden %${data.commission_rate} nakit komisyon kazanın.`,
+      `Invite friends with your personal link and earn ${data.commission_rate}% cash commission on each of their completed orders.`
+    ));
+    setText('ref-stat-invited-label', this.ui('Davet Edilen', 'Invited'));
+    setText('ref-stat-active-label', this.ui('Sipariş Veren', 'Ordered'));
+    setText('ref-stat-total-label', this.ui('Toplam Kazanç', 'Total Earned'));
+    setText('ref-stat-invited', String(data.invited_count));
+    setText('ref-stat-active', String(data.active_count));
+    setText('ref-stat-total', money(data.total_earned));
+
+    const balanceLabel = document.getElementById('ref-balance-label');
+    if (balanceLabel) {
+      balanceLabel.innerHTML = `${this.ui('Aktarılabilir Komisyon', 'Available Commission')}: <strong id="user-ref-balance" style="color: var(--success);">${money(data.available)}</strong>`;
+    }
+
+    setText('ref-invited-title', this.ui('Davet Ettikleriniz', 'People You Invited'));
+    setText('ref-th-user', this.ui('Kullanıcı', 'User'));
+    setText('ref-th-date', this.ui('Katılım', 'Joined'));
+    setText('ref-th-orders', this.ui('Sipariş', 'Orders'));
+    setText('ref-th-earned', this.ui('Kazandırdı', 'Earned'));
+
+    const wrap = document.getElementById('ref-invited-wrap');
+    const emptyNote = document.getElementById('ref-empty-note');
+    const list = data.invited || [];
+    if (!list.length) {
+      if (wrap) wrap.style.display = 'none';
+      if (emptyNote) {
+        emptyNote.style.display = 'block';
+        emptyNote.innerText = this.ui(
+          'Henüz davet ettiğiniz kimse yok. Linkinizi paylaştığınızda katılanlar burada listelenir.',
+          'You have not invited anyone yet. People who join through your link will be listed here.'
+        );
+      }
+      const pager = document.getElementById('ref-invited-pagination');
+      if (pager) pager.innerHTML = '';
+      return;
+    }
+    if (emptyNote) emptyNote.style.display = 'none';
+    if (wrap) wrap.style.display = 'block';
+
+    const size = this.statPageSize;
+    const pageCount = Math.max(1, Math.ceil(list.length / size));
+    const page = Math.min(Math.max(1, this.referralPage || 1), pageCount);
+    this.referralPage = page;
+    const slice = list.slice((page - 1) * size, page * size);
+
+    const tbody = document.getElementById('ref-invited-tbody');
+    if (tbody) {
+      tbody.innerHTML = slice.map(row => `
+        <tr>
+          <td style="font-weight: 600;">${this.escapeHtml(row.username)}</td>
+          <td>${row.joined_at ? new Date(row.joined_at).toLocaleDateString(this.locale === 'en' ? 'en-GB' : 'tr-TR') : '-'}</td>
+          <td>${row.order_count}</td>
+          <td style="text-align: right; color: var(--success); font-weight: 600;">${money(row.earned)}</td>
+        </tr>
+      `).join('');
+    }
+    this.renderStatPagination('ref-invited-pagination', list.length, page, 'setReferralPage');
+  }
+
+  setReferralPage(page) {
+    this.referralPage = page;
+    this.renderReferralPanel();
   }
 
   async forgotPassword() {
@@ -2911,7 +5051,16 @@ class SmmApp {
     try {
       const result = await API.confirmEmailVerification(token);
       showToast(result.message, 'success');
-      this.navigate('landing');
+      // Dogrulama sonrasi guncel email_verified degeri cekilmezse arayuzde
+      // "E-postani dogrula" butonu takili kaliyordu.
+      if (this.currentUser) {
+        try {
+          const res = await API.getMe();
+          this.currentUser = res.user;
+          this.updateUserHeader();
+        } catch { /* oturum yoksa sorun degil */ }
+      }
+      this.navigate(this.currentUser ? 'profile' : 'landing');
     } catch (err) { showToast(err.message, 'error'); }
   }
 
@@ -2947,12 +5096,582 @@ class SmmApp {
     } catch (err) { showToast(err.message, 'error'); }
   }
 
-  copyApiKey() {
-    const input = document.getElementById('user-api-key-input');
-    if (input) {
-      input.select();
-      navigator.clipboard.writeText(input.value);
-      showToast('API Anahtarınız panonuza kopyalandı!', 'success');
+  // --- PROFİL SAYFASI ---
+  async loadProfileView() {
+    if (!this.currentUser) return;
+    document.getElementById('profile-username').textContent = this.currentUser.username;
+    document.getElementById('profile-email').textContent = this.currentUser.email;
+    document.getElementById('profile-balance').textContent = `₺${parseFloat(this.currentUser.balance).toFixed(2)}`;
+    this.renderProfileSecurity();
+
+    try {
+      const summary = await API.getAccountSummary();
+      document.getElementById('profile-total-spent').textContent = `₺${Number(summary.total_spent || 0).toFixed(2)}`;
+      document.getElementById('profile-ref-balance').textContent = `₺${Number(summary.referral_balance || 0).toFixed(2)}`;
+      const badge = document.getElementById('profile-vip-badge');
+      const mainBadge = document.getElementById('user-vip-badge');
+      this.updateUserVipRank(summary.total_spent || 0);
+      if (badge && mainBadge) { badge.className = mainBadge.className; badge.textContent = mainBadge.textContent; }
+    } catch { /* özet yüklenemezse kart varsayılan kalır */ }
+
+    this.loadProfilePayments();
+    this.loadProfileSpending();
+  }
+
+  renderProfileSecurity() {
+    const emailArea = document.getElementById('profile-email-verify-area');
+    const tfaArea = document.getElementById('profile-2fa-area');
+    if (!emailArea || !tfaArea) return;
+
+    if (this.currentUser.email_verified) {
+      emailArea.innerHTML = `<div class="flex-between" style="gap:8px;">
+        <span style="font-size:.88rem;color:var(--text-muted);"><i class="fa-solid fa-envelope-circle-check"></i> ${this.ui('E-posta Doğrulama', 'Email Verification')}</span>
+        <span class="badge badge-completed"><i class="fa-solid fa-check"></i> ${this.ui('Doğrulandı', 'Verified')}</span>
+      </div>`;
+    } else {
+      emailArea.innerHTML = `<button type="button" class="btn btn-outline btn-sm" onclick="app.requestEmailVerification()" style="width:100%;">
+        <i class="fa-solid fa-envelope-circle-check"></i> ${this.ui('E-postamı Doğrula', 'Verify My Email')}
+      </button>`;
+    }
+
+    if (this.currentUser.two_factor_enabled) {
+      tfaArea.innerHTML = `<div class="flex-between" style="gap:8px;">
+        <span style="font-size:.88rem;color:var(--text-muted);"><i class="fa-solid fa-shield-halved"></i> ${this.ui('İki Adımlı Doğrulama', 'Two-Factor Auth')}</span>
+        <span class="badge badge-completed"><i class="fa-solid fa-check"></i> ${this.ui('Aktif', 'Enabled')}</span>
+      </div>`;
+    } else {
+      tfaArea.innerHTML = `<button type="button" class="btn btn-outline btn-sm" onclick="app.enableTwoFactor()" style="width:100%;">
+        <i class="fa-solid fa-shield-halved"></i> ${this.ui('2FA Güvenliğini Aç', 'Enable 2FA')}
+      </button>`;
+    }
+  }
+
+  showProfileTab(tab) {
+    const tabs = ['payments', 'spending'];
+    tabs.forEach(name => {
+      const panel = document.getElementById(`profile-tab-${name}`);
+      const btn = document.getElementById(`profile-tab-btn-${name}`);
+      if (panel) panel.style.display = name === tab ? 'block' : 'none';
+      if (btn) btn.className = name === tab ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm';
+    });
+  }
+
+  profileDate(value) {
+    // SQLite UTC verir; kullanicinin yerel saatine cevrilir.
+    const date = new Date(String(value || '').replace(' ', 'T') + (String(value || '').includes('Z') ? '' : 'Z'));
+    if (Number.isNaN(date.getTime())) return value || '-';
+    return date.toLocaleString(this.locale === 'en' ? 'en-GB' : 'tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  async loadProfilePayments() {
+    const tbody = document.getElementById('profile-payments-tbody');
+    if (!tbody) return;
+    try {
+      const data = await API.getPaymentHistory();
+      const rows = data.payments || [];
+      if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">${this.ui('Henüz bakiye yüklemesi yok.', 'No balance top-ups yet.')}</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = rows.map(p => {
+        const badge = p.status === 'completed' ? 'badge-completed' : (p.status === 'pending' ? 'badge-pending' : 'badge-canceled');
+        const statusText = p.status === 'completed' ? this.ui('Onaylandı', 'Completed') : (p.status === 'pending' ? this.ui('Bekliyor', 'Pending') : this.ui('Başarısız', 'Failed'));
+        return `<tr>
+          <td class="cell-nowrap">${this.profileDate(p.created_at)}</td>
+          <td>${this.escapeHtml(p.method || '-')}</td>
+          <td style="text-align:right;font-weight:700;color:var(--success);">₺${Number(p.amount).toFixed(2)}</td>
+          <td><span class="badge ${badge}">${statusText}</span></td>
+        </tr>`;
+      }).join('');
+    } catch {
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--danger);">${this.ui('Geçmiş yüklenemedi.', 'Could not load history.')}</td></tr>`;
+    }
+  }
+
+  async loadProfileSpending() {
+    const tbody = document.getElementById('profile-spending-tbody');
+    if (!tbody) return;
+    try {
+      const data = await API.request(`/orders?lang=${encodeURIComponent(this.locale)}&limit=100`);
+      const rows = (data.orders || []).filter(o => o.status !== 'canceled');
+      if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">${this.ui('Henüz harcama yok.', 'No spending yet.')}</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = rows.slice(0, 100).map(o => {
+        let badge = 'badge-pending', statusText = this.ui('Bekliyor', 'Pending');
+        if (o.status === 'completed') { badge = 'badge-completed'; statusText = this.ui('Tamamlandı', 'Completed'); }
+        else if (o.status === 'processing' || o.status === 'in_progress') { badge = 'badge-processing'; statusText = this.ui('İşleniyor', 'Processing'); }
+        else if (o.status === 'partial') { badge = 'badge-processing'; statusText = this.ui('Kısmi', 'Partial'); }
+        return `<tr>
+          <td class="cell-nowrap">${this.profileDate(o.created_at)}</td>
+          <td>${this.escapeHtml(o.service_name || `#${o.service_id}`)}</td>
+          <td style="text-align:right;font-weight:700;">₺${Number(o.charge).toFixed(2)}</td>
+          <td><span class="badge ${badge}">${statusText}</span></td>
+        </tr>`;
+      }).join('');
+    } catch {
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--danger);">${this.ui('Geçmiş yüklenemedi.', 'Could not load history.')}</td></tr>`;
+    }
+  }
+
+  async handleProfilePasswordChange(e) {
+    e.preventDefault();
+    const current_password = document.getElementById('profile-current-password').value;
+    const new_password = document.getElementById('profile-new-password').value;
+    try {
+      const result = await API.changePassword(current_password, new_password);
+      showToast(result.message, 'success');
+      // Sunucu tüm oturumları kapattı; kullanıcı yeniden giriş yapmalı.
+      this.currentUser = null;
+      this.updateUserHeader();
+      this.showAuthPage('login');
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  copyApiKey(inputId = 'user-api-key-input') {
+    const input = document.getElementById(inputId);
+    if (!input || !input.value) return;
+    input.select();
+    navigator.clipboard.writeText(input.value);
+    showToast(this.ui('API anahtarınız panonuza kopyalandı!', 'Your API key was copied to the clipboard!'), 'success');
+  }
+
+  // --- META ACIKLAMA SAYACI --------------------------------------------------
+  // Arama motoru 25-160 karakter bekler. Admin yazarken anlik geri bildirim
+  // gorur; sunucu ayrica kesin siniri uygular (utils/metaDescription.js).
+
+  initMetaCounters() {
+    document.querySelectorAll('[data-meta-counter]').forEach(field => {
+      if (field.dataset.counterBound) return;
+      field.dataset.counterBound = '1';
+      const guncelle = () => this.updateMetaCounter(field);
+      field.addEventListener('input', guncelle);
+      guncelle();
+    });
+  }
+
+  updateMetaCounter(field) {
+    const box = document.getElementById(field.dataset.metaCounter);
+    if (!box) return;
+    const uzunluk = field.value.trim().length;
+    let durum = 'ok';
+    let mesaj = `${uzunluk} / 160 karakter — arama sonucunda tam görünür.`;
+    if (uzunluk === 0) {
+      durum = 'warn';
+      mesaj = 'Boş bırakılırsa kısa özet kullanılır. En iyisi 120-155 karakterlik bir açıklama yazmak.';
+    } else if (uzunluk < 25) {
+      durum = 'bad';
+      mesaj = `${uzunluk} / 160 karakter — çok kısa. Arama motoru 25 karakterin altını yok sayar.`;
+    } else if (uzunluk > 155) {
+      durum = 'warn';
+      mesaj = `${uzunluk} / 160 karakter — sınıra çok yakın, kesilebilir.`;
+    }
+    box.textContent = mesaj;
+    box.className = `meta-counter meta-counter-${durum}`;
+  }
+
+  // --- API KULLANIM KILAVUZU -------------------------------------------------
+  // Hic API kullanmamis birinin de takip edebilecegi sekilde yazildi:
+  // once "bu nedir", sonra adim adim kurulum, sonra komut sozlugu ve
+  // kopyala-yapistir kod ornekleri.
+
+  showApiGuide() {
+    const body = document.getElementById('api-guide-body');
+    const title = document.getElementById('api-guide-title');
+    if (!body) return;
+    if (title) title.textContent = this.ui('API Nasıl Kullanılır?', 'How to Use the API');
+    body.innerHTML = this.apiGuideHtml();
+    document.getElementById('modal-api-guide')?.classList.add('active');
+  }
+
+  apiGuideHtml() {
+    const base = `${window.location.origin}/api/v2`;
+    const key = this.currentUser?.api_key || document.getElementById('user-api-key-input')?.value || 'API_ANAHTARINIZ';
+    const en = this.locale === 'en';
+    const kod = text => `<pre class="api-guide-code">${this.escapeHtml(text)}</pre>`;
+    const adim = (n, baslik, icerik) =>
+      `<div class="api-guide-step"><div class="api-guide-step-no">${n}</div><div><h4>${baslik}</h4>${icerik}</div></div>`;
+
+    const komutlar = [
+      {
+        ad: 'services',
+        tr: 'Satıştaki tüm servisleri listeler. Kendi sitenizde fiyat listesi göstermek için kullanılır.',
+        en: 'Lists every service on sale. Use it to show a price list on your own site.',
+        istek: `{\n  "key": "${key}",\n  "action": "services"\n}`,
+        yanit: `[\n  {\n    "service": 101,\n    "name": "Instagram Takipçi",\n    "rate": "12.50",\n    "min": 100,\n    "max": 50000,\n    "category": 3\n  }\n]`,
+        notTr: '<b>rate</b> = 1000 adet için ücret (TL). 250 adet için ücret: rate ÷ 1000 × 250.',
+        notEn: '<b>rate</b> = price per 1000 units (TRY). Price for 250 units: rate ÷ 1000 × 250.'
+      },
+      {
+        ad: 'balance',
+        tr: 'Panelimizdeki bakiyenizi gösterir. Sipariş göndermeden önce bakiye kontrolü için kullanın.',
+        en: 'Shows your balance on our panel. Check it before sending orders.',
+        istek: `{\n  "key": "${key}",\n  "action": "balance"\n}`,
+        yanit: `{\n  "balance": "1250.00",\n  "currency": "TRY"\n}`
+      },
+      {
+        ad: 'add',
+        tr: 'Yeni sipariş oluşturur. Bakiyeniz anında düşer ve sipariş sağlayıcıya iletilir.',
+        en: 'Creates a new order. Your balance is charged immediately and the order is sent to the provider.',
+        istek: `{\n  "key": "${key}",\n  "action": "add",\n  "service": 101,\n  "link": "https://instagram.com/kullaniciadi",\n  "quantity": 1000\n}`,
+        yanit: `{\n  "order": 1042\n}`,
+        notTr: 'Dönen <b>order</b> numarasını kaydedin — durum sorgulaması bu numarayla yapılır. Sağlayıcı siparişi kabul etmezse tutar aynı anda bakiyenize iade edilir ve <code>error</code> döner.',
+        notEn: 'Store the returned <b>order</b> number — status queries use it. If the provider rejects the order, the amount is refunded to your balance immediately and an <code>error</code> is returned.'
+      },
+      {
+        ad: 'status',
+        tr: 'Tek bir siparişin durumunu sorgular.',
+        en: 'Queries the status of a single order.',
+        istek: `{\n  "key": "${key}",\n  "action": "status",\n  "order": 1042\n}`,
+        yanit: `{\n  "status": "Processing",\n  "start_count": 250,\n  "remains": 750,\n  "charge": "12.50",\n  "currency": "TRY"\n}`
+      },
+      {
+        ad: 'status (toplu)',
+        tr: 'Tek istekte en fazla 100 siparişin durumunu sorgular. Sunucunuzu yormamak için tercih edin.',
+        en: 'Queries up to 100 orders in a single request. Prefer this to avoid hammering the API.',
+        istek: `{\n  "key": "${key}",\n  "action": "status",\n  "orders": "1042,1043,1044"\n}`,
+        yanit: `{\n  "1042": { "status": "Completed", "remains": 0, "charge": "12.50" },\n  "1043": { "status": "Processing", "remains": 500, "charge": "8.00" }\n}`
+      }
+    ];
+
+    const komutKarti = c => `
+      <div class="api-guide-cmd">
+        <div class="api-guide-cmd-head"><code>${c.ad}</code><span>${en ? c.en : c.tr}</span></div>
+        <div class="api-guide-cols">
+          <div><div class="api-guide-label">${en ? 'Request' : 'Gönderilen'}</div>${kod(c.istek)}</div>
+          <div><div class="api-guide-label">${en ? 'Response' : 'Gelen yanıt'}</div>${kod(c.yanit)}</div>
+        </div>
+        ${(en ? c.notEn : c.notTr) ? `<p class="api-guide-note">${en ? c.notEn : c.notTr}</p>` : ''}
+      </div>`;
+
+    const durumlar = [
+      ['Pending', 'Sipariş alındı, sağlayıcı henüz başlatmadı.', 'Order received, the provider has not started yet.'],
+      ['Processing', 'Teslimat sürüyor.', 'Delivery is in progress.'],
+      ['Completed', 'Tamamlandı.', 'Completed.'],
+      ['Partial', 'Kısmen teslim edildi; teslim edilmeyen kısmın ücreti iade edildi.', 'Partially delivered; the undelivered portion was refunded.'],
+      ['Canceled', 'İptal edildi, ücret iade edildi.', 'Canceled and refunded.']
+    ];
+
+    const php = `<?php
+$veri = [
+  "key"      => "${key}",
+  "action"   => "add",
+  "service"  => 101,
+  "link"     => "https://instagram.com/kullaniciadi",
+  "quantity" => 1000
+];
+
+$ch = curl_init("${base}");
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
+curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($veri));
+$yanit = json_decode(curl_exec($ch), true);
+curl_close($ch);
+
+if (isset($yanit["error"])) {
+  echo "Hata: " . $yanit["error"];
+} else {
+  echo "Sipariş numarası: " . $yanit["order"];
+}`;
+
+    const js = `const yanit = await fetch("${base}", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    key: "${key}",
+    action: "add",
+    service: 101,
+    link: "https://instagram.com/kullaniciadi",
+    quantity: 1000
+  })
+});
+const sonuc = await yanit.json();
+if (sonuc.error) console.error("Hata:", sonuc.error);
+else console.log("Sipariş numarası:", sonuc.order);`;
+
+    const python = `import requests
+
+yanit = requests.post("${base}", json={
+    "key": "${key}",
+    "action": "add",
+    "service": 101,
+    "link": "https://instagram.com/kullaniciadi",
+    "quantity": 1000
+})
+sonuc = yanit.json()
+print(sonuc.get("error") or sonuc.get("order"))`;
+
+    const hatalar = [
+      ['Invalid API Key', 'Anahtar yanlış, boşluk içeriyor veya yenilendiği için eskisi geçersiz.', 'The key is wrong, contains spaces, or was replaced by a regenerated key.'],
+      ['Invalid action', 'action alanı yazım hatalı. Geçerli değerler: services, balance, add, status.', 'The action field is misspelled. Valid values: services, balance, add, status.'],
+      ['Invalid parameters', 'quantity sayı değil ya da link boş.', 'quantity is not a number, or link is empty.'],
+      ['Not enough balance', 'Bakiyeniz yetersiz. Önce bakiye yükleyin.', 'Insufficient balance. Add funds first.'],
+      ['Order not found', 'Sipariş numarası size ait değil veya hiç oluşmamış.', 'The order number does not belong to you or was never created.']
+    ];
+
+    return `
+      <p class="api-guide-lead">${en
+        ? 'This API lets you place orders on our panel automatically from your own website or panel — no manual entry. Everything below works with a single address and a single key.'
+        : 'Bu API, kendi sitenizden veya panelinizden bizim panele otomatik sipariş göndermenizi sağlar; elle giriş yapmanıza gerek kalmaz. Aşağıdaki her şey tek bir adres ve tek bir anahtarla çalışır.'}</p>
+
+      <div class="api-guide-box">
+        <div class="api-guide-label">${en ? 'Your API address' : 'API adresiniz'}</div>
+        <code class="api-guide-url">${this.escapeHtml(base)}</code>
+        <p class="api-guide-note">${en
+          ? 'Every command goes to this same address with the <b>POST</b> method and <code>Content-Type: application/json</code>. Only the <b>action</b> field changes.'
+          : 'Bütün komutlar bu aynı adrese <b>POST</b> yöntemiyle ve <code>Content-Type: application/json</code> başlığıyla gider. Sadece <b>action</b> alanı değişir.'}</p>
+      </div>
+
+      <h3 class="api-guide-h">${en ? 'Getting started in 3 steps' : '3 adımda başlayın'}</h3>
+      ${adim(1,
+      en ? 'Get your API key' : 'API anahtarınızı alın',
+      `<p>${en
+        ? 'On this page, use the <b>Create API Key</b> button in the API key card. You can also see it under Profile. Treat it like a password — anyone holding it can spend your balance.'
+        : 'Bu sayfadaki API anahtarı kartında <b>API Anahtarı Oluştur</b> düğmesini kullanın. Profilim sayfasından da görebilirsiniz. Bu anahtarı şifreniz gibi saklayın — eline geçen kişi bakiyenizi harcayabilir.'}</p>`)}
+      ${adim(2,
+      en ? 'Load funds' : 'Bakiye yükleyin',
+      `<p>${en
+        ? 'Orders are charged from your panel balance at the moment they are created. Without balance, the add command returns "Not enough balance".'
+        : 'Siparişler oluşturulduğu anda panel bakiyenizden düşülür. Bakiye yoksa add komutu "Not enough balance" hatası verir.'}</p>`)}
+      ${adim(3,
+      en ? 'Fetch the service list and note the IDs' : 'Servis listesini çekin ve numaraları not edin',
+      `<p>${en
+        ? 'Run the <code>services</code> command once and store the <b>service</b> numbers. You need that number when placing an order. Service numbers can change over time, so refresh the list periodically.'
+        : '<code>services</code> komutunu bir kez çalıştırıp <b>service</b> numaralarını kaydedin. Sipariş verirken bu numara gerekir. Servis numaraları zamanla değişebilir, listeyi ara ara yenileyin.'}</p>`)}
+
+      <h3 class="api-guide-h">${en ? 'Command reference' : 'Komut sözlüğü'}</h3>
+      ${komutlar.map(komutKarti).join('')}
+
+      <h3 class="api-guide-h">${en ? 'What the statuses mean' : 'Durumlar ne anlama geliyor'}</h3>
+      <table class="api-guide-table">
+        <tbody>${durumlar.map(([d, tr, ing]) =>
+      `<tr><td><code>${d}</code></td><td>${en ? ing : tr}</td></tr>`).join('')}</tbody>
+      </table>
+
+      <h3 class="api-guide-h">${en ? 'Ready-to-use code' : 'Hazır kod örnekleri'}</h3>
+      <div class="api-guide-label">PHP (cURL)</div>${kod(php)}
+      <div class="api-guide-label">JavaScript (fetch)</div>${kod(js)}
+      <div class="api-guide-label">Python (requests)</div>${kod(python)}
+
+      <h3 class="api-guide-h">${en ? 'Error messages' : 'Hata mesajları'}</h3>
+      <table class="api-guide-table">
+        <tbody>${hatalar.map(([e, tr, ing]) =>
+      `<tr><td><code>${e}</code></td><td>${en ? ing : tr}</td></tr>`).join('')}</tbody>
+      </table>
+      <p class="api-guide-note">${en
+        ? 'Note: errors are returned with HTTP status 200 and an <code>error</code> field in the body — this is the standard SMM API convention. Always check for <code>error</code> before reading <code>order</code>.'
+        : 'Not: hatalar HTTP 200 durumuyla ve gövdede <code>error</code> alanıyla döner — bu, SMM API standardının gereğidir. <code>order</code> alanını okumadan önce mutlaka <code>error</code> var mı diye bakın.'}</p>
+
+      <div class="api-guide-warn">
+        <b>${en ? 'Security' : 'Güvenlik'}</b><br>
+        ${en
+        ? '• Never put the key in front-end JavaScript that visitors can view — call the API from your own server.<br>• If the key leaks, press <b>Regenerate</b> right away; the old key stops working instantly.<br>• Do not query <code>status</code> more often than once a minute; use the bulk form for many orders.'
+        : '• Anahtarı ziyaretçilerin görebileceği tarayıcı tarafı koda koymayın — API çağrısını kendi sunucunuzdan yapın.<br>• Anahtar sızarsa hemen <b>Yenile</b> deyin; eski anahtar anında çalışmayı durdurur.<br>• <code>status</code> sorgusunu dakikada birden sık yapmayın; çok sipariş için toplu biçimi kullanın.'}
+      </div>`;
+  }
+
+  // --- API ANAHTARI YONETIMI -------------------------------------------------
+
+  async loadApiKey() {
+    const goster = (id, show) => { const el = document.getElementById(id); if (el) el.style.display = show ? 'block' : 'none'; };
+    if (!this.currentUser) {
+      goster('api-key-guest', true);
+      goster('api-key-empty', false);
+      goster('api-key-ready', false);
+      return;
+    }
+    goster('api-key-guest', false);
+    try {
+      const data = await API.getApiKey();
+      this.applyApiKey(data.api_key, data.created_at);
+    } catch (err) {
+      console.error('API key could not be loaded:', err.message);
+    }
+  }
+
+  applyApiKey(apiKey, createdAt) {
+    const goster = (id, show) => { const el = document.getElementById(id); if (el) el.style.display = show ? 'block' : 'none'; };
+    const varMi = Boolean(apiKey);
+    goster('api-key-empty', !varMi);
+    goster('api-key-ready', varMi);
+    goster('profile-api-empty', !varMi);
+    goster('profile-api-ready', varMi);
+    if (!varMi) return;
+
+    for (const id of ['user-api-key-input', 'profile-api-key-input']) {
+      const input = document.getElementById(id);
+      if (input) input.value = apiKey;
+    }
+    const not = createdAt
+      ? this.ui(`Oluşturulma: ${new Date(createdAt).toLocaleString('tr-TR')}`,
+        `Created: ${new Date(createdAt).toLocaleString('en-GB')}`)
+      : '';
+    for (const id of ['api-key-created-note', 'profile-api-created-note']) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = not;
+    }
+  }
+
+  async createApiKey(regenerate = false) {
+    if (!this.currentUser) { this.showAuthModal('login'); return; }
+    if (regenerate) {
+      const onay = await confirmDialog(this.ui(
+        'Yeni bir anahtar üretilecek ve ESKİ ANAHTAR ÇALIŞMAYI DURDURACAK. Sitenizde eski anahtarı kullanan entegrasyon varsa hemen güncellemeniz gerekir.',
+        'A new key will be generated and THE OLD KEY WILL STOP WORKING. If your site uses the old key, you must update it immediately.'
+      ), {
+        title: this.ui('API anahtarını yenile', 'Regenerate API key'),
+        danger: true,
+        confirmText: this.ui('Yenile', 'Regenerate')
+      });
+      if (!onay) return;
+    }
+    try {
+      const res = await API.createApiKey(regenerate);
+      this.applyApiKey(res.api_key, new Date().toISOString());
+      if (this.currentUser) this.currentUser.api_key = res.api_key;
+      showToast(this.locale === 'en' ? res.message_en : res.message, 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  // === MÜŞTERİ YORUMLARI =====================================================
+  // Onayli yorumlar /api/services yanitindan gelir (this.reviews). Ana sayfada
+  // kayan serit, hizmetler sayfasinda kart dizilimi olarak gosterilir.
+
+  reviewStars(rating) {
+    const r = Math.max(1, Math.min(5, Number(rating) || 5));
+    return '★'.repeat(r) + '☆'.repeat(5 - r);
+  }
+
+  reviewCardHtml(review) {
+    return `<div class="review-card">
+      <div class="review-stars" aria-label="${review.rating}/5">${this.reviewStars(review.rating)}</div>
+      <p>${this.escapeHtml(review.comment)}</p>
+      <strong>${this.escapeHtml(review.name)}</strong>
+    </div>`;
+  }
+
+  renderReviewsTicker() {
+    const kutu = document.getElementById('reviews-ticker');
+    const serit = document.getElementById('reviews-ticker-track');
+    if (!kutu || !serit) return;
+    const yorumlar = this.reviews || [];
+    if (!yorumlar.length) { kutu.style.display = 'none'; return; }
+    // Kesintisiz dongu icin icerik iki kez basilir (CSS animasyonu %50 kaydirir).
+    const kartlar = yorumlar.map(r => this.reviewCardHtml(r)).join('');
+    serit.innerHTML = kartlar + kartlar;
+    kutu.style.display = '';
+  }
+
+  renderServicesReviews() {
+    const kutu = document.getElementById('services-reviews');
+    const izgara = document.getElementById('services-reviews-grid');
+    if (!kutu || !izgara) return;
+    const yorumlar = (this.reviews || []).slice(0, 9);
+    if (!yorumlar.length) { kutu.style.display = 'none'; return; }
+    izgara.innerHTML = yorumlar.map(r => this.reviewCardHtml(r)).join('');
+    kutu.style.display = '';
+  }
+
+  async submitReview() {
+    const puan = document.getElementById('review-rating')?.value;
+    const yorum = document.getElementById('review-comment')?.value?.trim();
+    const buton = document.getElementById('review-submit-btn');
+    if (!yorum || yorum.length < 10) {
+      showToast(this.ui('Yorum en az 10 karakter olmalı.', 'Review must be at least 10 characters.'), 'warning');
+      return;
+    }
+    if (buton) buton.disabled = true;
+    try {
+      const res = await API.submitReview(Number(puan), yorum);
+      showToast(res.message, 'success');
+      const kart = document.getElementById('review-invite-card');
+      if (kart) kart.style.display = 'none';
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      if (buton) buton.disabled = false;
+    }
+  }
+
+  // --- Admin yorum denetimi ---
+  async loadAdminReviews() {
+    const tbody = document.getElementById('admin-reviews-tbody');
+    if (!tbody) return;
+    try {
+      const res = await API.getAdminReviews();
+      const yorumlar = res.reviews || [];
+      const bekleyen = yorumlar.filter(r => r.status === 'pending').length;
+      const sayac = document.getElementById('admin-nav-reviews-count');
+      if (sayac) sayac.textContent = bekleyen ? String(bekleyen) : '';
+      if (!yorumlar.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center">Henüz yorum yok. Üstteki formdan elle ekleyebilirsin.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = yorumlar.map(r => {
+        const ad = r.display_name || r.username || '-';
+        const durum = r.status === 'approved'
+          ? '<span class="badge badge-completed">Yayında</span>'
+          : '<span class="badge badge-pending">Bekliyor</span>';
+        const islem = r.status === 'approved'
+          ? `<button class="btn btn-outline btn-sm" onclick="app.setReviewStatus(${r.id}, 'pending')">Yayından Al</button>`
+          : `<button class="btn btn-primary btn-sm" onclick="app.setReviewStatus(${r.id}, 'approved')">Onayla</button>`;
+        return `<tr>
+          <td>#${r.id}</td>
+          <td>${this.escapeHtml(ad)}</td>
+          <td title="${r.rating}/5">${this.reviewStars(r.rating)}</td>
+          <td style="max-width: 380px; white-space: normal;">${this.escapeHtml(r.comment)}</td>
+          <td>${durum}</td>
+          <td>${new Date(r.created_at).toLocaleDateString('tr-TR')}</td>
+          <td style="text-align: right; white-space: nowrap;">${islem}
+            <button class="btn btn-outline btn-sm" title="Sil" onclick="app.deleteReview(${r.id})"><i class="fa-solid fa-trash"></i></button>
+          </td>
+        </tr>`;
+      }).join('');
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center">${this.escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+
+  async addAdminReview() {
+    const ad = document.getElementById('admin-review-name')?.value?.trim();
+    const puan = document.getElementById('admin-review-rating')?.value;
+    const yorum = document.getElementById('admin-review-comment')?.value?.trim();
+    try {
+      const res = await API.addAdminReview(ad, Number(puan), yorum);
+      showToast(res.message, 'success');
+      document.getElementById('admin-review-name').value = '';
+      document.getElementById('admin-review-comment').value = '';
+      await this.loadAdminReviews();
+      await this.loadServicesData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async setReviewStatus(id, status) {
+    try {
+      const res = await API.setAdminReviewStatus(id, status);
+      showToast(res.message, 'success');
+      await this.loadAdminReviews();
+      await this.loadServicesData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async deleteReview(id) {
+    if (!window.confirm('Bu yorum kalıcı olarak silinsin mi?')) return;
+    try {
+      const res = await API.deleteAdminReview(id);
+      showToast(res.message, 'success');
+      await this.loadAdminReviews();
+      await this.loadServicesData();
+    } catch (err) {
+      showToast(err.message, 'error');
     }
   }
 
@@ -2963,6 +5682,46 @@ class SmmApp {
     const ticketLink = document.getElementById('tickets-telegram-link');
     if (floatBtn) floatBtn.href = cleanLink;
     if (ticketLink) ticketLink.href = cleanLink;
+    const social = document.querySelector('#footer-social-links a[rel~="me"]');
+    if (social) social.href = cleanLink;
+  }
+
+  /**
+   * Hakkimizda sayfasindaki fiziksel adres satiri. Admin panelde adres
+   * girilmediyse satir hic basilmaz — uydurma adres guven sinyali degil,
+   * yanlis bilgidir.
+   */
+  renderBusinessAddress(settings = {}) {
+    const alan = document.getElementById('about-business-address');
+    if (!alan) return;
+    const adres = String(settings.business_address || '').trim();
+    alan.textContent = adres ? `Adres: ${adres}` : '';
+    alan.style.display = adres ? '' : 'none';
+  }
+
+  /**
+   * Alt bilgideki sosyal profil baglantilari. Admin panelde adres girilen
+   * kanallar eklenir; Telegram HTML'de hazir durdugu icin burada yinelenmez.
+   */
+  renderSocialLinks(settings = {}) {
+    const liste = document.getElementById('footer-social-links');
+    if (!liste) return;
+    const kanallar = [
+      { key: 'social_instagram', icon: 'fa-instagram', ad: 'Instagram' },
+      { key: 'social_x', icon: 'fa-x-twitter', ad: 'X' },
+      { key: 'social_youtube', icon: 'fa-youtube', ad: 'YouTube' },
+      { key: 'social_tiktok', icon: 'fa-tiktok', ad: 'TikTok' }
+    ];
+    for (const kanal of kanallar) {
+      let adres = String(settings[kanal.key] || '').trim();
+      // "instagram.com/x" gibi http'siz girilen adresler de kabul edilir.
+      if (adres && !adres.startsWith('http') && adres.includes('.')) adres = `https://${adres}`;
+      if (!adres || !adres.startsWith('http')) continue;
+      if (liste.querySelector(`[data-social="${kanal.key}"]`)) continue;
+      const li = document.createElement('li');
+      li.innerHTML = `<a data-social="${kanal.key}" href="${this.escapeHtml(adres)}" target="_blank" rel="me noopener noreferrer" aria-label="${kanal.ad} profilimiz"><i class="fa-brands ${kanal.icon}" aria-hidden="true"></i><span class="sr-only">${kanal.ad}</span></a>`;
+      liste.appendChild(li);
+    }
   }
 
   async loadAdminSettings() {
@@ -2973,15 +5732,56 @@ class SmmApp {
       if (document.getElementById('setting-currency')) document.getElementById('setting-currency').value = s.currency || '₺';
       if (document.getElementById('setting-announcement-tr')) document.getElementById('setting-announcement-tr').value = s.announcement_tr || s.announcement || '';
       if (document.getElementById('setting-announcement-en')) document.getElementById('setting-announcement-en').value = s.announcement_en || '';
+      if (document.getElementById('setting-announcement-special')) document.getElementById('setting-announcement-special').checked = s.announcement_special === '1';
       if (document.getElementById('setting-hero-title-tr')) document.getElementById('setting-hero-title-tr').value = s.hero_title_tr || s.hero_title || '';
       if (document.getElementById('setting-hero-title-en')) document.getElementById('setting-hero-title-en').value = s.hero_title_en || '';
       if (document.getElementById('setting-hero-subtitle-tr')) document.getElementById('setting-hero-subtitle-tr').value = s.hero_subtitle_tr || s.hero_subtitle || '';
       if (document.getElementById('setting-hero-subtitle-en')) document.getElementById('setting-hero-subtitle-en').value = s.hero_subtitle_en || '';
       if (document.getElementById('setting-usd-try-rate')) document.getElementById('setting-usd-try-rate').value = s.usd_try_rate || '';
       if (document.getElementById('setting-telegram')) document.getElementById('setting-telegram').value = s.telegram_link || 'https://t.me/SmmPanelDestek';
+      if (document.getElementById('setting-blog-author-name')) document.getElementById('setting-blog-author-name').value = s.blog_author_name || '';
+      if (document.getElementById('setting-blog-author-title')) document.getElementById('setting-blog-author-title').value = s.blog_author_title || '';
+      if (document.getElementById('setting-blog-author-url')) document.getElementById('setting-blog-author-url').value = s.blog_author_url || '';
+      if (document.getElementById('setting-telegram-bot-token')) document.getElementById('setting-telegram-bot-token').value = s.telegram_bot_token || '';
+      if (document.getElementById('setting-telegram-chat-id')) document.getElementById('setting-telegram-chat-id').value = s.telegram_chat_id || '';
+      // Ayar hic kaydedilmemisse bildirimler acik kabul edilir (sunucuyla ayni varsayilan).
+      if (document.getElementById('setting-telegram-notify-register')) document.getElementById('setting-telegram-notify-register').checked = s.telegram_notify_register !== '0';
+      if (document.getElementById('setting-telegram-notify-order')) document.getElementById('setting-telegram-notify-order').checked = s.telegram_notify_order !== '0';
+      if (document.getElementById('setting-telegram-notify-payment')) document.getElementById('setting-telegram-notify-payment').checked = s.telegram_notify_payment !== '0';
       if (document.getElementById('setting-paytr-id')) document.getElementById('setting-paytr-id').value = s.paytr_merchant_id || '';
       if (document.getElementById('setting-paytr-key')) document.getElementById('setting-paytr-key').value = s.paytr_merchant_key || '';
       if (document.getElementById('setting-paytr-salt')) document.getElementById('setting-paytr-salt').value = s.paytr_merchant_salt || '';
+      if (document.getElementById('setting-bank-accounts')) document.getElementById('setting-bank-accounts').value = s.bank_accounts || '';
+      if (document.getElementById('setting-provider-threshold')) document.getElementById('setting-provider-threshold').value = s.provider_balance_threshold || '';
+      if (document.getElementById('setting-nowpayments-key')) document.getElementById('setting-nowpayments-key').value = s.nowpayments_api_key || '';
+      if (document.getElementById('setting-nowpayments-ipn')) document.getElementById('setting-nowpayments-ipn').value = s.nowpayments_ipn_secret || '';
+      if (document.getElementById('setting-telegram-notify-ticket')) document.getElementById('setting-telegram-notify-ticket').checked = s.telegram_notify_ticket !== '0';
+      // SEO & analitik
+      if (document.getElementById('setting-ga-id')) document.getElementById('setting-ga-id').value = s.google_analytics_id || '';
+      if (document.getElementById('setting-gsc-verification')) document.getElementById('setting-gsc-verification').value = s.google_site_verification || '';
+      if (document.getElementById('setting-bing-verification')) document.getElementById('setting-bing-verification').value = s.bing_site_verification || '';
+      // Adresler tam haliyle gosterilir; admin kopyalayip arama motoruna yapistirir.
+      const sitemapEl = document.getElementById('seo-sitemap-url');
+      if (sitemapEl) sitemapEl.textContent = `${window.location.origin}/sitemap.xml`;
+      const bingSitemapEl = document.getElementById('bing-sitemap-url');
+      if (bingSitemapEl) bingSitemapEl.textContent = `${window.location.origin}/sitemap.xml`;
+      const bingAuthEl = document.getElementById('bing-auth-url');
+      if (bingAuthEl) bingAuthEl.textContent = `${window.location.origin}/BingSiteAuth.xml`;
+      // SMTP
+      if (document.getElementById('setting-smtp-host')) document.getElementById('setting-smtp-host').value = s.smtp_host || '';
+      if (document.getElementById('setting-smtp-port')) document.getElementById('setting-smtp-port').value = s.smtp_port || '';
+      if (document.getElementById('setting-smtp-secure')) document.getElementById('setting-smtp-secure').checked = s.smtp_secure === '1';
+      if (document.getElementById('setting-smtp-user')) document.getElementById('setting-smtp-user').value = s.smtp_user || '';
+      if (document.getElementById('setting-smtp-pass')) document.getElementById('setting-smtp-pass').value = s.smtp_pass || '';
+      if (document.getElementById('setting-mail-from')) document.getElementById('setting-mail-from').value = s.mail_from || '';
+
+      // Sosyal profiller ve isletme bilgisi
+      if (document.getElementById('setting-social-instagram')) document.getElementById('setting-social-instagram').value = s.social_instagram || '';
+      if (document.getElementById('setting-social-x')) document.getElementById('setting-social-x').value = s.social_x || '';
+      if (document.getElementById('setting-social-youtube')) document.getElementById('setting-social-youtube').value = s.social_youtube || '';
+      if (document.getElementById('setting-social-tiktok')) document.getElementById('setting-social-tiktok').value = s.social_tiktok || '';
+      if (document.getElementById('setting-support-email')) document.getElementById('setting-support-email').value = s.support_email || '';
+      if (document.getElementById('setting-business-address')) document.getElementById('setting-business-address').value = s.business_address || '';
 
       this.updateTelegramLinks(s.telegram_link || 'https://t.me/SmmPanelDestek');
     } catch (err) {
@@ -2996,15 +5796,48 @@ class SmmApp {
       currency: document.getElementById('setting-currency').value,
       announcement_tr: document.getElementById('setting-announcement-tr').value,
       announcement_en: document.getElementById('setting-announcement-en').value,
+      announcement_special: document.getElementById('setting-announcement-special').checked ? '1' : '0',
       hero_title_tr: document.getElementById('setting-hero-title-tr').value,
       hero_title_en: document.getElementById('setting-hero-title-en').value,
       hero_subtitle_tr: document.getElementById('setting-hero-subtitle-tr').value,
       hero_subtitle_en: document.getElementById('setting-hero-subtitle-en').value,
       usd_try_rate: document.getElementById('setting-usd-try-rate').value,
       telegram_link: document.getElementById('setting-telegram').value,
+      telegram_bot_token: document.getElementById('setting-telegram-bot-token').value.trim(),
+      telegram_chat_id: document.getElementById('setting-telegram-chat-id').value.trim(),
+      // Sunucu ayar degerlerini metne cevirdigi icin boolean yerine '1'/'0' gonderilir.
+      telegram_notify_register: document.getElementById('setting-telegram-notify-register').checked ? '1' : '0',
+      telegram_notify_order: document.getElementById('setting-telegram-notify-order').checked ? '1' : '0',
+      telegram_notify_payment: document.getElementById('setting-telegram-notify-payment').checked ? '1' : '0',
       paytr_merchant_id: document.getElementById('setting-paytr-id').value,
       paytr_merchant_key: document.getElementById('setting-paytr-key').value,
-      paytr_merchant_salt: document.getElementById('setting-paytr-salt').value
+      paytr_merchant_salt: document.getElementById('setting-paytr-salt').value,
+      bank_accounts: document.getElementById('setting-bank-accounts').value,
+      provider_balance_threshold: document.getElementById('setting-provider-threshold').value.trim(),
+      nowpayments_api_key: document.getElementById('setting-nowpayments-key').value.trim(),
+      nowpayments_ipn_secret: document.getElementById('setting-nowpayments-ipn').value.trim(),
+      telegram_notify_ticket: document.getElementById('setting-telegram-notify-ticket').checked ? '1' : '0',
+      google_analytics_id: document.getElementById('setting-ga-id').value.trim(),
+      google_site_verification: document.getElementById('setting-gsc-verification').value.trim(),
+      bing_site_verification: document.getElementById('setting-bing-verification').value.trim(),
+      smtp_host: document.getElementById('setting-smtp-host').value.trim(),
+      smtp_port: document.getElementById('setting-smtp-port').value.trim(),
+      smtp_secure: document.getElementById('setting-smtp-secure').checked ? '1' : '0',
+      smtp_user: document.getElementById('setting-smtp-user').value.trim(),
+      smtp_pass: document.getElementById('setting-smtp-pass').value,
+      mail_from: document.getElementById('setting-mail-from').value.trim(),
+      // Guven sinyalleri: sosyal profiller + fiziksel adres (alt bilgi ve
+      // Organization yapisal verisi bunlardan beslenir).
+      social_instagram: document.getElementById('setting-social-instagram')?.value.trim() || '',
+      social_x: document.getElementById('setting-social-x')?.value.trim() || '',
+      social_youtube: document.getElementById('setting-social-youtube')?.value.trim() || '',
+      social_tiktok: document.getElementById('setting-social-tiktok')?.value.trim() || '',
+      support_email: document.getElementById('setting-support-email')?.value.trim() || '',
+      business_address: document.getElementById('setting-business-address')?.value.trim() || '',
+      // Blog yazari: gorunur imza + Person yapisal verisi (E-E-A-T).
+      blog_author_name: document.getElementById('setting-blog-author-name')?.value.trim() || '',
+      blog_author_title: document.getElementById('setting-blog-author-title')?.value.trim() || '',
+      blog_author_url: document.getElementById('setting-blog-author-url')?.value.trim() || ''
     };
 
     try {
@@ -3013,12 +5846,68 @@ class SmmApp {
         const textEl = document.getElementById('announcement-text');
         if (textEl) textEl.innerText = this.locale === 'en' ? settingsObj.announcement_en : settingsObj.announcement_tr;
       }
+      // Acilis modu degisikligi kaydeder kaydetmez bantta gorunur.
+      document.getElementById('announcement-bar')?.classList.toggle('announcement-launch', settingsObj.announcement_special === '1');
       if (settingsObj.telegram_link) {
         this.updateTelegramLinks(settingsObj.telegram_link);
       }
       showToast(res.message, 'success');
     } catch (err) {
       showToast(`Hata: ${err.message}`, 'error');
+    }
+  }
+
+  toggleSecretField(fieldId, button) {
+    const field = document.getElementById(fieldId);
+    if (!field) return;
+    const revealed = field.type === 'text';
+    field.type = revealed ? 'password' : 'text';
+    button?.querySelector('i')?.classList.replace(
+      revealed ? 'fa-eye-slash' : 'fa-eye',
+      revealed ? 'fa-eye' : 'fa-eye-slash'
+    );
+  }
+
+  // Kayitli SMTP ayarlariyla test maili atar; hedef alani bossa admin'in
+  // kendi adresine gider.
+  async sendEmailTest() {
+    try {
+      const target = document.getElementById('email-test-target')?.value.trim() || null;
+      const res = await API.sendEmailTest(target);
+      showToast(res.message, 'success');
+    } catch (err) {
+      showToast(`E-posta testi başarısız: ${err.message}`, 'error');
+    }
+  }
+
+  // Test ve Chat ID bulma, kaydedilmis ayarlar uzerinden calisir; bu yuzden
+  // once formdaki degerlerin kaydedilmis olmasi gerekir.
+  async sendTelegramTest() {
+    try {
+      const res = await API.sendTelegramTest();
+      showToast(res.message, 'success');
+    } catch (err) {
+      showToast(`Telegram testi başarısız: ${err.message}`, 'error');
+    }
+  }
+
+  async findTelegramChatId() {
+    try {
+      const res = await API.getTelegramChats();
+      const chats = res.chats || [];
+      if (!chats.length) {
+        showToast('Sohbet bulunamadı. Telegram\'dan botunuza bir mesaj (örn. /start) yazıp tekrar deneyin.', 'warning');
+        return;
+      }
+      const field = document.getElementById('setting-telegram-chat-id');
+      if (field) field.value = chats[0].id;
+      const others = chats.slice(1).map(chat => `${chat.title}: ${chat.id}`).join(' • ');
+      showToast(
+        `Chat ID dolduruldu: ${chats[0].title} (${chats[0].id}).${others ? ` Diğer sohbetler → ${others}` : ''} Kaydetmeyi unutmayın.`,
+        'success'
+      );
+    } catch (err) {
+      showToast(`Chat ID bulunamadı: ${err.message}`, 'error');
     }
   }
 
@@ -3105,6 +5994,9 @@ class SmmApp {
   }
 
   // --- BLOG METHODS ---
+  // Liste sayfa sayfa gosterilir: sayfa basina 15 kart + numarali gecis.
+  get blogPageSize() { return 15; }
+
   async loadBlogPosts() {
     const container = document.getElementById('public-blog-cards');
     if (!container) return;
@@ -3115,27 +6007,62 @@ class SmmApp {
         container.innerHTML = `<div class="text-center" style="grid-column: 1/-1; color: var(--text-muted);">${this.t('no_blog')}</div>`;
         return;
       }
-
-      container.innerHTML = res.posts.map(p => `
-        <div class="blog-card glass-card">
-          <img src="${this.escapeHtml(p.image_url || 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&q=80')}" class="blog-card-img" alt="${this.escapeHtml(p.title)}">
-          <div style="padding: 20px;">
-            <span class="badge badge-completed mb-10">${this.escapeHtml(p.category || this.ui('Rehber', 'Guide'))}</span>
-            <h3 style="font-size: 1.1rem; margin-bottom: 8px; color: #fff; font-weight: 700;">${this.escapeHtml(p.title)}</h3>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">${this.escapeHtml(p.summary || '')}</p>
-            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-glass); padding-top: 12px;">
-              <span style="font-size: 0.78rem; color: var(--text-dim);">${new Date(p.published_at || p.created_at).toLocaleDateString(this.locale === 'en' ? 'en-US' : 'tr-TR')}</span>
-              <button class="btn btn-outline btn-sm" onclick="app.loadBlogPostDetail('${encodeURIComponent(p.slug)}')">${this.t('read_more')} <i class="fa-solid fa-arrow-right"></i></button>
-            </div>
-          </div>
-        </div>
-      `).join('');
+      this.allBlogPosts = res.posts;
+      this.blogPage = 1;
+      this.renderBlogPage();
     } catch (err) {
       console.error('Failed to load blog posts:', err);
     }
   }
 
-  async loadBlogPostDetail(slug) {
+  renderBlogPage() {
+    const container = document.getElementById('public-blog-cards');
+    if (!container || !this.allBlogPosts) return;
+    const boyut = this.blogPageSize;
+    const toplamSayfa = Math.max(1, Math.ceil(this.allBlogPosts.length / boyut));
+    this.blogPage = Math.min(Math.max(1, this.blogPage || 1), toplamSayfa);
+    const posts = this.allBlogPosts.slice((this.blogPage - 1) * boyut, this.blogPage * boyut);
+
+    container.innerHTML = posts.map(p => `
+      <div class="blog-card glass-card">
+        <img src="${this.escapeHtml(p.image_url || 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&q=80')}" class="blog-card-img" alt="${this.escapeHtml(p.title)}" loading="lazy">
+        <div style="padding: 20px;">
+          <span class="badge badge-completed mb-10">${this.escapeHtml(p.category || this.ui('Rehber', 'Guide'))}</span>
+          <h3 style="font-size: 1.1rem; margin-bottom: 8px; color: #fff; font-weight: 700;">${this.escapeHtml(p.title)}</h3>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">${this.escapeHtml(p.summary || '')}</p>
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-glass); padding-top: 12px;">
+            <span style="font-size: 0.78rem; color: var(--text-dim);">${new Date(p.published_at || p.created_at).toLocaleDateString(this.locale === 'en' ? 'en-US' : 'tr-TR')}</span>
+            <button class="btn btn-outline btn-sm" onclick="app.loadBlogPostDetail('${encodeURIComponent(p.slug)}')">${this.t('read_more')} <i class="fa-solid fa-arrow-right"></i></button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    // Sayfa numaralari: tek sayfa varsa hic gosterilmez.
+    const sayfalama = document.getElementById('blog-pagination');
+    if (sayfalama) {
+      if (toplamSayfa <= 1) {
+        sayfalama.innerHTML = '';
+      } else {
+        const dugmeler = [];
+        if (this.blogPage > 1) dugmeler.push(`<button class="btn btn-outline btn-sm" onclick="app.goBlogPage(${this.blogPage - 1})" aria-label="${this.ui('Önceki sayfa', 'Previous page')}">‹</button>`);
+        for (let i = 1; i <= toplamSayfa; i++) {
+          dugmeler.push(`<button class="btn ${i === this.blogPage ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="app.goBlogPage(${i})" ${i === this.blogPage ? 'aria-current="page"' : ''}>${i}</button>`);
+        }
+        if (this.blogPage < toplamSayfa) dugmeler.push(`<button class="btn btn-outline btn-sm" onclick="app.goBlogPage(${this.blogPage + 1})" aria-label="${this.ui('Sonraki sayfa', 'Next page')}">›</button>`);
+        sayfalama.innerHTML = dugmeler.join('');
+      }
+    }
+  }
+
+  goBlogPage(sayfa) {
+    this.blogPage = sayfa;
+    this.renderBlogPage();
+    // Yeni sayfada liste basindan baslanir.
+    document.getElementById('view-blog')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async loadBlogPostDetail(slug, push = true) {
     this.currentBlogSlug = slug;
     try {
       const res = await API.getBlogPostDetail(slug, this.locale);
@@ -3144,7 +6071,12 @@ class SmmApp {
 
       document.getElementById('blog-detail-category').innerText = post.category || this.ui('Rehber', 'Guide');
       document.getElementById('blog-detail-title').innerText = post.title;
-      document.getElementById('blog-detail-date').innerText = `${new Date(post.published_at || post.created_at).toLocaleDateString(this.locale === 'en' ? 'en-US' : 'tr-TR')} • ${post.reading_minutes || 3} ${this.locale === 'en' ? 'min read' : 'dk okuma'}`;
+      const yazarImza = this.blogAuthorName || `${this.siteName || 'Jet SMM Panel'} ${this.locale === 'en' ? 'Editorial Team' : 'Editör Ekibi'}`;
+      // Yazar profili tanimliysa imza tiklanabilir (admin ayari blog_author_url).
+      const yazarHtml = this.blogAuthorName && this.blogAuthorUrl && this.blogAuthorUrl.startsWith('http')
+        ? `<a href="${this.escapeHtml(this.blogAuthorUrl)}" target="_blank" rel="me noopener noreferrer" style="color: inherit; text-decoration: underline;">${this.escapeHtml(yazarImza)}</a>`
+        : this.escapeHtml(yazarImza);
+      document.getElementById('blog-detail-date').innerHTML = `${yazarHtml} • ${new Date(post.published_at || post.created_at).toLocaleDateString(this.locale === 'en' ? 'en-US' : 'tr-TR')} • ${post.reading_minutes || 3} ${this.locale === 'en' ? 'min read' : 'dk okuma'}`;
       
       const img = document.getElementById('blog-detail-img');
       if (post.image_url) {
@@ -3157,8 +6089,11 @@ class SmmApp {
       const content = document.getElementById('blog-detail-content');
       content.innerHTML = post.content || post.summary || '';
       this.bindBlogInternalLinks(content);
-      this.navigate('blog-detail');
-      window.location.hash = `blog/${encodeURIComponent(slug)}`;
+      this.navigate('blog-detail', false);
+      if (push) history.pushState({ view: 'blog-detail' }, '', `/blog/${encodeURIComponent(slug)}`);
+      // Adres pushState'ten SONRA kesinlestigi icin paylasim baglantilari
+      // burada guncellenir.
+      this.updateShareLinks(post.title);
     } catch (err) {
       showToast(`Hata: ${err.message}`, 'error');
     }
@@ -3195,7 +6130,7 @@ class SmmApp {
     if (country) country.value = 'all';
     if (search) search.value = serviceId ? String(serviceId) : '';
     this.filterServicesTable(1);
-    if (updateHash) window.location.hash = serviceId ? `services?service=${serviceId}` : 'services';
+    if (updateHash) history.pushState({ view: 'services' }, '', serviceId ? `/services?service=${serviceId}` : '/services');
   }
 
   // --- ADMIN LANDING DESIGN & BLOG METHODS ---
@@ -3360,6 +6295,7 @@ class SmmApp {
     document.getElementById('blog-input-status').value = 'draft';
     document.getElementById('blog-editor-title').innerHTML = '<i class="fa-solid fa-pen-nib"></i> Yeni Çift Dilli Blog Yazısı';
     document.getElementById('modal-add-blog')?.classList.add('active');
+    this.initMetaCounters();
   }
 
   showEditBlogModal(id) {
@@ -3377,6 +6313,69 @@ class SmmApp {
     Object.entries(fields).forEach(([fieldId, value]) => { const field = document.getElementById(fieldId); if (field) field.value = value; });
     document.getElementById('blog-editor-title').innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Blog Yazısını Düzenle';
     document.getElementById('modal-add-blog')?.classList.add('active');
+    this.previewBlogCover();
+    this.initMetaCounters();
+  }
+
+  // --- BLOG KAPAK GORSELI ---------------------------------------------------
+  // Sunucu iki bicimi kabul eder: tam http(s) adresi VEYA site ici hazir kapak
+  // (/api/blog/cover/<platform>/<1-50>.svg). Kabul edilmeyen deger sessizce
+  // otomatik kapakla degistiriliyordu; burada kullaniciya onceden soyluyoruz.
+  isBuiltInBlogCover(value) {
+    return /^\/api\/blog\/cover\/(instagram|tiktok|youtube|telegram|facebook|x-twitter|spotify|linkedin|twitch|social-media)\/([1-9]|[1-4]\d|50)\.svg(\?v=2)?$/.test(String(value || ''));
+  }
+
+  // Ayni kapagi iki yazida kullanmamak icin kullanilmayan ilk varyanti secer.
+  nextFreeBlogCover(platform) {
+    const used = new Set((this.currentAdminBlogPosts || [])
+      .map(p => String(p.image_url || '').match(new RegExp(`^/api/blog/cover/${platform}/(\\d+)\\.svg`)))
+      .filter(Boolean).map(m => Number(m[1])));
+    let variant = 1;
+    while (variant <= 50 && used.has(variant)) variant++;
+    return `/api/blog/cover/${platform}/${variant > 50 ? 1 : variant}.svg?v=2`;
+  }
+
+  useBuiltInBlogCover() {
+    const platform = document.getElementById('blog-cover-platform')?.value || 'social-media';
+    const input = document.getElementById('blog-input-image');
+    if (!input) return;
+    input.value = this.nextFreeBlogCover(platform);
+    this.previewBlogCover();
+    showToast('Hazır kapak seçildi.', 'success');
+  }
+
+  previewBlogCover() {
+    const input = document.getElementById('blog-input-image');
+    const preview = document.getElementById('blog-cover-preview');
+    const hint = document.getElementById('blog-cover-hint');
+    if (!input || !hint) return;
+
+    const value = input.value.trim();
+    if (!value) {
+      if (preview) preview.style.display = 'none';
+      hint.textContent = 'Boş bırakırsan konuya uygun kapak otomatik atanır.';
+      hint.style.color = 'var(--text-dim)';
+      return;
+    }
+
+    const gecerli = this.isBuiltInBlogCover(value) || /^https?:\/\/\S+$/i.test(value);
+    if (preview) {
+      preview.src = value;
+      preview.style.display = gecerli ? 'inline-block' : 'none';
+      preview.onerror = () => { preview.style.display = 'none'; };
+    }
+
+    if (!gecerli) {
+      hint.textContent = 'Bu adres kabul edilmez; kaydedince otomatik kapak atanır. https://... ile başlayan bir resim adresi veya hazır kapak kullan.';
+      hint.style.color = 'var(--warning)';
+    } else if (/\.(html?|php|aspx)(\?|$)/i.test(value)) {
+      // pngtree gibi sitelerde sayfa adresi kopyalanip resim sanilabiliyor.
+      hint.textContent = 'Dikkat: bu bir web sayfası adresi gibi görünüyor, resim dosyası değil. Resme sağ tıklayıp "Resim adresini kopyala" demelisin.';
+      hint.style.color = 'var(--warning)';
+    } else {
+      hint.textContent = this.isBuiltInBlogCover(value) ? 'Hazır kapak kullanılıyor (sunucunda üretilir, hiç kopmaz).' : 'Dış bağlantı kullanılıyor.';
+      hint.style.color = 'var(--success)';
+    }
   }
 
   async handleCreateBlogPost(e) {
@@ -3629,7 +6628,7 @@ class SmmApp {
       this.currentAiConversationId = res.conversation_id;
       this.appendAiMessage('assistant', res.message);
       this.renderAiActions(res.actions);
-    } catch (err) { this.appendAiMessage('assistant', `Hata: ${err.message}`); }
+    } catch (err) { this.appendAiMessage('assistant error', `⚠️ Hata: ${err.message}`); }
     finally {
       sendButton.disabled = false;
       sendButton.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Gönder';
@@ -3705,7 +6704,33 @@ class SmmApp {
       if (switchLink) switchLink.innerText = this.ui('Ücretsiz Kayıt Ol', 'Register for Free');
     }
 
+    this.prepareAuthForm('auth-form', mode);
     document.getElementById('modal-auth').classList.add('active');
+  }
+
+  // Kayit/giris arasinda gecerken eski hatalar ve ipuclari temizlenir;
+  // kayit modunda sifre kurali onceden gorunur (kullanici denemeden bilsin).
+  prepareAuthForm(formId, mode) {
+    const form = document.getElementById(formId);
+    this.clearAuthFieldErrors(form);
+    const prefix = formId === 'view-auth-form' ? 'vauth' : 'auth';
+    const hint = document.getElementById(`${prefix}-password-hint`);
+    if (hint) {
+      hint.style.display = mode === 'register' ? 'block' : 'none';
+      hint.textContent = this.ui('Şifre en az 10 karakter olmalıdır.', 'Password must be at least 10 characters.');
+    }
+    // Davet linkiyle gelindiyse kimin davet ettigi acikca yazilir.
+    const invite = document.getElementById(`${prefix}-invite-note`);
+    if (invite) {
+      const show = mode === 'register' && Boolean(this.referralCode);
+      invite.style.display = show ? 'block' : 'none';
+      if (show) {
+        invite.textContent = this.ui(
+          `🎁 ${this.referralCode} sizi davet etti. Kaydınız bu davetle eşleştirilecek.`,
+          `🎁 ${this.referralCode} invited you. Your account will be linked to this invitation.`
+        );
+      }
+    }
   }
 
   toggleAuthModalMode() {
@@ -3737,6 +6762,7 @@ class SmmApp {
       if (switchLink) switchLink.innerText = this.ui('Ücretsiz hesap aç', 'Create a free account');
     }
 
+    this.prepareAuthForm('view-auth-form', mode);
     this.navigate('auth');
   }
 
@@ -3747,6 +6773,78 @@ class SmmApp {
   closeModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) modal.classList.remove('active');
+    // Sohbet kapaninca arka planda sorgu atmaya devam etmesin.
+    if (modalId === 'modal-ticket-chat') {
+      this.stopTicketChatPolling();
+      this.activeChatTicketId = null;
+      this.chatSignature = undefined;
+      document.getElementById('chat-jump-btn')?.remove();
+    }
+  }
+
+  // --- KAYIT / GIRIS HATA GOSTERIMI -----------------------------------------
+  // Eskiden her hata "İşlem Başarısız: Gönderilen bilgiler geçersiz." olarak
+  // gorunuyordu; kullanici hangi alani duzeltecegini bilemiyordu. Artik mesaj
+  // dogrudan ilgili alanin altina yazilir.
+
+  clearAuthFieldErrors(form) {
+    if (!form) return;
+    form.querySelectorAll('.field-error').forEach(el => el.remove());
+    form.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
+  }
+
+  showAuthFieldError(input, message) {
+    if (!input) return false;
+    input.classList.add('is-invalid');
+    const group = input.closest('.form-group') || input.parentElement;
+    let holder = group?.querySelector('.field-error');
+    if (!holder) {
+      holder = document.createElement('div');
+      holder.className = 'field-error';
+      // Sifremi unuttum dugmesinin altinda kalmamasi icin input'un hemen ardina.
+      input.insertAdjacentElement('afterend', holder);
+    }
+    holder.textContent = message;
+    return true;
+  }
+
+  // Sunucuya gitmeden once bariz hatalar yakalanir: kullanici beklemeden
+  // ne duzeltecegini gorur. Kurallar sunucudakiyle birebir aynidir.
+  checkRegistrationInputs({ username, email, password }) {
+    const problems = [];
+    if (username.length < 3) {
+      problems.push({ field: 'username', message: this.ui('Kullanıcı adı en az 3 karakter olmalıdır.', 'Username must be at least 3 characters.') });
+    } else if (username.length > 32) {
+      problems.push({ field: 'username', message: this.ui('Kullanıcı adı en fazla 32 karakter olabilir.', 'Username can be at most 32 characters.') });
+    } else if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
+      problems.push({
+        field: 'username',
+        message: this.ui(
+          'Kullanıcı adı yalnızca İngilizce harf, rakam, nokta, tire ve alt çizgi içerebilir. (Türkçe karakter ve boşluk kullanılamaz.)',
+          'Username may only contain English letters, numbers, dot, hyphen and underscore. (No spaces or accented characters.)'
+        )
+      });
+    }
+    if (!email) {
+      problems.push({ field: 'email', message: this.ui('E-posta adresi zorunludur.', 'Email address is required.') });
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      problems.push({
+        field: 'email',
+        message: this.ui('Geçerli bir e-posta adresi girin. (örnek: ad@site.com)', 'Enter a valid email address. (example: name@site.com)')
+      });
+    }
+    if (password.length < 10) {
+      problems.push({
+        field: 'password',
+        message: this.ui(
+          `Şifre en az 10 karakter olmalıdır. Şu an ${password.length} karakter girdiniz.`,
+          `Password must be at least 10 characters. You entered ${password.length}.`
+        )
+      });
+    } else if (password.length > 128) {
+      problems.push({ field: 'password', message: this.ui('Şifre en fazla 128 karakter olabilir.', 'Password can be at most 128 characters.') });
+    }
+    return problems;
   }
 
   async handleAuthSubmit(e) {
@@ -3762,6 +6860,19 @@ class SmmApp {
     const totpInput = isViewForm ? document.getElementById('vauth-totp') : document.getElementById('auth-totp');
     const totp = totpInput?.value.trim();
 
+    const inputsByField = { username: usernameInput, email: emailInput, password: passwordInput, totp: totpInput };
+    this.clearAuthFieldErrors(e.target);
+
+    if (this.authMode === 'register') {
+      const problems = this.checkRegistrationInputs({ username, email, password });
+      if (problems.length) {
+        problems.forEach(problem => this.showAuthFieldError(inputsByField[problem.field], problem.message));
+        inputsByField[problems[0].field]?.focus();
+        showToast(problems[0].message, 'error');
+        return;
+      }
+    }
+
     try {
       let res;
       if (this.authMode === 'register') {
@@ -3776,14 +6887,21 @@ class SmmApp {
 
       showToast(this.authMode === 'register' ? 'Hesabınız başarıyla oluşturuldu! Hoş geldiniz.' : 'Giriş başarılı! Hoş geldiniz.', 'success');
       
+      // Sipariş makinesinden gelindiyse seçim forma taşınır. Aşağıdaki
+      // navigate() tam sayfa yüklemesine dönebileceği için seçim önce
+      // sessionStorage'a alınır; init() sayfa açılınca geri okur.
+      if (this.pendingMachineOrder) {
+        try { sessionStorage.setItem('bekleyenMakineSecimi', JSON.stringify(this.pendingMachineOrder)); } catch {}
+      }
+
       if (this.currentUser.role === 'admin') {
         this.navigate('admin');
       } else {
         this.navigate('new-order');
-        // Sipariş makinesinden gelindiyse seçim forma taşınır.
         if (this.pendingMachineOrder) {
           const { serviceId, quantity } = this.pendingMachineOrder;
           this.pendingMachineOrder = null;
+          try { sessionStorage.removeItem('bekleyenMakineSecimi'); } catch {}
           setTimeout(() => this.applyMachineSelection(serviceId, quantity), 150);
         }
       }
@@ -3792,9 +6910,21 @@ class SmmApp {
         const group = isViewForm ? document.getElementById('vauth-totp-group') : document.getElementById('auth-totp-group');
         if (group) group.style.display = 'block';
         totpInput?.focus();
+        showToast(err.message, 'error');
         return;
       }
-      showToast(`İşlem Başarısız: ${err.message}`, 'error');
+
+      // Sunucu hangi alanlarin sorunlu oldugunu bildiriyorsa mesaji dogrudan
+      // o alanin altina yaziyoruz; kullanici nereye bakacagini aramasin.
+      let marked = false;
+      for (const item of err.details || []) {
+        if (this.showAuthFieldError(inputsByField[item.field], item.message)) marked = true;
+      }
+      if (!marked && err.field) {
+        marked = this.showAuthFieldError(inputsByField[err.field], err.message);
+      }
+      if (marked) inputsByField[(err.details?.[0]?.field) || err.field]?.focus();
+      showToast(err.message, 'error');
     }
   }
 }

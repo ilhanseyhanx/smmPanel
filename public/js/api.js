@@ -23,15 +23,68 @@ const API = {
       const contentType = res.headers.get('content-type') || '';
       const data = contentType.includes('application/json') ? await res.json() : {};
       if (!res.ok) {
-        const error = new Error(data.error || 'İşlem başarısız.');
+        // JSON olmayan yanit (ör. nginx 502/504 HTML sayfasi) icin anlamli mesaj.
+        const fallback = res.status === 504 || res.status === 524
+          ? 'İşlem uzun sürdüğü için zaman aşımına uğradı. Lütfen tekrar deneyin.'
+          : `Sunucu yanıt veremedi (${res.status}). Lütfen tekrar deneyin.`;
+        // Sunucu mesaji iki dilli gelir; kullanicinin sectigi dile gore secilir.
+        // Not: app global'i "const" ile tanimli, window uzerinden gorunmez.
+        const locale = (typeof app !== 'undefined' && app?.locale === 'en') ? 'en' : 'tr';
+        const message = (locale === 'en' && data.error_en) ? data.error_en : (data.error || fallback);
+        const error = new Error(message);
         error.code = data.code;
+        error.status = res.status;
+        // Hangi alanda ne sorun oldugu: form alanlarinin altina yazilir.
+        error.field = data.field || null;
+        error.details = Array.isArray(data.details)
+          ? data.details.map(item => ({
+            field: item.field,
+            message: (locale === 'en' && item.message_en) ? item.message_en : item.message
+          }))
+          : null;
         throw error;
       }
       return data;
     } catch (err) {
-      console.error(`API Error [${endpoint}]:`, err.message);
+      // Oturum yokken /auth/me'nin 401 dönmesi normaldir; konsolu kirletmesin.
+      if (!(endpoint === '/auth/me' && err.status === 401)) {
+        console.error(`API Error [${endpoint}]:`, err.message);
+      }
       throw err;
     }
+  },
+
+  // Dosya indirme: yanit JSON degil ikili veri oldugu icin request() kullanilamaz.
+  // Sunucudan gelen dosya adi Content-Disposition basligindan okunur.
+  async download(endpoint) {
+    const res = await fetch(`${API_BASE}${endpoint}`, { credentials: 'same-origin' });
+    if (!res.ok) {
+      let message = `Dosya indirilemedi (${res.status}).`;
+      try {
+        const data = await res.json();
+        if (data.error) message = data.error;
+      } catch { /* JSON degilse varsayilan mesaj kalir */ }
+      throw new Error(message);
+    }
+
+    const disposition = res.headers.get('content-disposition') || '';
+    let fileName = 'liste.xlsx';
+    const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    const plainMatch = disposition.match(/filename="([^"]+)"/i);
+    if (utf8Match) fileName = decodeURIComponent(utf8Match[1]);
+    else if (plainMatch) fileName = plainMatch[1];
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Bellegi hemen birakmak bazi tarayicilarda indirmeyi keser; kisa gecikme guvenli.
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    return fileName;
   },
 
   // Auth
@@ -47,6 +100,10 @@ const API = {
   setupTwoFactor: () => API.request('/auth/2fa/setup', { method: 'POST' }),
   confirmTwoFactor: (token) => API.request('/auth/2fa/confirm', { method: 'POST', body: JSON.stringify({ token }) }),
   getAccountSummary: () => API.request('/account/summary'),
+  getPaymentHistory: () => API.request('/account/payments'),
+  getApiKey: () => API.request('/account/api-key'),
+  createApiKey: (regenerate = false) => API.request('/account/api-key', { method: 'POST', body: JSON.stringify({ regenerate }) }),
+  getReferralOverview: () => API.request('/account/referrals'),
   claimReferralBalance: () => API.request('/account/referrals/claim', { method: 'POST' }),
   getNotifications: () => API.request('/account/notifications'),
   markNotificationsRead: () => API.request('/account/notifications/read', { method: 'POST' }),
@@ -55,13 +112,17 @@ const API = {
   getServices: (lang = 'tr') => API.request(`/services?lang=${encodeURIComponent(lang)}`),
 
   // Orders
-  createOrder: (service_id, link, quantity, drip_runs = 1, drip_interval_minutes = null) => API.request('/orders', { method: 'POST', body: JSON.stringify({ service_id, link, quantity, drip_runs, drip_interval_minutes }) }),
+  createOrder: (service_id, link, quantity, drip_runs = 1, drip_interval_minutes = null, lang = 'tr') => API.request('/orders', { method: 'POST', body: JSON.stringify({ service_id, link, quantity, drip_runs, drip_interval_minutes, lang }) }),
   getOrders: (lang = 'tr') => API.request(`/orders?lang=${encodeURIComponent(lang)}`),
   requestRefill: (orderId) => API.request(`/orders/${orderId}/refill`, { method: 'POST' }),
 
   // Payments & Coupons
   addFunds: (amount, method) => API.request('/payments/add-funds', { method: 'POST', body: JSON.stringify({ amount, method }) }),
   createPaytrPayment: (amount) => API.request('/payments/paytr/token', { method: 'POST', body: JSON.stringify({ amount }) }),
+  getCryptoCurrencies: () => API.request('/payments/nowpayments/currencies'),
+  getCryptoMin: (coin) => API.request(`/payments/nowpayments/min/${encodeURIComponent(coin)}`),
+  createCryptoPayment: (amount, pay_currency) => API.request('/payments/nowpayments/create', { method: 'POST', body: JSON.stringify({ amount, pay_currency }) }),
+  getCryptoPaymentStatus: (oid) => API.request(`/payments/nowpayments/status/${encodeURIComponent(oid)}`),
   redeemCoupon: (code) => API.request('/payments/coupon/redeem', { method: 'POST', body: JSON.stringify({ code }) }),
   sendPaymentNotification: (data) => API.request('/payments/notification', { method: 'POST', body: JSON.stringify(data) }),
 
@@ -73,10 +134,13 @@ const API = {
 
   // Admin
   getAdminStats: () => API.request('/admin/stats'),
+  getAdminStatistics: () => API.request('/admin/statistics'),
   getAdminProviders: () => API.request('/admin/providers'),
   addAdminProvider: (name, api_url, api_key) => API.request('/admin/providers', { method: 'POST', body: JSON.stringify({ name, api_url, api_key }) }),
   importProviderServices: (providerId, profit_percentage) => API.request(`/admin/providers/${providerId}/import-services`, { method: 'POST', body: JSON.stringify({ profit_percentage }) }),
   getRawProviderServices: (providerId) => API.request(`/admin/providers/${providerId}/raw-services`),
+  exportProviderServices: (providerId) => API.download(`/admin/providers/${providerId}/services/export`),
+  exportAdminServices: (status = 'all') => API.download(`/admin/services/export?status=${encodeURIComponent(status)}`),
   getAdminServices: () => API.request('/admin/services'),
   refreshAdminProviderPrices: () => API.request('/admin/services/refresh-provider-prices', { method: 'POST' }),
   auditAdminProviderPrices: () => API.request('/admin/services/provider-price-audit', { method: 'POST' }),
@@ -86,20 +150,58 @@ const API = {
   deleteAdminService: (id) => API.request(`/admin/services/${id}`, { method: 'DELETE' }),
   bulkDeleteAdminServices: (data) => API.request('/admin/services/bulk-delete', { method: 'POST', body: JSON.stringify(data) }),
   bulkStatusAdminServices: (data) => API.request('/admin/services/bulk-status', { method: 'POST', body: JSON.stringify(data) }),
-  getAdminUsers: () => API.request('/admin/users'),
+  getAdminUsers: (q = '') => API.request(`/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   updateUserBalance: (userId, amount, action) => API.request(`/admin/users/${userId}/balance`, { method: 'POST', body: JSON.stringify({ amount, action }) }),
-  getAdminOrders: () => API.request('/admin/orders'),
+  setUserBan: (userId, banned) => API.request(`/admin/users/${userId}/ban`, { method: 'POST', body: JSON.stringify({ banned }) }),
+  setUserPassword: (userId, new_password) => API.request(`/admin/users/${userId}/password`, { method: 'POST', body: JSON.stringify({ new_password }) }),
+  deleteUser: (userId) => API.request(`/admin/users/${userId}`, { method: 'DELETE' }),
+  assignUserOrder: (userId, data) => API.request(`/admin/users/${userId}/assign-order`, { method: 'POST', body: JSON.stringify(data) }),
+  getAdminOrders: (q = '') => API.request(`/admin/orders${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   updateOrderStatus: (orderId, status) => API.request(`/admin/orders/${orderId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
   getAdminPaymentNotifications: () => API.request('/admin/payment-notifications'),
   approveAdminPaymentNotification: (id) => API.request(`/admin/payment-notifications/${id}/approve`, { method: 'POST' }),
   rejectAdminPaymentNotification: (id) => API.request(`/admin/payment-notifications/${id}/reject`, { method: 'POST' }),
   getAdminCoupons: () => API.request('/admin/coupons'),
-  addAdminCoupon: (code, amount, max_uses) => API.request('/admin/coupons', { method: 'POST', body: JSON.stringify({ code, amount, max_uses }) }),
+  addAdminCoupon: (code, amount, max_uses, code_en = null) => API.request('/admin/coupons', { method: 'POST', body: JSON.stringify({ code, code_en, amount, max_uses }) }),
+  getCouponUsages: (id) => API.request(`/admin/coupons/${id}/usages`),
   deleteAdminCoupon: (id) => API.request(`/admin/coupons/${id}`, { method: 'DELETE' }),
   resetDemoData: () => API.request('/admin/reset-demo-data', { method: 'POST' }),
   changeAdminPassword: (current_password, new_password) => API.request('/admin/change-password', { method: 'POST', body: JSON.stringify({ current_password, new_password }) }),
   getSettings: () => API.request('/admin/settings'),
   saveSettings: (settingsObj) => API.request('/admin/settings', { method: 'POST', body: JSON.stringify(settingsObj) }),
+  sendTelegramTest: () => API.request('/admin/telegram/test', { method: 'POST' }),
+
+  // Musteri yorumlari
+  submitReview: (rating, comment) => API.request('/account/review', { method: 'POST', body: JSON.stringify({ rating, comment }) }),
+  getAdminReviews: () => API.request('/admin/reviews'),
+  addAdminReview: (display_name, rating, comment) => API.request('/admin/reviews', { method: 'POST', body: JSON.stringify({ display_name, rating, comment }) }),
+  setAdminReviewStatus: (id, status) => API.request(`/admin/reviews/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  deleteAdminReview: (id) => API.request(`/admin/reviews/${id}`, { method: 'DELETE' }),
+  sendEmailTest: (to = null) => API.request('/admin/email/test', { method: 'POST', body: JSON.stringify({ to }) }),
+
+  // Email marketing (Admin)
+  getEmailTemplates: () => API.request('/admin/email/templates'),
+  createEmailTemplate: (payload) => API.request('/admin/email/templates', { method: 'POST', body: JSON.stringify(payload) }),
+  updateEmailTemplate: (id, payload) => API.request(`/admin/email/templates/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteEmailTemplate: (id) => API.request(`/admin/email/templates/${id}`, { method: 'DELETE' }),
+  testEmailTemplate: (id) => API.request(`/admin/email/templates/${id}/test`, { method: 'POST' }),
+  sendEmailBlast: (payload) => API.request('/admin/email/send', { method: 'POST', body: JSON.stringify(payload) }),
+  getEmailStats: () => API.request('/admin/email/stats'),
+  getEmailFailures: (batchId) => API.request(`/admin/email/failures/${encodeURIComponent(batchId)}`),
+  getTelegramChats: () => API.request('/admin/telegram/chats'),
+
+  // Campaigns (Admin)
+  getAdminCampaigns: () => API.request('/admin/campaigns'),
+  createCampaign: (payload) => API.request('/admin/campaigns', { method: 'POST', body: JSON.stringify(payload) }),
+  setCampaignStatus: (id, status) => API.request(`/admin/campaigns/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  deleteCampaign: (id) => API.request(`/admin/campaigns/${id}`, { method: 'DELETE' }),
+  // Campaigns (Public popup istatistigi)
+  campaignEvent: (id, type) => API.request(`/campaigns/${id}/event`, { method: 'POST', body: JSON.stringify({ type }) }),
+
+  // Account Telegram linking
+  getTelegramStatus: () => API.request('/account/telegram/status'),
+  createTelegramLinkCode: () => API.request('/account/telegram/link-code', { method: 'POST' }),
+  disconnectTelegram: () => API.request('/account/telegram/disconnect', { method: 'POST' }),
 
   // Public Blog
   getBlogPosts: (lang = 'tr') => API.request(`/blog?lang=${encodeURIComponent(lang)}`),

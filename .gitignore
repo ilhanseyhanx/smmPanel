@@ -11,3 +11,7 @@ database.sqlite-journal
 database.sqlite-shm
 database.sqlite-wal
 
+# Gecici calisma ciktilari (deploy paketine de girmez)
+tmp/
+output/
+

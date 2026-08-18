@@ -8,6 +8,7 @@ const { assertPublicProviderUrl } = require('../utils/network');
 const { toKurus } = require('../utils/money');
 const { fetchProviderCatalog, filterCatalogForQuery } = require('../services/providerCatalog');
 const { chooseBlogCover } = require('../services/blogCover');
+const { buildMetaDescription } = require('../utils/metaDescription');
 
 router.use(authenticateToken, requireAdmin);
 
@@ -40,11 +41,19 @@ function friendlyAiProviderError(cause) {
   const providerMessage = normalizePlainText(cause?.response?.data?.error?.message || '', 300);
   let message = 'AI sağlayıcısı isteği tamamlayamadı.';
   let status = 502;
-  if (providerStatus === 401 || providerStatus === 403) message = 'API anahtarı sağlayıcı tarafından reddedildi.';
+  if (!cause?.response) {
+    // Yanit hic gelmedi: zaman asimi veya ag hatasi.
+    if (/timeout|econnaborted/i.test(cause?.message || '')) message = 'AI yanıtı zaman aşımına uğradı. Uzun içeriklerde model geç yanıt verebilir; lütfen tekrar deneyin veya isteği kısaltın.';
+    else message = `AI sağlayıcısına ulaşılamadı (ağ hatası). Lütfen tekrar deneyin.`;
+  }
+  else if (providerStatus === 401 || providerStatus === 403) message = 'API anahtarı sağlayıcı tarafından reddedildi. AI Ayarları bölümünden anahtarı kontrol edin.';
+  else if (providerStatus === 404) message = 'Seçili model sağlayıcıda bulunamadı. "Modeller" listesinden geçerli bir model seçin.';
   else if (providerStatus === 429) {
     message = 'AI sağlayıcısının kullanım limiti aşıldı veya bakiyesi yetersiz.';
     status = 429;
   } else if (providerStatus === 400 && providerMessage) message = `AI sağlayıcısı isteği reddetti: ${providerMessage}`;
+  else if (providerStatus >= 500) message = 'AI sağlayıcısında geçici bir sunucu sorunu var. Birkaç dakika sonra tekrar deneyin.';
+  else if (providerMessage) message = `AI sağlayıcısı: ${providerMessage}`;
   const error = new Error(message);
   error.status = status;
   error.cause = cause;
@@ -122,9 +131,17 @@ Sitenin güncel, salt okunur özeti aşağıdadır:\n${JSON.stringify(context)}
 Yanıtın yalnızca geçerli JSON olsun:
 {"message":"kullanıcıya doğal yanıt","actions":[{"type":"izinli işlem","payload":{}}]}
 İzinli işlemler: create_blog_draft, publish_blog, create_service, update_service, set_service_status, import_provider_services.
-Blog istendiğinde tam olarak bir create_blog_draft veya publish_blog işlemi üret. Payload içinde title_tr, title_en, category_tr, category_en, summary_tr, summary_en, content_tr, content_en, seo_title_tr, seo_title_en, seo_description_tr, seo_description_en ve reading_minutes alanlarının tamamı bulunmalı. summary_tr ve summary_en boş olamaz; her biri 180-320 karakterlik, merak uyandıran bağımsız kısa özet olmalı. Görsel URL üretme; konuya uygun kapak sunucu tarafından 50 farklı varyasyondan otomatik seçilir.
+Blog istendiğinde tam olarak bir create_blog_draft veya publish_blog işlemi üret. Payload içinde title_tr, title_en, category_tr, category_en, summary_tr, summary_en, content_tr, content_en, seo_title_tr, seo_title_en, seo_description_tr, seo_description_en ve reading_minutes alanlarının tamamı bulunmalı. summary_tr ve summary_en boş olamaz; her biri 180-320 karakterlik, merak uyandıran bağımsız kısa özet olmalı (sitedeki kartlarda görünür). seo_description_tr ve seo_description_en ise arama sonuçlarında görünen meta açıklamadır ve KESİNLİKLE 120-155 karakter arasında olmalıdır: 160 karakteri aşan açıklama arama motorunda kesilir, 25 karakterin altındaki yok sayılır. Bu iki alanı özetten kopyalama; tek cümlelik, anahtar kelimeyi içeren ve tıklamaya teşvik eden bağımsız metin yaz ve karakter sayısını kontrol et. Görsel URL üretme; konuya uygun kapak sunucu tarafından 50 farklı varyasyondan otomatik seçilir.
 Blog content_tr ve content_en güvenli semantik HTML olmalı ve her dilde yaklaşık 700-1000 kelime içermeli. İçeriği giriş, en az 5 adet <h2> bölüm, gerektiğinde <h3>, madde listeleri, numaralı uygulama adımları, ipucu/uyarı kutuları için <blockquote>, karşılaştırma tablosu, ölçülebilir öneriler, sık sorulan sorular ve güçlü sonuç/CTA ile zenginleştir. Aynı metni iki dil alanına kopyalama; doğal ve yerelleştirilmiş TR/EN sürümler yaz. Uydurma kesin istatistik veya kaynak üretme.
 Her blog dilinde doğal bağlam içinde 2-4 ilgili eski blog bağlantısı ve 2-3 ilgili hizmet bağlantısı kullan. Yalnızca context içindeki posts.internal_url ve services.internal_url değerlerini href olarak kullan; slug veya servis ID uydurma. Türkçe ve İngilizce bağlantı metinlerini ilgili dile göre yaz. İlgili kayıt yoksa genel blog için href="#blog", hizmetler için href="#services" kullan. Bağlantıları <a href="...">doğal bağlantı metni</a> biçiminde ekle; aynı bağlantıyı gereksiz tekrarlama.
+GEO / AI ARAMA KURALLARI (her blogda zorunlu — içerik ChatGPT, Perplexity ve Google AI Overviews tarafından alıntılanabilir olmalı):
+1) H2 başlıkların en az yarısı okuyucunun gerçekten sorduğu soru formatında olsun ("TikTok algoritması nasıl çalışır?" gibi) ve her soru başlığının hemen altındaki İLK paragraf, başka bağlam gerektirmeden tek başına anlamlı 40-60 kelimelik doğrudan bir yanıt versin; ayrıntı sonraki paragraflara gelsin.
+2) Sayısal iddia (yüzde, süre, eşik) verirken iki seçeneğin var: bağlamda platformların RESMİ yardım/creator sayfalarına atıf yap (yalnızca gerçekten var olduğundan emin olduğun kök adresler: help.instagram.com, creators.instagram.com, support.google.com/youtube, seo.tiktok.com yerine newsroom.tiktok.com, support.spotify.com) YA DA rakamın gözlemsel/yaklaşık olduğunu cümle içinde açıkça söyle. Kesin URL'den emin değilsen href verme, kaynağın adını metin olarak an. Kaynak veya istatistik UYDURMA.
+3) Her yazıya Türkiye pazarına özgü en az bir somut gözlem, örnek senaryo veya karşılaştırma ekle; "günümüzde", "sonuç olarak", "X şans değil, ölçülebilir bir sürecin sonucudur" gibi kalıp AI cümlelerinden kaçın. Bir bölümde işlerin ters gidebildiği durumu da anlat (yanlış kullanım, beklenti hatası) — tek yönlü övgü metni yazma.
+4) Takipçi/beğeni/izlenme SATIN ALMAYI anlatan yazılara kısa ve dürüst bir <blockquote> risk uyarısı ekle: bu hizmetlerin platform kurallarına aykırı sayılabileceğini, ani ve aşırı yükselişlerin hesap kısıtlama riski taşıdığını, kademeli teslimatın ve organik stratejiyle desteklemenin önerildiğini belirt.
+5) SSS bölümündeki her soru gerçek bir arama sorgusu gibi yazılsın ve cevabı 40-60 kelimede kendi başına yeterli olsun.
+6) seo_description alanları tam bir cümleyle bitsin; cümle ortasında kesilen açıklama yazma.
+7) Markadan söz ederken "Jet SMM Panel" adını kullan (kısaltması SMMJET); "SMMJET" adını tek başına yalnızca ikinci ve sonraki geçişlerde kullan.
 Hizmet işleminde name_tr, name_en, description_tr, description_en, rate_try ve rate_usd alanlarını kullan.
 provider_catalogs kayıtlı SMM sağlayıcılarından canlı çekilmiş gerçek katalog verisidir. Sağlayıcı servisi ekleme isteğinde bu kataloğu kullan; katalog yoksa veya bağlantı hatalıysa bunu açıkça söyle. Servis ID'si ya da maliyet uydurma.
 Toplu sağlayıcı aktarımı için tam olarak bir import_provider_services işlemi üret. Payload yalnızca şu kompakt biçimde olsun: {"provider_id":1,"profit_percentage":70,"services":[{"provider_service_id":"123","name_tr":"...","name_en":"..."}]}. description, category, fiyat, min/max veya başka alan ekleme; bunları sunucu canlı katalogdan güvenli biçimde tamamlar. En fazla 50 servis seç. İsimleri sağlayıcı adındaki ülke, hız, kalite, garanti, süre ve servis türü bilgilerini kaybetmeden doğal TR/EN biçiminde düzenle. Mesaj alanını 300 karakterden kısa tut ve tüm JSON çıktısını mümkün olduğunca kompakt yaz. Kâr yüzdesi maliyetin üzerine eklenir; kur ve kesin satış fiyatları işlem onaylandığı anda sunucuda hesaplanır.
@@ -293,7 +310,7 @@ router.post('/chat', async (req, res, next) => {
     }
     await dbAsync.run('UPDATE ai_conversations SET provider_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [provider.id, conversation.id]);
     res.json({ conversation_id: conversation.id, message: result.message, actions: actionViews });
-  } catch (err) { next(err?.response ? friendlyAiProviderError(err) : err); }
+  } catch (err) { next(err?.isAxiosError || err?.response ? friendlyAiProviderError(err) : err); }
 });
 
 async function prepareProviderImport(action) {
@@ -351,18 +368,25 @@ async function executeAction(tx, action, prepared = null) {
     const contentTr = sanitizeRichText(payload.content_tr);
     const contentEn = sanitizeRichText(payload.content_en);
     const calculatedReading = Math.max(3, Math.ceil(normalizePlainText(payload.content_tr, 30000).split(/\s+/).filter(Boolean).length / 220));
+    const slug = makeSlug(titleTr);
     const result = await tx.run(`INSERT INTO blog_posts
       (title, slug, category, summary, content, image_url, title_tr, title_en, category_tr, category_en,
        summary_tr, summary_en, content_tr, content_en, seo_title_tr, seo_title_en, seo_description_tr,
        seo_description_en, status, author_id, reading_minutes, updated_at, published_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CASE WHEN ? = 'published' THEN CURRENT_TIMESTAMP ELSE NULL END)`, [
-      titleTr, makeSlug(titleTr), categoryTr, summaryTr, contentTr, imageUrl,
+      titleTr, slug, categoryTr, summaryTr, contentTr, imageUrl,
       titleTr, titleEn, categoryTr, categoryEn,
       summaryTr, summaryEn, contentTr, contentEn,
       normalizePlainText(payload.seo_title_tr || titleTr, 180), normalizePlainText(payload.seo_title_en || titleEn, 180),
-      normalizePlainText(payload.seo_description_tr || summaryTr, 500), normalizePlainText(payload.seo_description_en || summaryEn, 500),
+      // Meta aciklama 160 karakteri asamaz. Modele istemde soylense de her
+      // zaman uymayabildigi icin burada kesin olarak sinira getirilir.
+      buildMetaDescription([payload.seo_description_tr, summaryTr, contentTr], titleTr),
+      buildMetaDescription([payload.seo_description_en, summaryEn, contentEn], titleEn),
       status, action.admin_user_id, Math.max(1, Math.min(60, parseInt(payload.reading_minutes || calculatedReading))), status
     ]);
+    // Yeni yazi Bing'e (IndexNow) aninda bildirilir; ChatGPT web aramasi
+    // Bing dizinine dayandigi icin AI gorunurlugunu hizlandirir.
+    if (status === 'published') require('../services/indexNow').notifyBlogPublished(slug);
     return { blog_id: result.id, status };
   }
   if (action.action_type === 'create_service') {

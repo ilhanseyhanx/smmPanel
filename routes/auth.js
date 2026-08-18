@@ -5,10 +5,19 @@ const { generateSecret, generateURI, verify } = require('otplib');
 const QRCode = require('qrcode');
 const { dbAsync, withTransaction } = require('../config/database');
 const { authenticateToken, signSession, setSessionCookie } = require('../middleware/auth');
-const { validate } = require('../middleware/validate');
+const { validate, bilingual } = require('../middleware/validate');
 const { createOpaqueToken, tokenHash, encryptSecret, decryptSecret, normalizePlainText } = require('../utils/security');
 const { fromKurus } = require('../utils/money');
 const { sendMail } = require('../services/mailer');
+const { transactionalEmail } = require('../services/emailTemplates');
+const telegram = require('../services/telegramNotifier');
+
+async function getSiteName() {
+  try {
+    const row = await dbAsync.get("SELECT value FROM site_settings WHERE key = 'site_name'");
+    return row?.value || 'SMMJET';
+  } catch { return 'SMMJET'; }
+}
 
 const router = express.Router();
 
@@ -16,12 +25,30 @@ const router = express.Router();
 // farkindan gecerli kullanici adi cikarilamaz (kullanici enumerasyonu).
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('invalid-placeholder-password', 12);
 
-const usernameSchema = z.string().trim().min(3).max(32).regex(/^[a-zA-Z0-9_.-]+$/, 'Kullanıcı adı yalnızca harf, sayı, nokta, tire ve alt çizgi içerebilir.');
-const passwordSchema = z.string().min(10, 'Şifre en az 10 karakter olmalıdır.').max(128);
+// Kullaniciya gosterilecek mesajlar tek tek yazilir: kayit ekraninda "gecersiz"
+// demek yerine tam olarak neyin yanlis oldugu soylenmelidir.
+const usernameSchema = z.string().trim()
+  .min(3, bilingual('Kullanıcı adı en az 3 karakter olmalıdır.', 'Username must be at least 3 characters.'))
+  .max(32, bilingual('Kullanıcı adı en fazla 32 karakter olabilir.', 'Username can be at most 32 characters.'))
+  .regex(/^[a-zA-Z0-9_.-]+$/, bilingual(
+    'Kullanıcı adı yalnızca İngilizce harf, rakam, nokta, tire ve alt çizgi içerebilir. (Türkçe karakter ve boşluk kullanılamaz.)',
+    'Username may only contain English letters, numbers, dot, hyphen and underscore. (No spaces or accented characters.)'
+  ));
+const passwordSchema = z.string()
+  .min(10, bilingual('Şifre en az 10 karakter olmalıdır.', 'Password must be at least 10 characters.'))
+  .max(128, bilingual('Şifre en fazla 128 karakter olabilir.', 'Password can be at most 128 characters.'));
+const emailSchema = z.string().trim()
+  .min(1, bilingual('E-posta adresi zorunludur.', 'Email address is required.'))
+  .max(254, bilingual('E-posta adresi en fazla 254 karakter olabilir.', 'Email address can be at most 254 characters.'))
+  .pipe(z.email(bilingual(
+    'Geçerli bir e-posta adresi girin. (örnek: ad@site.com)',
+    'Enter a valid email address. (example: name@site.com)'
+  )))
+  .transform(v => v.toLowerCase());
 
 const registerSchema = z.object({
   username: usernameSchema,
-  email: z.email().max(254).transform(v => v.toLowerCase()),
+  email: emailSchema,
   password: passwordSchema,
   referral: z.string().trim().max(32).optional()
 });
@@ -49,8 +76,33 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
     const hashedPassword = await bcrypt.hash(password, 12);
     const apiKey = createOpaqueToken('smm_');
     const user = await withTransaction(async tx => {
-      const existing = await tx.get('SELECT id FROM users WHERE username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE', [username, email]);
-      if (existing) { const err = new Error('Bu kullanıcı adı veya e-posta zaten kullanılıyor.'); err.status = 409; throw err; }
+      // Hangisinin dolu oldugu ayrica sorulur: "biri kullaniliyor" demek
+      // kullaniciyi hangisini degistirecegini bilemez halde birakiyordu.
+      const existing = await tx.get(
+        `SELECT
+           MAX(CASE WHEN username = ? COLLATE NOCASE THEN 1 ELSE 0 END) username_taken,
+           MAX(CASE WHEN email = ? COLLATE NOCASE THEN 1 ELSE 0 END) email_taken
+         FROM users WHERE username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE`,
+        [username, email, username, email]
+      );
+      if (existing && (existing.username_taken || existing.email_taken)) {
+        const both = existing.username_taken && existing.email_taken;
+        const err = new Error(
+          both
+            ? 'Bu kullanıcı adı ve e-posta adresi zaten kayıtlı. Farklı bir kullanıcı adı seçin veya mevcut hesabınıza giriş yapın.'
+            : existing.username_taken
+              ? 'Bu kullanıcı adı başkası tarafından alınmış. Lütfen farklı bir kullanıcı adı seçin.'
+              : 'Bu e-posta adresiyle zaten bir hesap var. Giriş yapabilir veya "Şifremi unuttum" ile şifrenizi sıfırlayabilirsiniz.'
+        );
+        err.messageEn = both
+          ? 'This username and email address are already registered. Choose a different username or sign in to your existing account.'
+          : existing.username_taken
+            ? 'This username is already taken. Please choose a different one.'
+            : 'An account with this email already exists. You can sign in, or use "Forgot password" to reset it.';
+        err.status = 409;
+        err.field = existing.username_taken ? 'username' : 'email';
+        throw err;
+      }
       let referrerId = null;
       if (referral) referrerId = (await tx.get('SELECT id FROM users WHERE username = ? COLLATE NOCASE', [referral]))?.id || null;
       const result = await tx.run(
@@ -61,6 +113,9 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
       return tx.get('SELECT * FROM users WHERE id = ?', [result.id]);
     });
     setSessionCookie(res, signSession(user));
+    // Bildirim beklenmez: Telegram yavaslarsa veya hata verirse kayit yaniti
+    // gecikmemelidir. notifyNewUser kendi hatalarini yutup loglar.
+    telegram.notifyNewUser(user, { referral });
     res.status(201).json({ message: 'Hesabınız oluşturuldu.', user: publicUser(user) });
   } catch (err) { next(err); }
 });
@@ -69,10 +124,34 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
   try {
     const user = await dbAsync.get('SELECT * FROM users WHERE username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE', [req.body.username, req.body.username.toLowerCase()]);
     const passwordMatches = await bcrypt.compare(req.body.password, user?.password || DUMMY_PASSWORD_HASH);
-    if (!user || !passwordMatches) return res.status(401).json({ error: 'Kullanıcı adı veya şifre hatalı.' });
+    // Hangisinin yanlis oldugu bilerek soylenmez: aksi halde gecerli kullanici
+    // adlari denenerek tespit edilebilirdi (kullanici enumerasyonu).
+    if (!user || !passwordMatches) {
+      return res.status(401).json({
+        error: 'Kullanıcı adı veya şifre hatalı. Büyük/küçük harfe ve klavye diline dikkat edin.',
+        error_en: 'Incorrect username or password. Check your caps lock and keyboard layout.'
+      });
+    }
+    if (user.banned) {
+      return res.status(403).json({
+        error: 'Hesabınız askıya alınmıştır. Destek ekibiyle iletişime geçin.',
+        error_en: 'Your account has been suspended. Please contact support.'
+      });
+    }
     if (user.two_factor_enabled) {
-      if (!req.body.totp) return res.status(401).json({ error: 'İki adımlı doğrulama kodu gerekli.', code: 'TWO_FACTOR_REQUIRED' });
-      if (!(await verify({ token: req.body.totp, secret: decryptSecret(user.two_factor_secret) })).valid) return res.status(401).json({ error: 'İki adımlı doğrulama kodu geçersiz.' });
+      if (!req.body.totp) {
+        return res.status(401).json({
+          error: 'İki adımlı doğrulama kodu gerekli. Uygulamanızdaki 6 haneli kodu girin.',
+          error_en: 'Two-factor code required. Enter the 6-digit code from your app.',
+          code: 'TWO_FACTOR_REQUIRED'
+        });
+      }
+      if (!(await verify({ token: req.body.totp, secret: decryptSecret(user.two_factor_secret) })).valid) {
+        return res.status(401).json({
+          error: 'İki adımlı doğrulama kodu geçersiz veya süresi dolmuş. Uygulamadaki güncel kodu girin.',
+          error_en: 'Two-factor code is invalid or expired. Enter the current code from your app.'
+        });
+      }
     }
     setSessionCookie(res, signSession(user));
     res.json({ message: 'Giriş başarılı.', user: publicUser(user) });
@@ -80,7 +159,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
 });
 
 router.post('/logout', (req, res) => {
-  res.clearCookie('smm_session', { path: '/', sameSite: 'strict', secure: process.env.NODE_ENV === 'production' });
+  res.clearCookie('smm_session', { path: '/', sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });
   res.json({ message: 'Oturum kapatıldı.' });
 });
 
@@ -117,8 +196,21 @@ router.post('/forgot-password', validate(z.object({ email: z.email().max(254).tr
       previewToken = process.env.NODE_ENV !== 'production' ? token : undefined;
       await dbAsync.run("UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL", [user.id]);
       await dbAsync.run("INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, datetime('now', '+30 minutes'))", [user.id, tokenHash(token)]);
-      const url = `${(process.env.PUBLIC_BASE_URL || 'http://localhost:3000').replace(/\/$/, '')}/#reset-password?token=${encodeURIComponent(token)}`;
-      await sendMail({ to: user.email, subject: 'Şifre sıfırlama', text: `Şifrenizi 30 dakika içinde sıfırlayın: ${url}`, html: `<p>Şifrenizi 30 dakika içinde sıfırlamak için <a href="${url}">bu bağlantıyı kullanın</a>.</p>` });
+      const url = `${(process.env.PUBLIC_BASE_URL || 'http://localhost:3000').replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(token)}`;
+      const siteName = await getSiteName();
+      await sendMail({
+        to: user.email,
+        subject: `🔐 ${siteName} şifre sıfırlama bağlantın`,
+        text: `Şifrenizi 30 dakika içinde sıfırlayın: ${url}`,
+        html: transactionalEmail({
+          siteName,
+          title: 'Şifreni mi unuttun? Sorun değil. 🔐',
+          intro: 'Hesabın için şifre sıfırlama talebi aldık. Aşağıdaki butona tıklayarak yeni şifreni hemen belirleyebilirsin. Bu bağlantı güvenliğin için <b>30 dakika</b> geçerlidir.',
+          buttonText: 'Yeni Şifremi Belirle',
+          buttonUrl: url,
+          note: 'Bu talebi sen yapmadıysan bu maili görmezden gelebilirsin; şifren değişmeden kalır.'
+        })
+      });
     }
     res.json({ message: 'Hesap varsa şifre sıfırlama bağlantısı gönderildi.', ...(previewToken ? { preview_token: previewToken } : {}) });
   } catch (err) { next(err); }
@@ -142,8 +234,21 @@ router.post('/verify-email/request', authenticateToken, async (req, res, next) =
     if (req.user.email_verified) return res.json({ message: 'E-posta adresiniz zaten doğrulanmış.' });
     const token = createOpaqueToken();
     await dbAsync.run("INSERT INTO verification_tokens (user_id, purpose, token_hash, expires_at) VALUES (?, 'email', ?, datetime('now', '+24 hours'))", [req.user.id, tokenHash(token)]);
-    const url = `${(process.env.PUBLIC_BASE_URL || 'http://localhost:3000').replace(/\/$/, '')}/#verify-email?token=${encodeURIComponent(token)}`;
-    await sendMail({ to: req.user.email, subject: 'E-posta doğrulama', text: `E-postanızı doğrulayın: ${url}`, html: `<p>E-postanızı doğrulamak için <a href="${url}">bu bağlantıyı kullanın</a>.</p>` });
+    const url = `${(process.env.PUBLIC_BASE_URL || 'http://localhost:3000').replace(/\/$/, '')}/verify-email?token=${encodeURIComponent(token)}`;
+    const siteName = await getSiteName();
+    await sendMail({
+      to: req.user.email,
+      subject: `✅ ${siteName} — e-posta adresini doğrula`,
+      text: `E-postanızı doğrulayın: ${url}`,
+      html: transactionalEmail({
+        siteName,
+        title: `Tek adım kaldı, ${req.user.username}! ✅`,
+        intro: 'Hesabının sana ait olduğunu doğrulamak için aşağıdaki butona tıklaman yeterli. Doğrulanmış hesaplar bildirimleri ve önemli bilgilendirmeleri eksiksiz alır. Bu bağlantı <b>24 saat</b> geçerlidir.',
+        buttonText: 'E-postamı Doğrula',
+        buttonUrl: url,
+        note: 'Bu talebi sen yapmadıysan bu maili görmezden gelebilirsin.'
+      })
+    });
     res.json({ message: 'Doğrulama bağlantısı gönderildi.', ...(process.env.NODE_ENV !== 'production' ? { preview_token: token } : {}) });
   } catch (err) { next(err); }
 });

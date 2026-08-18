@@ -83,7 +83,7 @@ class AiClient {
       model: this.provider.model,
       messages: [{ role: 'system', content: systemPrompt }, ...messages],
       temperature: 0.35,
-      max_tokens: 10000
+      max_tokens: 16000
     }, safeRequestConfig({
       timeout: 90000,
       maxContentLength: 2 * 1024 * 1024,
@@ -100,7 +100,7 @@ class AiClient {
         role: message.role === 'assistant' ? 'assistant' : 'user',
         content: message.content
       })),
-      max_output_tokens: 10000,
+      max_output_tokens: 16000,
       text: { format: { type: 'json_object' } }
     };
     if (this.provider.enable_web_search) body.tools = [{ type: 'web_search' }];
@@ -117,7 +117,7 @@ class AiClient {
       model: this.provider.model,
       system: systemPrompt,
       messages: messages.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
-      max_tokens: 10000
+      max_tokens: 16000
     }, safeRequestConfig({
       timeout: 90000,
       maxContentLength: 2 * 1024 * 1024,
@@ -138,7 +138,7 @@ class AiClient {
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.content }]
       })),
-      generationConfig: { temperature: 0.35, maxOutputTokens: 10000, responseMimeType: 'application/json' }
+      generationConfig: { temperature: 0.35, maxOutputTokens: 16000, responseMimeType: 'application/json' }
     }, safeRequestConfig({
       timeout: 90000,
       maxContentLength: 2 * 1024 * 1024,

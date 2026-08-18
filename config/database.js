@@ -91,6 +91,84 @@ async function runMigrations() {
   await addColumnIfMissing('users', 'two_factor_secret', 'TEXT');
   await addColumnIfMissing('users', 'two_factor_enabled', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing('users', 'token_version', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumnIfMissing('users', 'banned', 'INTEGER NOT NULL DEFAULT 0');
+  // Telegram sipariş bildirimleri: chat_id ancak kullanici bota /start ile
+  // baglandiginda dolar; username yalnizca panelde gostermek icindir.
+  await addColumnIfMissing('users', 'telegram_chat_id', 'TEXT');
+  await addColumnIfMissing('users', 'telegram_username', 'TEXT');
+  await addColumnIfMissing('users', 'telegram_notify', 'INTEGER NOT NULL DEFAULT 1');
+  // Pazarlama hatirlatma e-postasinin ayni kisiye tekrar tekrar gitmemesi icin.
+  await addColumnIfMissing('users', 'last_reminder_email_at', 'DATETIME');
+  // Ayni kuponun Ingilizce takma kodu: iki kod tek havuzu (limit/kullanim) paylasir.
+  await addColumnIfMissing('coupons', 'code_en', 'TEXT');
+
+  // Kampanyalar: servis indirimi veya bakiye bonusu; istege bagli popup vitrini.
+  await dbAsync.run(`
+    CREATE TABLE IF NOT EXISTS campaigns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('service_discount','deposit_bonus')),
+      service_id INTEGER REFERENCES services(id),
+      discount_percent REAL,
+      bonus_percent REAL,
+      min_deposit_kurus INTEGER,
+      ends_at DATETIME,
+      status INTEGER NOT NULL DEFAULT 1,
+      popup_enabled INTEGER NOT NULL DEFAULT 0,
+      popup_template TEXT DEFAULT 'flash',
+      popup_title TEXT,
+      popup_frequency_hours INTEGER NOT NULL DEFAULT 24,
+      views INTEGER NOT NULL DEFAULT 0,
+      clicks INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  // Popup ozel basligi dil bazli gosterilir (EN bos ise TR kullanilir).
+  await addColumnIfMissing('campaigns', 'popup_title_en', 'TEXT');
+
+  // Pazarlama e-postalarindan cikma tercihi (abonelikten cik linki).
+  await addColumnIfMissing('users', 'email_opt_out', 'INTEGER NOT NULL DEFAULT 0');
+  // API anahtarinin ne zaman uretildigi: panelde "en son ne zaman yenilendi"
+  // bilgisi gosterilir.
+  await addColumnIfMissing('users', 'api_key_created_at', 'DATETIME');
+
+  // E-posta pazarlama: sablonlar ve gonderim kayitlari (istatistik icin).
+  await dbAsync.run(`
+    CREATE TABLE IF NOT EXISTS email_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await dbAsync.run(`
+    CREATE TABLE IF NOT EXISTS email_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      batch_id TEXT NOT NULL,
+      template_name TEXT,
+      subject TEXT,
+      user_id INTEGER,
+      email TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('sent','failed')),
+      error TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await dbAsync.run('CREATE INDEX IF NOT EXISTS idx_email_logs_batch ON email_logs(batch_id)');
+
+  // Ilk kurulumda 10 hazir sablon eklenir (tablo bos ise).
+  const templateCount = await dbAsync.get('SELECT COUNT(*) as count FROM email_templates');
+  if (!templateCount || templateCount.count === 0) {
+    const { DEFAULT_TEMPLATES } = require('../services/emailTemplates');
+    for (const template of DEFAULT_TEMPLATES) {
+      await dbAsync.run(
+        'INSERT OR IGNORE INTO email_templates (name, subject, body) VALUES (?, ?, ?)',
+        [template.name, template.subject, template.body]
+      );
+    }
+  }
   await addColumnIfMissing('services', 'rate_per_1000_kurus', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing('services', 'name_tr', 'TEXT');
   await addColumnIfMissing('services', 'name_en', 'TEXT');
@@ -127,6 +205,23 @@ async function runMigrations() {
   await addColumnIfMissing('payments', 'amount_kurus', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing('coupons', 'amount_kurus', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing('payment_notifications', 'amount_kurus', 'INTEGER NOT NULL DEFAULT 0');
+  // Blog yazisi okunma sayaci (istatistik panelinde gosterilir).
+  await addColumnIfMissing('blog_posts', 'views', 'INTEGER NOT NULL DEFAULT 0');
+
+  // Tekil ziyaretci sayimi. Ham IP saklanmaz; IP + tarayici imzasi gizli
+  // anahtarla hashlenir. Ayni ziyaretci ayni gun icinde tek kayit olusturur
+  // (UNIQUE), farkli gunlerde ayni hash'i aldigi icin haftalik/aylik tekil
+  // sayim da dogru calisir.
+  await dbAsync.run(`
+    CREATE TABLE IF NOT EXISTS site_visits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      visitor_hash TEXT NOT NULL,
+      visit_date TEXT NOT NULL,
+      first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(visitor_hash, visit_date)
+    )
+  `);
+  await dbAsync.run('CREATE INDEX IF NOT EXISTS idx_site_visits_date ON site_visits(visit_date)');
 
   await dbAsync.exec(`
     UPDATE users SET balance_kurus = CAST(ROUND(balance * 100) AS INTEGER) WHERE balance_kurus = 0 AND balance != 0;
@@ -385,6 +480,24 @@ async function initDatabase() {
         transaction_id TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id)
+      )
+    `);
+
+    // 6b. Musteri yorumlari: kullanici gonderir (pending), admin onaylar;
+    // admin elle de ekleyebilir (user_id NULL, display_name dolu). Yayinlanan
+    // isim her zaman maskelenir (gizlilik).
+    await dbAsync.run(`
+      CREATE TABLE IF NOT EXISTS reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        order_id INTEGER,
+        display_name TEXT,
+        rating INTEGER NOT NULL,
+        comment TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (order_id) REFERENCES orders(id)
       )
     `);
 

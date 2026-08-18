@@ -1,10 +1,10 @@
 const express = require('express');
 const { z } = require('zod');
-const { dbAsync, withTransaction } = require('../config/database');
+const { dbAsync } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
-const { normalizePlainText, isSafeHttpUrl } = require('../utils/security');
-const { toKurus, fromKurus, calculateChargeKurus } = require('../utils/money');
+const { normalizePlainText } = require('../utils/security');
+const { fromKurus } = require('../utils/money');
 const SmmProviderClient = require('../services/smmProvider');
 
 const router = express.Router();
@@ -13,80 +13,39 @@ const createSchema = z.object({
   link: z.string().trim().min(3).max(2048),
   quantity: z.coerce.number().int().positive(),
   drip_runs: z.coerce.number().int().min(1).max(100).default(1),
-  drip_interval_minutes: z.coerce.number().int().min(5).max(10080).nullable().optional()
+  drip_interval_minutes: z.coerce.number().int().min(5).max(10080).nullable().optional(),
+  // Link uyari mesajinin dili; musterinin panelde secili dili gonderilir.
+  lang: z.enum(['tr', 'en']).default('tr')
 });
 
-function validTarget(value) {
-  if (/^(javascript|data|file):/i.test(value)) return false;
-  return !value.includes('://') || isSafeHttpUrl(value);
-}
+const { placeOrder } = require('../services/placeOrder');
 
 router.post('/', authenticateToken, validate(createSchema), async (req, res, next) => {
   try {
-    const { service_id, quantity, drip_runs, drip_interval_minutes } = req.body;
-    const link = normalizePlainText(req.body.link, 2048);
-    if (!validTarget(link)) return res.status(400).json({ error: 'Geçerli bir bağlantı veya kullanıcı adı girin.' });
-
-    const reserved = await withTransaction(async tx => {
-      const service = await tx.get('SELECT * FROM services WHERE id = ? AND status = 1', [service_id]);
-      if (!service) { const err = new Error('Seçilen servis aktif değil veya bulunamadı.'); err.status = 404; throw err; }
-      if (quantity < service.min_quantity || quantity > service.max_quantity) {
-        const err = new Error(`Miktar ${service.min_quantity} ile ${service.max_quantity} arasında olmalıdır.`); err.status = 400; throw err;
-      }
-      const rateKurus = service.rate_per_1000_kurus || toKurus(service.rate_per_1000);
-      const chargeKurus = calculateChargeKurus(rateKurus, quantity) * drip_runs;
-      if (chargeKurus <= 0) { const err = new Error('Hesaplanan sipariş tutarı geçersiz.'); err.status = 400; throw err; }
-      const debit = await tx.run(
-        `UPDATE users
-         SET balance_kurus = balance_kurus - ?, balance = (balance_kurus - ?) / 100.0
-         WHERE id = ? AND balance_kurus >= ?`,
-        [chargeKurus, chargeKurus, req.user.id, chargeKurus]
-      );
-      if (debit.changes !== 1) { const err = new Error(`Yetersiz bakiye. Gerekli tutar ₺${fromKurus(chargeKurus).toFixed(2)}.`); err.status = 400; throw err; }
-      const order = await tx.run(
-        `INSERT INTO orders
-         (user_id, service_id, provider_id, link, quantity, charge, charge_kurus, status, drip_runs, drip_interval_minutes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
-        [req.user.id, service.id, service.provider_id, link, quantity, fromKurus(chargeKurus), chargeKurus, drip_runs, drip_runs > 1 ? drip_interval_minutes : null]
-      );
-      return { service, chargeKurus, orderId: order.id };
+    const { service_id, quantity, drip_runs, drip_interval_minutes, lang } = req.body;
+    // Siparis olusturmanin tum adimlari services/placeOrder.js icinde:
+    // panel ve /api/v2 ayni yoldan gecsin diye oraya tasindi.
+    const result = await placeOrder({
+      user: req.user,
+      serviceId: service_id,
+      link: req.body.link,
+      quantity,
+      dripRuns: drip_runs,
+      dripIntervalMinutes: drip_interval_minutes,
+      lang
     });
-
-    let providerOrderId = null;
-    let status = 'pending';
-    try {
-      if (!reserved.service.provider_id) throw new Error('Servise bağlı aktif sağlayıcı bulunmuyor.');
-      const provider = await dbAsync.get('SELECT * FROM providers WHERE id = ? AND status = 1', [reserved.service.provider_id]);
-      if (!provider) throw new Error('Sağlayıcı aktif değil.');
-      const client = new SmmProviderClient(provider.api_url, provider.api_key);
-      const response = await client.addOrder(
-        reserved.service.provider_service_id,
-        link,
-        quantity,
-        { runs: drip_runs, interval: drip_interval_minutes }
-      );
-      if (!response?.order) throw new Error(response?.error || 'Sağlayıcı sipariş numarası döndürmedi.');
-      providerOrderId = String(response.order);
-      status = 'processing';
-      await dbAsync.run('UPDATE orders SET provider_order_id = ?, status = ? WHERE id = ?', [providerOrderId, status, reserved.orderId]);
-    } catch (providerError) {
-      await withTransaction(async tx => {
-        const order = await tx.get('SELECT status, refunded_kurus FROM orders WHERE id = ?', [reserved.orderId]);
-        if (order && order.refunded_kurus === 0) {
-          await tx.run('UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?', [reserved.chargeKurus, reserved.chargeKurus, req.user.id]);
-          await tx.run("UPDATE orders SET status = 'failed', refunded_kurus = ?, failure_reason = ? WHERE id = ?", [reserved.chargeKurus, normalizePlainText(providerError.message, 500), reserved.orderId]);
-        }
-      });
-      const err = new Error('Sipariş sağlayıcıya iletilemedi; ayrılan tutar bakiyenize iade edildi.');
-      err.status = 502;
-      throw err;
-    }
-
-    const updatedUser = await dbAsync.get('SELECT balance_kurus FROM users WHERE id = ?', [req.user.id]);
     res.status(201).json({
       message: 'Siparişiniz alındı ve sağlayıcıya iletildi.',
-      order: { id: reserved.orderId, service_name: reserved.service.name, quantity, charge: fromKurus(reserved.chargeKurus), status, provider_order_id: providerOrderId, drip_runs },
-      new_balance: fromKurus(updatedUser.balance_kurus)
+      order: {
+        id: result.orderId,
+        service_name: result.serviceName,
+        quantity,
+        charge: fromKurus(result.chargeKurus),
+        status: result.status,
+        provider_order_id: result.providerOrderId,
+        drip_runs
+      },
+      new_balance: fromKurus(result.newBalanceKurus)
     });
   } catch (err) { next(err); }
 });
@@ -103,12 +62,15 @@ router.get('/', authenticateToken, async (req, res, next) => {
     const page = Math.max(1, Number.parseInt(req.query.page || '1', 10));
     const limit = Math.min(100, Math.max(10, Number.parseInt(req.query.limit || '25', 10)));
     const offset = (page - 1) * limit;
-    const total = await dbAsync.get('SELECT COUNT(*) count FROM orders WHERE user_id = ?', [req.user.id]);
+    // 'failed' siparisler kullaniciya gosterilmez: saglayiciya hic iletilemedi
+    // ve tutar aninda iade edildi; listede "bekliyor" gibi gorunup kafa
+    // karistiriyordu. Admin panelinde gorunmeye devam ederler.
+    const total = await dbAsync.get("SELECT COUNT(*) count FROM orders WHERE user_id = ? AND status != 'failed'", [req.user.id]);
     const orders = await dbAsync.all(
       `SELECT o.*, ${serviceNameSql} service_name, s.refill, ${categoryNameSql} category_name
        FROM orders o JOIN services s ON o.service_id = s.id
        LEFT JOIN categories c ON s.category_id = c.id
-       WHERE o.user_id = ? ORDER BY o.id DESC LIMIT ? OFFSET ?`,
+       WHERE o.user_id = ? AND o.status != 'failed' ORDER BY o.id DESC LIMIT ? OFFSET ?`,
       [req.user.id, limit, offset]
     );
     res.json({ orders: orders.map(o => ({ ...o, charge: fromKurus(o.charge_kurus) })), pagination: { page, limit, total: total.count, pages: Math.ceil(total.count / limit) } });

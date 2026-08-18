@@ -24,8 +24,12 @@ function isLocalBlogCover(value) {
 
 async function chooseBlogCover(db, topic) {
   const platform = detectBlogPlatform(topic);
-  const rows = await db.all('SELECT image_url FROM blog_posts WHERE image_url LIKE ?', [`/api/blog/cover/${platform}/%.svg`]);
-  const used = new Set(rows.map(row => Number(String(row.image_url).match(/\/(\d+)\.svg$/)?.[1])).filter(Boolean));
+  // Not: kayitli deger "?v=2" soneki tasiyabilir; desen bu yuzden ".svg" ile
+  // bitmek yerine yol on ekiyle eslesir (eski desen sonekli kayitlari
+  // gormuyordu ve ayni varyant tekrar tekrar seciliyordu).
+  const rows = await db.all('SELECT image_url FROM blog_posts WHERE image_url LIKE ?', [`/api/blog/cover/${platform}/%`]);
+  // Varyant numarasi "?v=2" sonekli kayitlardan da cikarilabilmeli.
+  const used = new Set(rows.map(row => Number(String(row.image_url).match(/\/(\d+)\.svg(?:\?|$)/)?.[1])).filter(Boolean));
   let variant = 1;
   while (variant <= 50 && used.has(variant)) variant++;
   if (variant > 50) variant = (rows.length % 50) + 1;

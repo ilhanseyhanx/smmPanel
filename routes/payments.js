@@ -6,8 +6,33 @@ const { validate } = require('../middleware/validate');
 const { normalizePlainText, createOpaqueToken } = require('../utils/security');
 const { toKurus, fromKurus } = require('../utils/money');
 const PayTR = require('../services/paytr');
+const QRCode = require('qrcode');
+const NowPayments = require('../services/nowpayments');
+const telegram = require('../services/telegramNotifier');
+const { activeDepositBonus } = require('../services/campaigns');
 
 const router = express.Router();
+
+// Aktif "bakiye bonusu" kampanyasi varsa yatirilan tutara ek bonus yazar.
+// Islem, cagiranin transaction'i icinde kosar; bonus satiri payments'ta ayrica
+// gorunur ki muhasebe izlenebilir kalsin.
+// routes/admin.js banka onayinda da ayni bonus mantigini kullanir.
+async function applyDepositBonus(tx, userId, amountKurus, sourceLabel) {
+  const bonus = await activeDepositBonus();
+  if (!bonus) return 0;
+  if (bonus.min_deposit_kurus && amountKurus < bonus.min_deposit_kurus) return 0;
+  const bonusKurus = Math.round(amountKurus * Number(bonus.bonus_percent) / 100);
+  if (bonusKurus <= 0) return 0;
+  await tx.run('UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?', [bonusKurus, bonusKurus, userId]);
+  await tx.run(
+    `INSERT INTO payments (user_id, amount, amount_kurus, method, status, transaction_id)
+     VALUES (?, ?, ?, ?, 'completed', ?)`,
+    [userId, fromKurus(bonusKurus), bonusKurus, `Bonus (%${bonus.bonus_percent})`, `BONUS_${sourceLabel}_${userId}_${Date.now()}`]
+  );
+  await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)',
+    [userId, 'payment', 'Bakiye bonusu 🎁', `"${bonus.name}" kampanyasıyla ₺${fromKurus(bonusKurus).toFixed(2)} bonus bakiyenize eklendi.`]);
+  return bonusKurus;
+}
 
 router.post('/paytr/callback', async (req, res) => {
   try {
@@ -24,6 +49,10 @@ router.post('/paytr/callback', async (req, res) => {
         await tx.run('UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?', [intent.amount_kurus, intent.amount_kurus, intent.user_id]);
         await tx.run(`INSERT INTO payments (user_id, amount, amount_kurus, method, status, transaction_id) VALUES (?, ?, ?, 'PayTR', 'completed', ?)`, [intent.user_id, fromKurus(intent.amount_kurus), intent.amount_kurus, merchantOid]);
         await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)', [intent.user_id, 'payment', 'Ödeme tamamlandı', `₺${fromKurus(intent.amount_kurus).toFixed(2)} bakiyenize eklendi.`]);
+        const paytrBonus = await applyDepositBonus(tx, intent.user_id, intent.amount_kurus, 'PAYTR');
+        const paytrUser = await tx.get('SELECT username FROM users WHERE id = ?', [intent.user_id]);
+        // Bildirim beklenmez; hatalari servis icinde yutulur.
+        telegram.notifyDeposit({ username: paytrUser?.username || `#${intent.user_id}`, amount: fromKurus(intent.amount_kurus), method: 'PayTR (Kart)', bonus: fromKurus(paytrBonus) });
       } else {
         await tx.run("UPDATE payment_intents SET status = 'failed', failure_reason = ? WHERE id = ? AND status = 'pending'", [normalizePlainText(req.body.failed_reason_msg || 'Ödeme reddedildi.', 500), intent.id]);
       }
@@ -42,12 +71,190 @@ router.post('/paytr/token', authenticateToken, validate(z.object({ amount: z.coe
     await dbAsync.run("INSERT INTO payment_intents (user_id, provider, merchant_oid, amount_kurus) VALUES (?, 'paytr', ?, ?)", [req.user.id, merchantOid, amountKurus]);
     try {
       const token = await PayTR.createIframeToken({ user: req.user, amountKurus, merchantOid, userIp: req.ip });
+      // Talep bildirimi beklenmez; hatalari servis icinde yutulur.
+      telegram.notifyPaymentEvent('💳 Yükleme Talebi Oluşturuldu (PayTR)', [
+        `👤 Kullanıcı: ${req.user.username}`,
+        `➕ Tutar: ₺${fromKurus(amountKurus).toFixed(2)}`,
+        '⏳ Kart ödemesi bekleniyor…'
+      ]);
       res.status(201).json({ token, merchant_oid: merchantOid, iframe_url: `https://www.paytr.com/odeme/guvenli/${token}` });
     } catch (err) {
       await dbAsync.run("UPDATE payment_intents SET status = 'failed', failure_reason = ? WHERE merchant_oid = ?", [normalizePlainText(err.message, 500), merchantOid]);
       throw err;
     }
   } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// NOWPAYMENTS (KRİPTO) BAKİYE YÜKLEME
+// Akis PayTR ile ayni iskelette: intent olustur -> kullanici odesin ->
+// imzali IPN gelince bakiye yaz. payment_webhooks tekrari engeller.
+// ---------------------------------------------------------------------------
+// NOWPayments'in coin bazli alt limitleri var (ag ucretleri nedeniyle).
+// Taban limit USDT'yi rahat karsilar; coin bazli gercek limit create sirasinda
+// estimate + min-amount ile ayrica dogrulanir.
+const MIN_CRYPTO_TRY = 400;
+
+// Musterinin secebilecegi coin listesi (hesapta acik olanlarla kesisim).
+router.get('/nowpayments/currencies', authenticateToken, async (req, res, next) => {
+  try {
+    res.json({ coins: await NowPayments.getAvailableCoins(), min_try: MIN_CRYPTO_TRY });
+  } catch (err) { next(err); }
+});
+
+// Secilen coinin TL cinsinden guncel alt limiti (ekranda canli gosterilir).
+router.get('/nowpayments/min/:coin', authenticateToken, async (req, res, next) => {
+  try {
+    const coin = String(req.params.coin || '').toLowerCase();
+    if (!NowPayments.SUPPORTED_COINS[coin]) return res.status(400).json({ error: 'Desteklenmeyen coin.' });
+    const minTry = await NowPayments.getMinTryFor(coin).catch(() => 0);
+    res.json({ min_try: Math.max(MIN_CRYPTO_TRY, minTry) });
+  } catch (err) { next(err); }
+});
+
+router.post('/nowpayments/create', authenticateToken, validate(z.object({
+  amount: z.coerce.number().min(MIN_CRYPTO_TRY, `Kripto ödemelerde alt limit ₺${MIN_CRYPTO_TRY}'dür (blockchain ağ ücretleri nedeniyle).`).max(100000),
+  pay_currency: z.string().trim().toLowerCase().max(20).default('usdttrc20')
+})), async (req, res, next) => {
+  try {
+    const payCurrency = req.body.pay_currency;
+    if (!NowPayments.SUPPORTED_COINS[payCurrency]) {
+      return res.status(400).json({ error: 'Desteklenmeyen coin seçildi.' });
+    }
+    const amountTry = req.body.amount;
+
+    // Coin bazli alt limit: tutarin coin karsiligi, NOWPayments'in o coin icin
+    // kabul ettigi en dusuk miktarin altindaysa odeme hic baslatilmaz ve
+    // musteriye TL cinsinden yaklasik alt limit soylenir.
+    try {
+      const minTry = await NowPayments.getMinTryFor(payCurrency);
+      if (minTry > 0 && amountTry < minTry) {
+        const coin = NowPayments.SUPPORTED_COINS[payCurrency];
+        // Kullanicinin sectigi coini kendisine "alternatif" diye onermeyelim.
+        const suggestion = payCurrency === 'usdttrc20'
+          ? 'Lütfen tutarı artırın.'
+          : 'Tutarı artırın veya USDT (TRC-20) gibi düşük limitli bir coin seçin.';
+        return res.status(400).json({
+          error: `${coin.label} (${coin.network}) için minimum yükleme yaklaşık ₺${minTry}. ${suggestion}`
+        });
+      }
+    } catch (limitErr) {
+      // Limit sorgusu basarisiz olursa akisi kesmeyiz; NOWPayments create
+      // sirasinda ayni kontrolu kendisi de yapar.
+      if (limitErr.status === 503) throw limitErr;
+    }
+
+    const amountKurus = toKurus(amountTry);
+    const merchantOid = createOpaqueToken('CR').replace(/[^a-zA-Z0-9]/g, '').slice(0, 40);
+    await dbAsync.run("INSERT INTO payment_intents (user_id, provider, merchant_oid, amount_kurus) VALUES (?, 'nowpayments', ?, ?)", [req.user.id, merchantOid, amountKurus]);
+    try {
+      const payment = await NowPayments.createPayment({ amountTry: fromKurus(amountKurus), payCurrency, orderId: merchantOid });
+      const coinMeta = NowPayments.SUPPORTED_COINS[payCurrency];
+      telegram.notifyPaymentEvent('🪙 Yükleme Talebi Oluşturuldu (Kripto)', [
+        `👤 Kullanıcı: ${req.user.username}`,
+        `➕ Tutar: ₺${fromKurus(amountKurus).toFixed(2)}`,
+        `🪙 Coin: ${coinMeta.label} (${coinMeta.network}) → ${payment.payAmount}`,
+        '⏳ Blockchain ödemesi bekleniyor…'
+      ]);
+      // QR sitede cizilir: cogu cuzdan duz adresi sorunsuz okur.
+      const qr = await QRCode.toDataURL(payment.payAddress, { margin: 1, width: 240 });
+      res.status(201).json({
+        merchant_oid: merchantOid,
+        pay_address: payment.payAddress,
+        pay_amount: payment.payAmount,
+        pay_currency: payment.payCurrency,
+        expires_at: payment.expiresAt,
+        amount_try: fromKurus(amountKurus),
+        qr
+      });
+    } catch (err) {
+      await dbAsync.run("UPDATE payment_intents SET status = 'failed', failure_reason = ? WHERE merchant_oid = ?", [normalizePlainText(err.message, 500), merchantOid]);
+      throw err;
+    }
+  } catch (err) { next(err); }
+});
+
+// Kullanicinin kendi odeme niyetinin durumu (odeme sonrasi ekran yoklamasi icin).
+router.get('/nowpayments/status/:oid', authenticateToken, async (req, res, next) => {
+  try {
+    const oid = String(req.params.oid || '').slice(0, 64);
+    const intent = await dbAsync.get(
+      "SELECT status, amount_kurus, failure_reason FROM payment_intents WHERE provider = 'nowpayments' AND merchant_oid = ? AND user_id = ?",
+      [oid, req.user.id]
+    );
+    if (!intent) return res.status(404).json({ error: 'Ödeme kaydı bulunamadı.' });
+    res.json({ status: intent.status, amount: fromKurus(intent.amount_kurus), failure_reason: intent.failure_reason });
+  } catch (err) { next(err); }
+});
+
+router.post('/nowpayments/callback', async (req, res) => {
+  try {
+    // Imza dogrulanamayan istekler tamamen yok sayilir.
+    if (!await NowPayments.verifyIpnSignature(req.body, req.headers['x-nowpayments-sig'])) {
+      return res.status(400).type('text').send('bad signature');
+    }
+    const merchantOid = String(req.body.order_id || '').slice(0, 64);
+    const paymentStatus = String(req.body.payment_status || '').toLowerCase();
+    const paymentId = String(req.body.payment_id || req.body.invoice_id || merchantOid).slice(0, 64);
+    if (!merchantOid) return res.status(400).type('text').send('missing order');
+
+    let completedInfo = null;
+    let problemInfo = null;
+    await withTransaction(async tx => {
+      const intent = await tx.get("SELECT * FROM payment_intents WHERE provider = 'nowpayments' AND merchant_oid = ?", [merchantOid]);
+      if (!intent || intent.status === 'completed') return;
+
+      // Ayni bildirim (odeme + durum) yalnizca bir kez islenir.
+      const dedupe = await tx.run(
+        'INSERT OR IGNORE INTO payment_webhooks (provider, external_id, payload) VALUES (?, ?, ?)',
+        ['nowpayments', `${paymentId}:${paymentStatus}`, JSON.stringify(req.body)]
+      );
+      if (dedupe.changes !== 1) return;
+
+      if (paymentStatus === 'finished') {
+        const claimed = await tx.run("UPDATE payment_intents SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'", [intent.id]);
+        if (claimed.changes !== 1) return;
+        await tx.run('UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?', [intent.amount_kurus, intent.amount_kurus, intent.user_id]);
+        await tx.run(`INSERT INTO payments (user_id, amount, amount_kurus, method, status, transaction_id) VALUES (?, ?, ?, 'Kripto (NOWPayments)', 'completed', ?)`, [intent.user_id, fromKurus(intent.amount_kurus), intent.amount_kurus, merchantOid]);
+        await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)', [intent.user_id, 'payment', 'Kripto ödemesi tamamlandı 🪙', `₺${fromKurus(intent.amount_kurus).toFixed(2)} bakiyenize eklendi.`]);
+        const bonusKurus = await applyDepositBonus(tx, intent.user_id, intent.amount_kurus, 'CRYPTO');
+        const user = await tx.get('SELECT username FROM users WHERE id = ?', [intent.user_id]);
+        completedInfo = { username: user?.username || `#${intent.user_id}`, amount: fromKurus(intent.amount_kurus), bonus: fromKurus(bonusKurus) };
+      } else if (['failed', 'expired', 'refunded'].includes(paymentStatus)) {
+        const changed = await tx.run("UPDATE payment_intents SET status = 'failed', failure_reason = ? WHERE id = ? AND status = 'pending'", [normalizePlainText(`NOWPayments: ${paymentStatus}`, 500), intent.id]);
+        if (changed.changes === 1) {
+          const user = await tx.get('SELECT username FROM users WHERE id = ?', [intent.user_id]);
+          problemInfo = { title: '⚠️ Kripto Ödemesi Tamamlanamadı', lines: [
+            `👤 Kullanıcı: ${user?.username || `#${intent.user_id}`}`,
+            `➕ Tutar: ₺${fromKurus(intent.amount_kurus).toFixed(2)}`,
+            `❌ Durum: ${paymentStatus}`
+          ]};
+        }
+      } else if (paymentStatus === 'partially_paid') {
+        // Eksik odeme otomatik tahsil edilmez; yonetici kullanici bakiyesinden
+        // elle telafi edebilsin diye gerekce kaydedilir.
+        const paid = req.body.actually_paid ? `${req.body.actually_paid} ${req.body.pay_currency || ''}` : 'bilinmiyor';
+        const changed = await tx.run("UPDATE payment_intents SET status = 'failed', failure_reason = ? WHERE id = ? AND status = 'pending'", [normalizePlainText(`Eksik ödeme (gelen: ${paid})`, 500), intent.id]);
+        if (changed.changes === 1) {
+          const user = await tx.get('SELECT username FROM users WHERE id = ?', [intent.user_id]);
+          problemInfo = { title: '⚠️ Eksik Kripto Ödemesi — Elle Kontrol Gerekli', lines: [
+            `👤 Kullanıcı: ${user?.username || `#${intent.user_id}`}`,
+            `➕ Beklenen: ₺${fromKurus(intent.amount_kurus).toFixed(2)}`,
+            `📉 Gelen: ${paid}`,
+            '💡 Gerekirse Kullanıcılar sekmesinden elle bakiye ekleyebilirsin.'
+          ]};
+        }
+      }
+      // waiting / confirming / confirmed / sending ara durumlardir; dokunulmaz.
+    });
+
+    if (completedInfo) telegram.notifyDeposit({ ...completedInfo, method: 'Kripto (NOWPayments)' });
+    if (problemInfo) telegram.notifyPaymentEvent(problemInfo.title, problemInfo.lines);
+    return res.type('text').send('OK');
+  } catch (err) {
+    console.error('NOWPayments callback error:', err.message);
+    return res.status(500).type('text').send('ERROR');
+  }
 });
 
 router.post('/add-funds', authenticateToken, validate(z.object({
@@ -87,7 +294,8 @@ router.post('/coupon/redeem', authenticateToken, validate(z.object({ code: z.str
   try {
     const cleanCode = normalizePlainText(req.body.code, 64).toUpperCase();
     const result = await withTransaction(async tx => {
-      const coupon = await tx.get('SELECT * FROM coupons WHERE code = ? COLLATE NOCASE', [cleanCode]);
+      // TR kodu da EN takma kodu da ayni kuponu bulur (ortak limit/kullanim).
+      const coupon = await tx.get('SELECT * FROM coupons WHERE code = ? COLLATE NOCASE OR code_en = ? COLLATE NOCASE', [cleanCode, cleanCode]);
       if (!coupon) { const err = new Error('Geçersiz kupon kodu.'); err.status = 404; throw err; }
       const claim = await tx.run(
         `UPDATE coupons SET used_count = used_count + 1
@@ -107,6 +315,11 @@ router.post('/coupon/redeem', authenticateToken, validate(z.object({ code: z.str
       );
       return { amountKurus, user: await tx.get('SELECT balance_kurus FROM users WHERE id = ?', [req.user.id]) };
     });
+    telegram.notifyPaymentEvent('🎟️ Kupon Kullanıldı', [
+      `👤 Kullanıcı: ${req.user.username}`,
+      `🎫 Kod: ${cleanCode}`,
+      `➕ Eklenen: ₺${fromKurus(result.amountKurus).toFixed(2)}`
+    ]);
     res.json({ message: `₺${fromKurus(result.amountKurus).toFixed(2)} kupon bakiyesi eklendi.`, new_balance: fromKurus(result.user.balance_kurus) });
   } catch (err) { next(err); }
 });
@@ -130,8 +343,17 @@ router.post('/notification', authenticateToken, validate(z.object({
        VALUES (?, ?, ?, ?, ?, 'pending')`,
       [req.user.id, normalizePlainText(req.body.bank_name, 80), fromKurus(amountKurus), amountKurus, normalizePlainText(req.body.sender_name, 120)]
     );
+    // Bu bildirim admin onayi gerektirir; Telegram'dan aninda haber verilir.
+    telegram.notifyPaymentEvent('🏦 Yeni Banka/Papara Ödeme Bildirimi', [
+      `👤 Kullanıcı: ${req.user.username}`,
+      `🏦 Yöntem: ${normalizePlainText(req.body.bank_name, 80)}`,
+      `➕ Tutar: ₺${fromKurus(amountKurus).toFixed(2)}`,
+      `✍️ Gönderen: ${normalizePlainText(req.body.sender_name, 120)}`,
+      '👉 Admin Panel → Ödeme Bildirimleri bölümünden onaylayabilirsin.'
+    ]);
     res.status(201).json({ message: 'Ödeme bildiriminiz incelemeye alındı.' });
   } catch (err) { next(err); }
 });
 
 module.exports = router;
+module.exports.applyDepositBonus = applyDepositBonus;

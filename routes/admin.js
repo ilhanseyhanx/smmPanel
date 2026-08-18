@@ -8,9 +8,13 @@ const SmmProviderClient = require('../services/smmProvider');
 const bcrypt = require('bcryptjs');
 const { withTransaction } = require('../config/database');
 const { normalizePlainText, sanitizeRichText, isSafeHttpUrl, createOpaqueToken } = require('../utils/security');
-const { toKurus, fromKurus } = require('../utils/money');
+const { toKurus, fromKurus, calculateChargeKurus } = require('../utils/money');
+const { friendlyProviderReason } = require('../utils/providerErrors');
 const { fetchProviderCatalog } = require('../services/providerCatalog');
 const { chooseBlogCover, isLocalBlogCover } = require('../services/blogCover');
+const telegram = require('../services/telegramNotifier');
+const { buildXlsx, columnsFromRows } = require('../utils/xlsx');
+const { buildMetaDescription } = require('../utils/metaDescription');
 
 // --- Ortak dogrulama semalari ---------------------------------------------
 // Admin uclari da musteri uclari gibi sema ile dogrulanir; boylece negatif
@@ -51,6 +55,8 @@ const bulkStatusSchema = z.object({
 
 const couponSchema = z.object({
   code: z.string().trim().min(2).max(64),
+  // Istege bagli Ingilizce takma kod: iki kod ayni kuponu (ortak limit) kullanir.
+  code_en: z.string().trim().max(64).optional().nullable(),
   amount: moneyAmount,
   max_uses: z.coerce.number().int().min(1).max(1_000_000).default(100)
 });
@@ -65,8 +71,28 @@ const changePasswordSchema = z.object({
 });
 
 const ALLOWED_SETTING_KEYS = ['site_name', 'currency', 'telegram_link', 'support_email', 'hero_title', 'hero_subtitle',
+  // Blog yazari kimligi: gorunur imza + Person yapisal verisi (E-E-A-T).
+  'blog_author_name', 'blog_author_title', 'blog_author_url',
   'bank_accounts', 'hero_title_tr', 'hero_title_en', 'hero_subtitle_tr', 'hero_subtitle_en',
-  'announcement_tr', 'announcement_en', 'usd_try_rate'];
+  'announcement_tr', 'announcement_en', 'usd_try_rate',
+  // Telegram bot bildirimleri (yeni kayit / yeni siparis)
+  'telegram_bot_token', 'telegram_chat_id', 'telegram_notify_register', 'telegram_notify_order', 'telegram_notify_payment', 'telegram_notify_ticket',
+  // Pazarlama: sosyal kanit seridi ve hatirlatma e-postasi anahtarlari
+  'social_proof_enabled', 'reminder_email_enabled',
+  // NOWPayments kripto odeme anahtarlari
+  'nowpayments_api_key', 'nowpayments_ipn_secret',
+  // SMTP (e-posta) ayarlari
+  'smtp_host', 'smtp_port', 'smtp_secure', 'smtp_user', 'smtp_pass', 'mail_from',
+  // SEO & analitik: GA olcum kimligi, Search Console ve Bing Webmaster dogrulama kodlari
+  'google_analytics_id', 'google_site_verification', 'bing_site_verification',
+  // Duyuru bandinin "acilisa ozel" kutlama gorunumu
+  'announcement_special',
+  // Saglayici bakiye uyari esigi (saglayicinin para biriminde; bos/0 = kapali)
+  'provider_balance_threshold',
+  // Sosyal profil adresleri: alt bilgideki baglantilar + Organization sameAs
+  'social_instagram', 'social_x', 'social_youtube', 'social_tiktok',
+  // Fiziksel isletme adresi: yapisal veride PostalAddress olarak yayinlanir
+  'business_address'];
 // Ayar degerleri yalnizca ilkel tip olabilir; obje/dizi "[object Object]" olarak kaydedilirdi.
 const settingsSchema = z.record(z.string(), z.union([z.string().max(20000), z.number(), z.boolean()]));
 
@@ -80,6 +106,10 @@ const serviceCreateSchema = z.object({
   name_en: z.string().trim().max(220).optional(),
   rate_per_1000: z.coerce.number().finite().min(0).max(1_000_000),
   rate_per_1000_usd: z.coerce.number().finite().min(0).max(1_000_000).optional(),
+  // Saglayiciya odenen gercek birim maliyet. Kar/zarar raporu bu alana dayanir;
+  // kaydedilmezse "Tedarikciye Giden" her zaman 0 gorunur.
+  provider_cost_rate: z.coerce.number().finite().min(0).max(1_000_000).optional(),
+  provider_cost_currency: z.string().trim().max(10).optional(),
   min_quantity: quantityField.optional(),
   max_quantity: quantityField.optional(),
   description: z.string().max(5000).optional(),
@@ -121,8 +151,103 @@ router.use(authenticateToken, requireAdmin);
 // DASHBOARD STATS
 router.get('/stats', async (req, res) => {
   try {
-    const totalRevenueRow = await dbAsync.get(`SELECT SUM(charge) as total FROM orders WHERE status != 'canceled'`);
-    const totalOrdersRow = await dbAsync.get(`SELECT COUNT(*) as count FROM orders`);
+    // Ciro: musteriden gercekten tahsil kalan tutar. Iptal/basarisiz siparisler
+    // tamamen, kismi siparisler kismen iade edildigi icin charge yerine
+    // (charge - iade) toplanir; boylece iade edilen para ciroda gorunmez.
+    const revenueRow = await dbAsync.get(
+      `SELECT COALESCE(SUM(charge_kurus - refunded_kurus), 0) as net_kurus FROM orders`
+    );
+
+    // Siparis sayilari durum kiriliminda: "toplam" yalnizca gecerli (iptal ve
+    // basarisiz olmayan) siparisleri sayar; iptal/basarisiz ayrica raporlanir.
+    const orderCountsRow = await dbAsync.get(`
+      SELECT
+        COUNT(*) as all_count,
+        SUM(CASE WHEN status NOT IN ('canceled','failed') THEN 1 ELSE 0 END) as valid_count,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_count,
+        SUM(CASE WHEN status IN ('pending','processing') THEN 1 ELSE 0 END) as active_count,
+        SUM(CASE WHEN status = 'partial' THEN 1 ELSE 0 END) as partial_count,
+        SUM(CASE WHEN status = 'canceled' THEN 1 ELSE 0 END) as canceled_count,
+        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count
+      FROM orders
+    `);
+
+    // Tedarikci maliyeti: saglayiciya gercekten iletilen siparislerde
+    // miktar x saglayici birim maliyeti (1000 adet basina). Kismi teslimatta
+    // yalnizca teslim edilen kisim maliyet sayilir. Maliyet, servis uzerindeki
+    // guncel saglayici fiyatindan hesaplanir (siparis anindaki fiyat saklanmaz,
+    // bu yuzden yaklasik bir degerdir); doviz kuru ayarlardaki usd_try_rate'tir.
+    const costRows = await dbAsync.all(`
+      SELECT COALESCE(s.provider_cost_currency, 'USD') as currency,
+             SUM((o.quantity - CASE WHEN o.status = 'partial' THEN COALESCE(o.remains, 0) ELSE 0 END)
+                 * s.provider_cost_rate / 1000.0) as cost
+      FROM orders o
+      JOIN services s ON o.service_id = s.id
+      WHERE o.status IN ('pending','processing','completed','partial')
+        AND s.provider_cost_rate > 0
+      GROUP BY COALESCE(s.provider_cost_currency, 'USD')
+    `);
+    const exchangeSetting = await dbAsync.get("SELECT value FROM site_settings WHERE key = 'usd_try_rate'");
+    const usdTryRate = Number(exchangeSetting?.value) > 0 ? Number(exchangeSetting.value) : 35;
+    // Hem saglayiciya gercekten odenen doviz tutari hem de panel kuruyla TL
+    // karsiligi ayri ayri tutulur; admin ikisini de gorur.
+    let providerCostTry = 0;
+    let providerCostUsd = 0;
+    for (const row of costRows) {
+      const cost = Number(row.cost) || 0;
+      if (String(row.currency).toUpperCase() === 'TRY') {
+        providerCostTry += cost;
+        providerCostUsd += usdTryRate > 0 ? cost / usdTryRate : 0;
+      } else {
+        providerCostTry += cost * usdTryRate;
+        providerCostUsd += cost;
+      }
+    }
+
+    // Maliyeti bilinmeyen (saglayici fiyati olmayan / manuel) servislerdeki
+    // gecerli siparis sayisi; kar hesabinin neyi kapsamadigini gosterir.
+    const unknownCostRow = await dbAsync.get(`
+      SELECT COUNT(*) as count FROM orders o
+      JOIN services s ON o.service_id = s.id
+      WHERE o.status IN ('pending','processing','completed','partial')
+        AND (s.provider_cost_rate IS NULL OR s.provider_cost_rate <= 0)
+    `);
+
+    // Son 30 gunun gunluk ciro/maliyet serisi (grafik icin). Maliyet, guncel
+    // saglayici fiyatiyla yaklasik hesaplanir ve kur uzerinden TL'ye cevrilir.
+    const dailyRevenueRows = await dbAsync.all(`
+      SELECT date(created_at) as day, SUM(charge_kurus - refunded_kurus) as net_kurus
+      FROM orders WHERE created_at >= date('now', '-29 days')
+      GROUP BY date(created_at)
+    `);
+    const dailyCostRows = await dbAsync.all(`
+      SELECT date(o.created_at) as day, COALESCE(s.provider_cost_currency, 'USD') as currency,
+             SUM((o.quantity - CASE WHEN o.status = 'partial' THEN COALESCE(o.remains, 0) ELSE 0 END)
+                 * s.provider_cost_rate / 1000.0) as cost
+      FROM orders o JOIN services s ON o.service_id = s.id
+      WHERE o.created_at >= date('now', '-29 days')
+        AND o.status IN ('pending','processing','completed','partial')
+        AND s.provider_cost_rate > 0
+      GROUP BY date(o.created_at), COALESCE(s.provider_cost_currency, 'USD')
+    `);
+    const revenueByDay = new Map(dailyRevenueRows.map(row => [row.day, fromKurus(row.net_kurus || 0)]));
+    const costByDay = new Map();
+    for (const row of dailyCostRows) {
+      const cost = (Number(row.cost) || 0) * (String(row.currency).toUpperCase() === 'TRY' ? 1 : usdTryRate);
+      costByDay.set(row.day, (costByDay.get(row.day) || 0) + cost);
+    }
+    const dailySeries = [];
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      const revenue = revenueByDay.get(date) || 0;
+      const cost = costByDay.get(date) || 0;
+      dailySeries.push({
+        day: date,
+        revenue: Math.round(revenue * 100) / 100,
+        profit: Math.round((revenue - cost) * 100) / 100
+      });
+    }
+
     const totalUsersRow = await dbAsync.get(`SELECT COUNT(*) as count FROM users WHERE role = 'client'`);
     const activeProvidersRow = await dbAsync.get(`SELECT COUNT(*) as count FROM providers WHERE status = 1`);
     const pendingTicketsRow = await dbAsync.get(`SELECT COUNT(*) as count FROM tickets WHERE status = 'open'`);
@@ -137,15 +262,27 @@ router.get('/stats', async (req, res) => {
        ORDER BY o.id DESC LIMIT 10`
     );
 
+    const totalRevenue = fromKurus(revenueRow.net_kurus || 0);
     res.json({
       stats: {
-        total_revenue: totalRevenueRow.total || 0,
-        total_orders: totalOrdersRow.count || 0,
+        total_revenue: totalRevenue,
+        provider_cost: Math.round(providerCostTry * 100) / 100,
+        provider_cost_usd: Math.round(providerCostUsd * 100) / 100,
+        net_profit: Math.round((totalRevenue - providerCostTry) * 100) / 100,
+        orders_without_cost: unknownCostRow.count || 0,
+        usd_try_rate: usdTryRate,
+        total_orders: orderCountsRow.valid_count || 0,
+        completed_orders: orderCountsRow.completed_count || 0,
+        active_orders: orderCountsRow.active_count || 0,
+        partial_orders: orderCountsRow.partial_count || 0,
+        canceled_orders: orderCountsRow.canceled_count || 0,
+        failed_orders: orderCountsRow.failed_count || 0,
         total_users: totalUsersRow.count || 0,
         active_providers: activeProvidersRow.count || 0,
         pending_tickets: pendingTicketsRow.count || 0
         , pending_deposits: pendingDepositsRow.count || 0
       },
+      dailySeries,
       recentOrders
     });
   } catch (err) {
@@ -212,6 +349,18 @@ router.post('/providers/:id/import-services', requireIdParam, validate(importSer
       return res.status(400).json({ error: 'Sağlayıcı servis listesi geçersiz veya boş format döndürdü.' });
     }
 
+    // Saglayici fiyatlari genelde USD'dir. Once bakiye ucundan para birimini
+    // ogrenip satis fiyatini KUR ile TL'ye ceviriyoruz. Bu yapilmazsa 1.50 $'lik
+    // servis 1,50 ₺ sanilip zararina satilir.
+    let providerCurrency = 'USD';
+    try {
+      const balance = await client.getBalance();
+      providerCurrency = String(balance?.currency || 'USD').toUpperCase().slice(0, 10) || 'USD';
+    } catch { /* para birimi okunamazsa USD varsayilir */ }
+    const rateSetting = await dbAsync.get("SELECT value FROM site_settings WHERE key = 'usd_try_rate'");
+    const usdTryRate = Number(rateSetting?.value) > 0 ? Number(rateSetting.value) : 35;
+    const toTry = value => providerCurrency === 'TRY' ? value : value * usdTryRate;
+
     let importedCount = 0;
 
     for (const pService of serviceList) {
@@ -227,9 +376,9 @@ router.post('/providers/:id/import-services', requireIdParam, validate(importSer
         category = { id: catRes.id };
       }
 
-      // Calculate new rate with profit margin
+      // Satis fiyati: saglayici maliyeti -> TL -> kar marji
       const rawRate = parseFloat(pService.rate || pService.price || pService.cost || 10);
-      const calculatedRate = (rawRate * profitMultiplier).toFixed(2);
+      const calculatedRate = (toTry(rawRate) * profitMultiplier).toFixed(2);
       const minQty = parseInt(pService.min || 100);
       const maxQty = parseInt(pService.max || 10000);
       const serviceName = normalizePlainText(pService.name || `Servis #${pServiceId}`, 220);
@@ -251,8 +400,9 @@ router.post('/providers/:id/import-services', requireIdParam, validate(importSer
 
       if (!existing) {
         await dbAsync.run(
-          `INSERT INTO services (category_id, provider_id, provider_service_id, name, rate_per_1000, rate_per_1000_kurus, min_quantity, max_quantity, description, status, refill)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+          `INSERT INTO services (category_id, provider_id, provider_service_id, name, rate_per_1000, rate_per_1000_kurus,
+           provider_cost_rate, provider_cost_currency, provider_cost_updated_at, min_quantity, max_quantity, description, status, refill)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, 1, ?)`,
           [
             category.id,
             providerId,
@@ -260,6 +410,10 @@ router.post('/providers/:id/import-services', requireIdParam, validate(importSer
             serviceName,
             calculatedRate,
             toKurus(calculatedRate),
+            // Saglayici birim maliyeti burada zaten elimizde; kaydedilmezse
+            // kar/zarar raporu bos kalir.
+            Number.isFinite(rawRate) && rawRate > 0 ? rawRate : null,
+            providerCurrency,
             minQty,
             maxQty,
             pService.description || `${catName} için kaliteli servis.`,
@@ -306,9 +460,147 @@ router.get('/providers/:id/raw-services', requireIdParam, async (req, res) => {
       category: normalizePlainText(item.category || 'Genel', 120),
       description: normalizePlainText(item.description || '', 1000)
     }));
-    res.json({ services: safeServices, total: safeServices.length, provider_name: normalizePlainText(provider.name, 100) });
+    // Fiyatlarin hangi para biriminde oldugu ve panelin kuru: explorer'daki
+    // satis fiyati hesabi bunlar olmadan yanlis cikar.
+    let providerCurrency = 'USD';
+    try {
+      const balance = await client.getBalance();
+      providerCurrency = String(balance?.currency || 'USD').toUpperCase().slice(0, 10) || 'USD';
+    } catch { /* okunamazsa USD varsayilir */ }
+    const rateSetting = await dbAsync.get("SELECT value FROM site_settings WHERE key = 'usd_try_rate'");
+
+    res.json({
+      services: safeServices,
+      total: safeServices.length,
+      provider_name: normalizePlainText(provider.name, 100),
+      currency: providerCurrency,
+      usd_try_rate: Number(rateSetting?.value) > 0 ? Number(rateSetting.value) : 35
+    });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Sağlayıcı servisleri alınamadı.' });
+  }
+});
+
+// --- EXCEL DISA AKTARMA ----------------------------------------------------
+// Katalogtaki TUM basliklar aktarilir: sutunlar veriden dinamik kesfedilir,
+// boylece sonradan eklenen bir alan da otomatik olarak dosyaya girer.
+
+// Bilinen alanlar icin Turkce baslik; listede olmayanlar ham adiyla cikar.
+const SERVICE_EXPORT_LABELS = {
+  id: 'Servis ID', category_id: 'Kategori ID', category_name: 'Kategori',
+  category_name_en: 'Kategori (EN)', provider_id: 'Sağlayıcı ID',
+  provider_name: 'Sağlayıcı Adı', provider_service_id: 'Sağlayıcıdaki Servis ID',
+  name: 'Servis Adı', name_tr: 'Servis Adı (TR)', name_en: 'Servis Adı (EN)',
+  description: 'Açıklama', description_tr: 'Açıklama (TR)', description_en: 'Açıklama (EN)',
+  rate_per_1000: 'Satış Fiyatı (₺/1000)', rate_per_1000_kurus: 'Satış Fiyatı (kuruş)',
+  rate_per_1000_usd_cents: 'Satış Fiyatı (cent/1000)',
+  provider_cost_rate: 'Sağlayıcı Maliyeti', provider_cost_currency: 'Maliyet Para Birimi',
+  provider_cost_updated_at: 'Maliyet Güncelleme', min_quantity: 'Min. Adet',
+  max_quantity: 'Maks. Adet', refill: 'Telafi (Refill)', status: 'Durum'
+};
+
+const PROVIDER_EXPORT_LABELS = {
+  service: 'Sağlayıcı Servis ID', name: 'Servis Adı', category: 'Kategori',
+  type: 'Tip', rate: 'Sağlayıcı Fiyatı (1000 adet)', min: 'Min. Adet', max: 'Maks. Adet',
+  refill: 'Telafi (Refill)', cancel: 'İptal Edilebilir', dripfeed: 'Damla Besleme',
+  description: 'Açıklama', currency: 'Para Birimi'
+};
+
+// Excel'de 1/0 yerine okunabilir metin gosterilir.
+const BOOLEAN_LIKE = new Set(['refill', 'cancel', 'dripfeed']);
+
+function prepareExportRow(row, { statusAsText = false } = {}) {
+  const out = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (value === null || value === undefined) { out[key] = ''; continue; }
+    if (key === 'status' && statusAsText) { out[key] = Number(value) === 1 ? 'Aktif' : 'Pasif'; continue; }
+    if (BOOLEAN_LIKE.has(key) && (value === 0 || value === 1 || value === true || value === false)) {
+      out[key] = (value === 1 || value === true) ? 'Evet' : 'Hayır';
+      continue;
+    }
+    // Nesne/dizi donen saglayici alanlari hucrede [object Object] olmasin.
+    out[key] = (typeof value === 'object') ? JSON.stringify(value) : value;
+  }
+  return out;
+}
+
+// Dosya adindaki tarih ve tirnak/aksan sorunlarina karsi guvenli ad uretir.
+function exportFileName(prefix) {
+  const stamp = new Date().toISOString().slice(0, 10);
+  const safe = String(prefix).replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'liste';
+  return `${safe}-${stamp}.xlsx`;
+}
+
+function sendXlsx(res, buffer, fileName) {
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  // filename* (RFC 5987) sayesinde Turkce karakterli adlar da bozulmaz.
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+  res.setHeader('Content-Length', buffer.length);
+  res.setHeader('Cache-Control', 'no-store');
+  res.end(buffer);
+}
+
+// Sitedeki servisler: aktif / pasif / tumu
+router.get('/services/export', async (req, res) => {
+  try {
+    const scope = ['active', 'passive', 'all'].includes(req.query.status) ? req.query.status : 'all';
+    const services = await dbAsync.all(`
+      SELECT s.*, c.name as category_name, c.name_en as category_name_en, p.name as provider_name
+      FROM services s
+      JOIN categories c ON s.category_id = c.id
+      LEFT JOIN providers p ON s.provider_id = p.id
+      ORDER BY COALESCE(p.name, 'ZZZ'), s.id DESC
+    `);
+
+    const active = services.filter(s => Number(s.status) === 1).map(s => prepareExportRow(s, { statusAsText: true }));
+    const passive = services.filter(s => Number(s.status) !== 1).map(s => prepareExportRow(s, { statusAsText: true }));
+
+    const preferredOrder = ['id', 'name', 'name_tr', 'name_en', 'category_name', 'provider_name',
+      'provider_service_id', 'rate_per_1000', 'provider_cost_rate', 'min_quantity', 'max_quantity', 'status'];
+    // Sutunlar iki listenin birlesiminden cikarilir ki iki sayfa da ayni basliklara sahip olsun.
+    const columns = columnsFromRows([...active, ...passive], { labels: SERVICE_EXPORT_LABELS, preferredOrder });
+
+    const sheets = [];
+    if (scope === 'active' || scope === 'all') sheets.push({ name: 'Aktif Servisler', columns, rows: active });
+    if (scope === 'passive' || scope === 'all') sheets.push({ name: 'Pasif Servisler', columns, rows: passive });
+    if (sheets.length === 0) sheets.push({ name: 'Servisler', columns, rows: [] });
+
+    const namePrefix = scope === 'active' ? 'aktif-servisler' : scope === 'passive' ? 'pasif-servisler' : 'tum-servisler';
+    sendXlsx(res, buildXlsx(sheets), exportFileName(namePrefix));
+  } catch (err) {
+    res.status(500).json({ error: 'Excel dosyası oluşturulamadı.' });
+  }
+});
+
+// Saglayicinin kendi katalogundaki tum ham servisler
+router.get('/providers/:id/services/export', requireIdParam, async (req, res) => {
+  try {
+    const provider = await dbAsync.get(`SELECT * FROM providers WHERE id = ?`, [req.recordId]);
+    if (!provider) return res.status(404).json({ error: 'Sağlayıcı bulunamadı.' });
+
+    const client = new SmmProviderClient(provider.api_url, provider.api_key);
+    const rawServicesData = await client.getServices();
+    let serviceList = [];
+    if (Array.isArray(rawServicesData)) serviceList = rawServicesData;
+    else if (rawServicesData && Array.isArray(rawServicesData.services)) serviceList = rawServicesData.services;
+    else if (rawServicesData && Array.isArray(rawServicesData.data)) serviceList = rawServicesData.data;
+
+    const rows = serviceList.slice(0, 20000).map(item => prepareExportRow({
+      ...item,
+      name: normalizePlainText(item.name || '', 220),
+      category: normalizePlainText(item.category || 'Genel', 120),
+      description: normalizePlainText(item.description || '', 1000)
+    }));
+
+    const columns = columnsFromRows(rows, {
+      labels: PROVIDER_EXPORT_LABELS,
+      preferredOrder: ['service', 'name', 'category', 'type', 'rate', 'min', 'max', 'refill', 'cancel', 'dripfeed']
+    });
+
+    const sheets = [{ name: provider.name || 'Sağlayıcı Kataloğu', columns, rows }];
+    sendXlsx(res, buildXlsx(sheets), exportFileName(`${provider.name || 'saglayici'}-katalog`));
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Sağlayıcı kataloğu alınamadı.' });
   }
 });
 
@@ -460,7 +752,8 @@ router.post('/services/:id/apply-provider-price', requireIdParam, validate(apply
 router.post('/services', validate(serviceCreateSchema), async (req, res) => {
   try {
     const { category_name, category_name_en, provider_id, provider_service_id, name, name_tr, name_en,
-      rate_per_1000, rate_per_1000_usd, min_quantity, max_quantity, description, description_tr, description_en, refill } = req.body;
+      rate_per_1000, rate_per_1000_usd, provider_cost_rate, provider_cost_currency,
+      min_quantity, max_quantity, description, description_tr, description_en, refill } = req.body;
     const safeNameTr = normalizePlainText(name_tr || name, 220);
     const safeNameEn = normalizePlainText(name_en || name_tr || name, 220);
 
@@ -482,8 +775,9 @@ router.post('/services', validate(serviceCreateSchema), async (req, res) => {
 
     const result = await dbAsync.run(
       `INSERT INTO services (category_id, provider_id, provider_service_id, name, name_tr, name_en, rate_per_1000,
-       rate_per_1000_kurus, rate_per_1000_usd_cents, min_quantity, max_quantity, description, description_tr, description_en, status, refill)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+       rate_per_1000_kurus, rate_per_1000_usd_cents, provider_cost_rate, provider_cost_currency, provider_cost_updated_at,
+       min_quantity, max_quantity, description, description_tr, description_en, status, refill)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${Number(provider_cost_rate) > 0 ? 'CURRENT_TIMESTAMP' : 'NULL'}, ?, ?, ?, ?, ?, 1, ?)`,
       [
         category.id,
         provider_id || null,
@@ -494,6 +788,8 @@ router.post('/services', validate(serviceCreateSchema), async (req, res) => {
         parseFloat(rate_per_1000),
         toKurus(rate_per_1000),
         Math.round(Number(rate_per_1000_usd || 0) * 100),
+        Number(provider_cost_rate) > 0 ? Number(provider_cost_rate) : null,
+        Number(provider_cost_rate) > 0 ? String(provider_cost_currency || 'USD').toUpperCase() : null,
         parseInt(min_quantity || 100),
         parseInt(max_quantity || 10000),
         normalizePlainText(description_tr || description || 'Kaliteli sosyal medya hizmeti.', 1000),
@@ -549,7 +845,10 @@ router.put('/services/:id', requireIdParam, validate(serviceUpdateSchema), async
 router.delete('/services/:id', requireIdParam, async (req, res) => {
   try {
     const serviceId = req.recordId;
-    const used = await dbAsync.get('SELECT 1 found FROM orders WHERE service_id = ? LIMIT 1', [serviceId]);
+    // Siparis gecmisi VEYA bagli kampanya varsa silinemez (foreign key); pasife alinir.
+    const used = await dbAsync.get(
+      `SELECT 1 found FROM orders WHERE service_id = ?
+       UNION ALL SELECT 1 FROM campaigns WHERE service_id = ? LIMIT 1`, [serviceId, serviceId]);
     if (used) await dbAsync.run('UPDATE services SET status = 0 WHERE id = ?', [serviceId]);
     else await dbAsync.run('DELETE FROM services WHERE id = ?', [serviceId]);
     await dbAsync.run('DELETE FROM categories WHERE NOT EXISTS (SELECT 1 FROM services WHERE services.category_id = categories.id)');
@@ -560,18 +859,59 @@ router.delete('/services/:id', requireIdParam, async (req, res) => {
 });
 
 // BULK DELETE SERVICES
+// Tekli silmeyle ayni mantik: siparis gecmisi (veya bagli kampanyasi) olan
+// servis silinemez, pasife alinir; geri kalanlar gercekten SILINIR.
+// Eskiden bu uc hicbir sey silmiyor, hepsini yalnizca status=0 yapiyordu;
+// bu yuzden zaten pasif olan servisler "sil" denince listede kaliyordu.
+const REFERENCED_SERVICE_SQL = `
+  SELECT id FROM services WHERE
+    id IN (SELECT service_id FROM orders WHERE service_id IS NOT NULL)
+    OR id IN (SELECT service_id FROM campaigns WHERE service_id IS NOT NULL)`;
+
 router.post('/services/bulk-delete', validate(bulkDeleteSchema), async (req, res) => {
   try {
     const { service_ids, delete_all } = req.body;
 
-    if (delete_all) {
-      await dbAsync.run(`UPDATE services SET status = 0`);
-      return res.json({ message: 'Tüm servisler pasife alındı; sipariş geçmişi korundu.' });
-    }
+    const result = await withTransaction(async tx => {
+      // Hedef kume: ya tum katalog ya da secilen id'ler
+      let targetIds;
+      if (delete_all) {
+        targetIds = (await tx.all('SELECT id FROM services')).map(row => row.id);
+      } else {
+        const placeholders = service_ids.map(() => '?').join(',');
+        targetIds = (await tx.all(`SELECT id FROM services WHERE id IN (${placeholders})`, service_ids)).map(row => row.id);
+      }
+      if (targetIds.length === 0) return { deleted: 0, kept: 0 };
 
-    const placeholders = service_ids.map(() => '?').join(',');
-    await dbAsync.run(`UPDATE services SET status = 0 WHERE id IN (${placeholders})`, service_ids);
-    res.json({ message: `${service_ids.length} servis pasife alındı.` });
+      const referenced = new Set((await tx.all(REFERENCED_SERVICE_SQL)).map(row => row.id));
+      const keep = targetIds.filter(id => referenced.has(id));
+      const remove = targetIds.filter(id => !referenced.has(id));
+
+      if (keep.length) {
+        const ph = keep.map(() => '?').join(',');
+        await tx.run(`UPDATE services SET status = 0 WHERE id IN (${ph})`, keep);
+      }
+      if (remove.length) {
+        // 1000'lik parcalar halinde: SQLite'in parametre sinirina takilmayalim.
+        for (let i = 0; i < remove.length; i += 900) {
+          const chunk = remove.slice(i, i + 900);
+          const ph = chunk.map(() => '?').join(',');
+          await tx.run(`DELETE FROM services WHERE id IN (${ph})`, chunk);
+        }
+      }
+      // Servisi kalmayan kategoriler listeyi kirletmesin.
+      await tx.run('DELETE FROM categories WHERE NOT EXISTS (SELECT 1 FROM services WHERE services.category_id = categories.id)');
+
+      return { deleted: remove.length, kept: keep.length };
+    });
+
+    // Ne olduğu net yazilir; "silindi" deyip pasife almak kafa karistiriyordu.
+    const parts = [];
+    if (result.deleted > 0) parts.push(`${result.deleted} servis silindi`);
+    if (result.kept > 0) parts.push(`${result.kept} servis sipariş geçmişi olduğu için silinemedi, pasife alındı`);
+    if (parts.length === 0) parts.push('Silinecek servis bulunamadı');
+
+    res.json({ message: parts.join('; ') + '.', deleted: result.deleted, kept: result.kept });
   } catch (err) {
     console.error('Bulk delete error:', err);
     res.status(500).json({ error: 'Toplu silme işleminde hata oluştu.' });
@@ -592,13 +932,247 @@ router.post('/services/bulk-status', validate(bulkStatusSchema), async (req, res
   }
 });
 
+// ---------------------------------------------------------------------------
+// ISTATISTIK PANELI
+// Ziyaretci (tekil), satin alinan servisler ve blog okunmalari.
+// ---------------------------------------------------------------------------
+router.get('/statistics', async (req, res) => {
+  try {
+    const { getVisitorStats } = require('../services/visitorTracker');
+
+    const [visitors, services, blogPosts, orderTotals] = await Promise.all([
+      getVisitorStats(),
+
+      // Yalnizca SATIN ALINMIS servisler: orders ile JOIN edildigi icin hic
+      // siparis almamis servisler listeye zaten girmez. Iptal/basarisiz
+      // siparisler satis sayilmaz.
+      dbAsync.all(`
+        SELECT s.id, s.name, s.name_tr, s.name_en, s.status,
+               c.name AS category_name, p.name AS provider_name,
+               COUNT(o.id) AS order_count,
+               SUM(o.quantity) AS total_quantity,
+               SUM(o.charge_kurus - COALESCE(o.refunded_kurus, 0)) AS net_kurus,
+               MAX(o.created_at) AS last_ordered_at
+        FROM orders o
+        JOIN services s ON s.id = o.service_id
+        LEFT JOIN categories c ON c.id = s.category_id
+        LEFT JOIN providers p ON p.id = s.provider_id
+        WHERE o.status NOT IN ('canceled', 'failed')
+        GROUP BY s.id
+        ORDER BY order_count DESC, net_kurus DESC
+      `),
+
+      dbAsync.all(`
+        SELECT id, slug, status, views,
+               COALESCE(title_tr, title) AS title,
+               COALESCE(category_tr, category) AS category,
+               published_at, created_at
+        FROM blog_posts
+        ORDER BY COALESCE(views, 0) DESC, id DESC
+      `),
+
+      dbAsync.get(`
+        SELECT COUNT(*) AS orders, COUNT(DISTINCT service_id) AS services
+        FROM orders WHERE status NOT IN ('canceled', 'failed')
+      `)
+    ]);
+
+    res.json({
+      visitors,
+      services: services.map(row => ({
+        ...row,
+        net_revenue: fromKurus(row.net_kurus || 0)
+      })),
+      blog: {
+        posts: blogPosts,
+        total_views: blogPosts.reduce((sum, p) => sum + (p.views || 0), 0),
+        published: blogPosts.filter(p => p.status === 'published').length
+      },
+      totals: {
+        purchased_services: orderTotals?.services || 0,
+        valid_orders: orderTotals?.orders || 0
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'İstatistikler alınamadı.' });
+  }
+});
+
 // USERS MANAGEMENT
 router.get('/users', async (req, res) => {
   try {
-    const users = await dbAsync.all(`SELECT id, username, email, role, balance, created_at FROM users ORDER BY id DESC`);
+    // ?q= kullanici adi veya e-postada gecen metni arar (buyuk/kucuk harf duyarsiz).
+    const q = String(req.query.q || '').trim().slice(0, 100);
+    let sql = `SELECT id, username, email, role, balance, banned, created_at FROM users`;
+    const params = [];
+    if (q) {
+      // LIKE joker karakterleri aramada birebir metin sayilir.
+      const like = `%${q.replace(/[\\%_]/g, ch => `\\${ch}`)}%`;
+      sql += ` WHERE username LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\'`;
+      params.push(like, like);
+    }
+    sql += ` ORDER BY id DESC LIMIT 500`;
+    const users = await dbAsync.all(sql, params);
     res.json({ users });
   } catch (err) {
     res.status(500).json({ error: 'Kullanıcılar alınamadı.' });
+  }
+});
+
+// Yonetici hedef kullaniciyi banlar/aktive eder. Admin hesaplar ve kendisi
+// hedeflenemez; ban aninda token_version artirilarak acik oturumlar dusurulur.
+// KULLANICIYA OZEL HIZMET ATAMA: admin, secilen kullanici adina siparis
+// olusturur. "Hediye" modunda kullanici bakiyesinden hicbir sey dusmez;
+// "bakiyeden dus" modunda normal siparis gibi tahsil edilir.
+const assignOrderSchema = z.object({
+  service_id: z.coerce.number().int().positive(),
+  link: z.string().trim().min(3).max(2048),
+  quantity: quantityField,
+  charge_user: z.coerce.boolean().default(false)
+});
+
+router.post('/users/:id/assign-order', requireIdParam, validate(assignOrderSchema), async (req, res) => {
+  try {
+    const userId = req.recordId;
+    const { service_id, quantity, charge_user } = req.body;
+    const link = normalizePlainText(req.body.link, 2048);
+
+    const targetUser = await dbAsync.get('SELECT id, username, banned FROM users WHERE id = ?', [userId]);
+    if (!targetUser) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+    if (targetUser.banned) return res.status(400).json({ error: 'Banlı kullanıcıya hizmet atanamaz.' });
+
+    const reserved = await withTransaction(async tx => {
+      const service = await tx.get('SELECT * FROM services WHERE id = ? AND status = 1', [service_id]);
+      if (!service) { const err = new Error('Seçilen servis aktif değil veya bulunamadı.'); err.status = 404; throw err; }
+      if (quantity < service.min_quantity || quantity > service.max_quantity) {
+        const err = new Error(`Miktar ${service.min_quantity} ile ${service.max_quantity} arasında olmalıdır.`); err.status = 400; throw err;
+      }
+      const rateKurus = service.rate_per_1000_kurus || toKurus(service.rate_per_1000);
+      const fullChargeKurus = calculateChargeKurus(rateKurus, quantity);
+      const chargeKurus = charge_user ? fullChargeKurus : 0; // hediye = 0 TL
+      if (charge_user) {
+        const debit = await tx.run(
+          `UPDATE users SET balance_kurus = balance_kurus - ?, balance = (balance_kurus - ?) / 100.0
+           WHERE id = ? AND balance_kurus >= ?`,
+          [chargeKurus, chargeKurus, userId, chargeKurus]
+        );
+        if (debit.changes !== 1) { const err = new Error(`Kullanıcının bakiyesi yetersiz. Gerekli tutar: ₺${fromKurus(chargeKurus).toFixed(2)}.`); err.status = 400; throw err; }
+      }
+      const order = await tx.run(
+        `INSERT INTO orders (user_id, service_id, provider_id, link, quantity, charge, charge_kurus, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
+        [userId, service.id, service.provider_id, link, quantity, fromKurus(chargeKurus), chargeKurus]
+      );
+      return { service, chargeKurus, orderId: order.id };
+    });
+
+    try {
+      if (!reserved.service.provider_id) throw new Error('Servise bağlı aktif sağlayıcı bulunmuyor.');
+      const provider = await dbAsync.get('SELECT * FROM providers WHERE id = ? AND status = 1', [reserved.service.provider_id]);
+      if (!provider) throw new Error('Sağlayıcı aktif değil.');
+      const client = new SmmProviderClient(provider.api_url, provider.api_key);
+      const response = await client.addOrder(reserved.service.provider_service_id, link, quantity, {});
+      if (!response?.order) throw new Error(response?.error || 'Sağlayıcı sipariş numarası döndürmedi.');
+      await dbAsync.run("UPDATE orders SET provider_order_id = ?, status = 'processing' WHERE id = ?", [String(response.order), reserved.orderId]);
+    } catch (providerError) {
+      const friendly = friendlyProviderReason(providerError.message);
+      await withTransaction(async tx => {
+        const order = await tx.get('SELECT refunded_kurus FROM orders WHERE id = ?', [reserved.orderId]);
+        if (order && order.refunded_kurus === 0 && reserved.chargeKurus > 0) {
+          await tx.run('UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?', [reserved.chargeKurus, reserved.chargeKurus, userId]);
+        }
+        await tx.run("UPDATE orders SET status = 'failed', refunded_kurus = ?, failure_reason = ? WHERE id = ?",
+          [reserved.chargeKurus, normalizePlainText(`Admin ataması iletilemedi: ${friendly} [Sağlayıcı: ${providerError.message}]`, 500), reserved.orderId]);
+      });
+      return res.status(502).json({ error: `Atama başarısız: ${friendly}${reserved.chargeKurus > 0 ? ' Tutar kullanıcıya iade edildi.' : ''}` });
+    }
+
+    // Kullanici panel bildirimi + Telegram (beklenmez, hatalar yutulur).
+    await dbAsync.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)',
+      [userId, 'order', charge_user ? 'Hesabınıza sipariş oluşturuldu' : '🎁 Hesabınıza hediye sipariş tanımlandı',
+       `"${reserved.service.name}" (${quantity} adet) siparişi hesabınıza ${charge_user ? 'oluşturuldu' : 'ücretsiz tanımlandı'}. Siparişlerim sayfasından takip edebilirsiniz.`]);
+    telegram.notifyOrderOwner(userId, 'processing', { id: reserved.orderId, service_name: reserved.service.name, quantity });
+    await dbAsync.run('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'admin_assign_order', 'order', String(reserved.orderId),
+       JSON.stringify({ target_user: targetUser.username, service_id, quantity, charged: charge_user, charge: fromKurus(reserved.chargeKurus) }), req.ip]);
+
+    res.status(201).json({
+      message: `"${reserved.service.name}" siparişi ${targetUser.username} kullanıcısına ${charge_user ? `oluşturuldu (₺${fromKurus(reserved.chargeKurus).toFixed(2)} bakiyesinden düşüldü)` : 'hediye olarak tanımlandı'}.`,
+      order_id: reserved.orderId
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'Hizmet ataması yapılamadı.' });
+  }
+});
+
+router.post('/users/:id/ban', requireIdParam, validate(z.object({ banned: z.boolean() })), async (req, res) => {
+  try {
+    const userId = req.recordId;
+    const { banned } = req.body;
+    if (userId === req.user.id) return res.status(400).json({ error: 'Kendi hesabınızı banlayamazsınız.' });
+    const target = await dbAsync.get('SELECT id, role FROM users WHERE id = ?', [userId]);
+    if (!target) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+    if (target.role === 'admin') return res.status(400).json({ error: 'Admin hesapları banlanamaz.' });
+
+    await dbAsync.run('UPDATE users SET banned = ?, token_version = token_version + 1 WHERE id = ?', [banned ? 1 : 0, userId]);
+    await dbAsync.run('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, banned ? 'admin_user_banned' : 'admin_user_unbanned', 'user', String(userId), null, req.ip]);
+    res.json({ message: banned ? 'Kullanıcı banlandı ve oturumları kapatıldı.' : 'Kullanıcının banı kaldırıldı.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Ban durumu güncellenemedi.' });
+  }
+});
+
+// Yonetici hedef kullanicinin sifresini belirler; eski oturumlar dusurulur.
+router.post('/users/:id/password', requireIdParam, validate(z.object({
+  new_password: z.string().min(10, 'Yeni şifre en az 10 karakter olmalıdır.').max(128)
+})), async (req, res) => {
+  try {
+    const userId = req.recordId;
+    const target = await dbAsync.get('SELECT id, role FROM users WHERE id = ?', [userId]);
+    if (!target) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+    // Diger adminlerin sifresi buradan degistirilemez; admin kendi sifresini
+    // mevcut sifreyi dogrulayan /change-password ucundan degistirir.
+    if (target.role === 'admin') return res.status(400).json({ error: 'Admin şifreleri bu alandan değiştirilemez.' });
+
+    const hashed = await bcrypt.hash(req.body.new_password, 12);
+    await dbAsync.run('UPDATE users SET password = ?, token_version = token_version + 1 WHERE id = ?', [hashed, userId]);
+    await dbAsync.run('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'admin_user_password_changed', 'user', String(userId), null, req.ip]);
+    res.json({ message: 'Kullanıcının şifresi güncellendi ve açık oturumları kapatıldı.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Şifre güncellenemedi.' });
+  }
+});
+
+// Kullaniciyi tum kayitlariyla birlikte kalici olarak siler.
+router.delete('/users/:id', requireIdParam, async (req, res) => {
+  try {
+    const userId = req.recordId;
+    if (userId === req.user.id) return res.status(400).json({ error: 'Kendi hesabınızı silemezsiniz.' });
+    const target = await dbAsync.get('SELECT id, role, username FROM users WHERE id = ?', [userId]);
+    if (!target) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+    if (target.role === 'admin') return res.status(400).json({ error: 'Admin hesapları silinemez.' });
+
+    await withTransaction(async tx => {
+      // FK'lari CASCADE olmayan bagimli kayitlar once temizlenir.
+      await tx.run('DELETE FROM referral_earnings WHERE referrer_id = ? OR referred_user_id = ? OR order_id IN (SELECT id FROM orders WHERE user_id = ?)', [userId, userId, userId]);
+      await tx.run('DELETE FROM ticket_messages WHERE ticket_id IN (SELECT id FROM tickets WHERE user_id = ?)', [userId]);
+      await tx.run('DELETE FROM tickets WHERE user_id = ?', [userId]);
+      await tx.run('DELETE FROM orders WHERE user_id = ?', [userId]);
+      await tx.run('DELETE FROM payments WHERE user_id = ?', [userId]);
+      await tx.run('DELETE FROM payment_intents WHERE user_id = ?', [userId]);
+      await tx.run('DELETE FROM payment_notifications WHERE user_id = ?', [userId]);
+      await tx.run('DELETE FROM user_coupons WHERE user_id = ?', [userId]);
+      // Bu kullaniciyi referans gosterenlerin baglantisi koparilir.
+      await tx.run('UPDATE users SET referrer_id = NULL WHERE referrer_id = ?', [userId]);
+      await tx.run('DELETE FROM users WHERE id = ?', [userId]);
+    });
+    await dbAsync.run('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'admin_user_deleted', 'user', String(userId), JSON.stringify({ username: target.username }), req.ip]);
+    res.json({ message: `"${target.username}" kullanıcısı ve tüm kayıtları silindi.` });
+  } catch (err) {
+    res.status(500).json({ error: 'Kullanıcı silinemedi.' });
   }
 });
 
@@ -628,13 +1202,31 @@ router.post('/users/:id/balance', requireIdParam, validate(userBalanceSchema), a
 // ALL ORDERS MANAGEMENT
 router.get('/orders', async (req, res) => {
   try {
+    // ?q= sayi ise sipariş no (bizim no veya saglayici no) olarak, degilse
+    // kullanici adi / baglanti / servis adinda gecen metin olarak aranir.
+    const q = String(req.query.q || '').trim().slice(0, 200);
+    let where = '';
+    const params = [];
+    if (q) {
+      const digits = q.replace(/^#/, '');
+      if (/^\d+$/.test(digits)) {
+        where = ` WHERE (o.id = ? OR o.provider_order_id = ?)`;
+        params.push(Number(digits), digits);
+      } else {
+        const like = `%${q.replace(/[\\%_]/g, ch => `\\${ch}`)}%`;
+        where = ` WHERE (u.username LIKE ? ESCAPE '\\' OR o.link LIKE ? ESCAPE '\\' OR s.name LIKE ? ESCAPE '\\')`;
+        params.push(like, like, like);
+      }
+    }
     const orders = await dbAsync.all(
       `SELECT o.*, u.username, s.name as service_name, p.name as provider_name
        FROM orders o
        JOIN users u ON o.user_id = u.id
        JOIN services s ON o.service_id = s.id
        LEFT JOIN providers p ON o.provider_id = p.id
-       ORDER BY o.id DESC LIMIT 100`
+       ${where}
+       ORDER BY o.id DESC LIMIT 100`,
+      params
     );
     res.json({ orders });
   } catch (err) {
@@ -646,19 +1238,38 @@ router.put('/orders/:id/status', requireIdParam, validate(orderStatusSchema), as
   try {
     const orderId = req.recordId;
     const { status } = req.body;
+    let statusChange = null;
     await withTransaction(async tx => {
       const order = await tx.get(`SELECT * FROM orders WHERE id = ?`, [orderId]);
       if (!order) { const err = new Error('Sipariş bulunamadı.'); err.status = 404; throw err; }
       if (order.status === 'canceled' && status !== 'canceled') { const err = new Error('İptal edilmiş sipariş yeniden açılamaz.'); err.status = 409; throw err; }
+      // Hatali (failed) siparis saglayiciya hic iletilmedi ve tutar iade
+      // edildi; "tamamlandi" yapmak kullanicidan onay almadan onun yerine
+      // siparis vermek olur. Durumu degistirilemez.
+      if (order.status === 'failed') { const err = new Error('Hata almış sipariş üzerinde işlem yapılamaz; tutar zaten kullanıcıya iade edildi.'); err.status = 409; throw err; }
+      let refundAmount = 0;
       if (status === 'canceled' && order.refunded_kurus === 0) {
         const refund = order.charge_kurus || toKurus(order.charge);
+        refundAmount = refund;
         await tx.run('UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?', [refund, refund, order.user_id]);
-        await tx.run('UPDATE orders SET status = ?, refunded_kurus = ? WHERE id = ?', [status, refund, orderId]);
+        await tx.run("UPDATE orders SET status = ?, refunded_kurus = ?, failure_reason = COALESCE(failure_reason, 'Yönetici tarafından iptal edildi; tutar iade edildi.') WHERE id = ?", [status, refund, orderId]);
+      } else if (status === 'canceled') {
+        await tx.run("UPDATE orders SET status = ?, failure_reason = COALESCE(failure_reason, 'Yönetici tarafından iptal edildi.') WHERE id = ?", [status, orderId]);
       } else {
         await tx.run('UPDATE orders SET status = ? WHERE id = ?', [status, orderId]);
       }
       await tx.run('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)', [req.user.id, 'order_status_changed', 'order', String(orderId), JSON.stringify({ from: order.status, to: status }), req.ip]);
+      if (status !== order.status && ['completed', 'partial', 'canceled'].includes(status)) {
+        const service = await tx.get('SELECT name FROM services WHERE id = ?', [order.service_id]);
+        statusChange = {
+          userId: order.user_id,
+          event: status,
+          order: { id: order.id, service_name: service?.name || 'Servis', quantity: order.quantity, remains: order.remains, refund_amount: fromKurus(refundAmount) }
+        };
+      }
     });
+    // Musteri Telegram'a bagliysa durum degisikligini ogrenir (beklenmez).
+    if (statusChange) telegram.notifyOrderOwner(statusChange.userId, statusChange.event, statusChange.order);
     res.json({ message: 'Sipariş durumu güncellendi.' });
   } catch (err) {
     res.status(500).json({ error: 'Durum güncellenemedi.' });
@@ -724,9 +1335,337 @@ router.post('/settings', validate(settingsSchema), async (req, res) => {
         [key, value]
       );
     }
+    // Duyuru bandi sunucu tarafinda basiliyor ve onbellekleniyor; kaydedince
+    // hemen tazelensin ki yeni acilan sayfalar eski duyuruyu gostermesin.
+    req.app.get('invalidateAnnouncementCache')?.();
+    // Dogrulama kodu kaydedilir kaydedilmez etikete yansimali: admin hemen
+    // Bing/Search Console'da "Dogrula" dugmesine basacak.
+    req.app.get('invalidateSeoCache')?.();
     res.json({ message: 'Site ayarları kaydedildi.' });
   } catch (err) {
     res.status(500).json({ error: 'Ayarlar kaydedilemedi.' });
+  }
+});
+
+// CAMPAIGNS (indirim + bonus + popup)
+const campaignSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  type: z.enum(['service_discount', 'deposit_bonus']),
+  service_id: z.coerce.number().int().positive().nullable().optional(),
+  discount_percent: z.coerce.number().min(1).max(90).nullable().optional(),
+  bonus_percent: z.coerce.number().min(1).max(100).nullable().optional(),
+  min_deposit: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+  ends_at: z.string().trim().max(40).nullable().optional(),
+  popup_enabled: z.coerce.boolean().default(false),
+  popup_template: z.enum(['flash', 'gift', 'countdown', 'neon', 'minimal', 'rocket', 'opening']).default('flash'),
+  popup_title: z.string().trim().max(140).nullable().optional(),
+  popup_title_en: z.string().trim().max(140).nullable().optional(),
+  popup_frequency_hours: z.coerce.number().int().min(1).max(720).default(24)
+}).superRefine((value, ctx) => {
+  if (value.type === 'service_discount') {
+    if (!value.service_id) ctx.addIssue({ code: 'custom', message: 'İndirim kampanyası için servis seçin.' });
+    if (!value.discount_percent) ctx.addIssue({ code: 'custom', message: 'İndirim yüzdesi girin.' });
+  }
+  if (value.type === 'deposit_bonus' && !value.bonus_percent) {
+    ctx.addIssue({ code: 'custom', message: 'Bonus yüzdesi girin.' });
+  }
+});
+
+router.get('/campaigns', async (req, res) => {
+  try {
+    // Donusum: kampanya suresince o servise verilen siparis sayisi.
+    // (Siparis anindaki kampanya bilgisi saklanmadigi icin yaklasik bir olcudur.)
+    const campaigns = await dbAsync.all(`
+      SELECT c.*, s.name AS service_name,
+        CASE WHEN c.type = 'service_discount' THEN (
+          SELECT COUNT(*) FROM orders o
+          WHERE o.service_id = c.service_id
+            AND o.created_at >= c.created_at
+            AND (c.ends_at IS NULL OR o.created_at <= c.ends_at)
+            AND o.status NOT IN ('canceled','failed')
+        ) ELSE NULL END AS conversions
+      FROM campaigns c
+      LEFT JOIN services s ON s.id = c.service_id
+      ORDER BY c.id DESC
+    `);
+    res.json({ campaigns });
+  } catch (err) {
+    res.status(500).json({ error: 'Kampanyalar alınamadı.' });
+  }
+});
+
+router.post('/campaigns', validate(campaignSchema), async (req, res) => {
+  try {
+    const body = req.body;
+    if (body.service_id) {
+      const service = await dbAsync.get('SELECT id FROM services WHERE id = ? AND status = 1', [body.service_id]);
+      if (!service) return res.status(400).json({ error: 'Seçilen servis aktif değil veya bulunamadı.' });
+    }
+    const result = await dbAsync.run(
+      `INSERT INTO campaigns (name, type, service_id, discount_percent, bonus_percent, min_deposit_kurus,
+         ends_at, popup_enabled, popup_template, popup_title, popup_title_en, popup_frequency_hours)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        normalizePlainText(body.name, 120),
+        body.type,
+        body.type === 'service_discount' ? body.service_id : null,
+        body.type === 'service_discount' ? body.discount_percent : null,
+        body.type === 'deposit_bonus' ? body.bonus_percent : null,
+        body.type === 'deposit_bonus' && body.min_deposit ? toKurus(body.min_deposit) : null,
+        body.ends_at || null,
+        body.popup_enabled ? 1 : 0,
+        body.popup_template,
+        body.popup_title ? normalizePlainText(body.popup_title, 140) : null,
+        body.popup_title_en ? normalizePlainText(body.popup_title_en, 140) : null,
+        body.popup_frequency_hours
+      ]
+    );
+    await dbAsync.run('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'campaign_created', 'campaign', String(result.id), JSON.stringify({ name: body.name, type: body.type }), req.ip]);
+    res.status(201).json({ message: 'Kampanya oluşturuldu.', id: result.id });
+  } catch (err) {
+    res.status(500).json({ error: 'Kampanya oluşturulamadı.' });
+  }
+});
+
+router.put('/campaigns/:id/status', requireIdParam, validate(z.object({ status: z.coerce.number().int().min(0).max(1) })), async (req, res) => {
+  try {
+    const result = await dbAsync.run('UPDATE campaigns SET status = ? WHERE id = ?', [req.body.status, req.recordId]);
+    if (result.changes !== 1) return res.status(404).json({ error: 'Kampanya bulunamadı.' });
+    res.json({ message: req.body.status ? 'Kampanya aktifleştirildi.' : 'Kampanya durduruldu.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Kampanya güncellenemedi.' });
+  }
+});
+
+router.delete('/campaigns/:id', requireIdParam, async (req, res) => {
+  try {
+    const result = await dbAsync.run('DELETE FROM campaigns WHERE id = ?', [req.recordId]);
+    if (result.changes !== 1) return res.status(404).json({ error: 'Kampanya bulunamadı.' });
+    res.json({ message: 'Kampanya silindi.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Kampanya silinemedi.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// E-POSTA PAZARLAMA
+// Sablon havuzu + secmeli/toplu gonderim + gonderim gunlugu (istatistik).
+// Alicilar: banli olmayan, listeden cikmamis musteriler.
+// ---------------------------------------------------------------------------
+const emailTemplateSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  subject: z.string().trim().min(2).max(200),
+  body: z.string().min(10).max(100_000)
+});
+
+// Yalnizca admin yazabilse de script/iframe gibi etiketler e-postada zaten
+// calismaz; onizleme panelini korumak icin kayitta ayiklanir.
+function stripDangerousHtml(html) {
+  return String(html).replace(/<\s*\/?\s*(script|iframe|object|embed)\b[^>]*>/gi, '');
+}
+
+// Yer tutuculari doldurur ve abonelikten cikma altligini ekler.
+function renderMarketingEmail(template, user, siteName, baseUrl) {
+  const crypto = require('crypto');
+  const replace = text => String(text)
+    .replaceAll('{kullanici_adi}', user.username)
+    .replaceAll('{site_adi}', siteName)
+    .replaceAll('{site_link}', baseUrl || '#');
+  const sig = crypto.createHmac('sha256', process.env.JWT_SECRET || 'dev').update(`unsub:${user.id}`).digest('hex').slice(0, 32);
+  const unsubUrl = `${(baseUrl || '').replace(/\/$/, '')}/unsubscribe?u=${user.id}&s=${sig}`;
+  const footer = `<div style="max-width:560px;margin:14px auto 0;text-align:center;color:#9ca3af;font-size:12px;font-family:Segoe UI,Arial,sans-serif;">
+    Bu e-postayı ${siteName} üyeliğiniz nedeniyle aldınız. <a href="${unsubUrl}" style="color:#9ca3af;">Listeden çıkmak için tıklayın</a>.</div>`;
+  return { subject: replace(template.subject), html: replace(template.body) + footer };
+}
+
+router.get('/email/templates', async (req, res) => {
+  try {
+    res.json({ templates: await dbAsync.all('SELECT * FROM email_templates ORDER BY id ASC') });
+  } catch (err) { res.status(500).json({ error: 'Şablonlar alınamadı.' }); }
+});
+
+router.post('/email/templates', validate(emailTemplateSchema), async (req, res) => {
+  try {
+    const result = await dbAsync.run(
+      'INSERT INTO email_templates (name, subject, body) VALUES (?, ?, ?)',
+      [normalizePlainText(req.body.name, 80), normalizePlainText(req.body.subject, 200), stripDangerousHtml(req.body.body)]
+    );
+    res.status(201).json({ message: 'Şablon oluşturuldu.', id: result.id });
+  } catch (err) {
+    if (err.message?.includes('UNIQUE')) return res.status(400).json({ error: 'Bu isimde bir şablon zaten var.' });
+    res.status(500).json({ error: 'Şablon oluşturulamadı.' });
+  }
+});
+
+router.put('/email/templates/:id', requireIdParam, validate(emailTemplateSchema), async (req, res) => {
+  try {
+    const result = await dbAsync.run(
+      'UPDATE email_templates SET name = ?, subject = ?, body = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [normalizePlainText(req.body.name, 80), normalizePlainText(req.body.subject, 200), stripDangerousHtml(req.body.body), req.recordId]
+    );
+    if (result.changes !== 1) return res.status(404).json({ error: 'Şablon bulunamadı.' });
+    res.json({ message: 'Şablon güncellendi.' });
+  } catch (err) {
+    if (err.message?.includes('UNIQUE')) return res.status(400).json({ error: 'Bu isimde bir şablon zaten var.' });
+    res.status(500).json({ error: 'Şablon güncellenemedi.' });
+  }
+});
+
+router.delete('/email/templates/:id', requireIdParam, async (req, res) => {
+  try {
+    const result = await dbAsync.run('DELETE FROM email_templates WHERE id = ?', [req.recordId]);
+    if (result.changes !== 1) return res.status(404).json({ error: 'Şablon bulunamadı.' });
+    res.json({ message: 'Şablon silindi.' });
+  } catch (err) { res.status(500).json({ error: 'Şablon silinemedi.' }); }
+});
+
+// Sablonu adminin kendi adresine test olarak gonderir.
+router.post('/email/templates/:id/test', requireIdParam, async (req, res) => {
+  try {
+    const mailer = require('../services/mailer');
+    if (!(await mailer.isConfigured())) return res.status(400).json({ error: 'Önce SMTP ayarlarını yapın (Site Ayarları → E-Posta).' });
+    const template = await dbAsync.get('SELECT * FROM email_templates WHERE id = ?', [req.recordId]);
+    if (!template) return res.status(404).json({ error: 'Şablon bulunamadı.' });
+    const siteRow = await dbAsync.get("SELECT value FROM site_settings WHERE key = 'site_name'");
+    const rendered = renderMarketingEmail(template, req.user, siteRow?.value || 'SMM Panel', process.env.PUBLIC_BASE_URL || '');
+    await mailer.sendMail({ to: req.user.email, subject: `[TEST] ${rendered.subject}`, html: rendered.html, text: '' });
+    res.json({ message: `Test e-postası ${req.user.email} adresine gönderildi.` });
+  } catch (err) { res.status(400).json({ error: `Test gönderilemedi: ${err.message}` }); }
+});
+
+// Toplu / secmeli gonderim. Yanit hemen doner; gonderim arka planda surer
+// (SMTP limitlerini zorlamamak icin e-postalar arasi kisa bekleme vardir).
+router.post('/email/send', validate(z.object({
+  template_id: z.coerce.number().int().positive(),
+  mode: z.enum(['all', 'selected']).default('all'),
+  user_ids: z.array(z.coerce.number().int().positive()).max(5000).optional()
+})), async (req, res) => {
+  try {
+    const mailer = require('../services/mailer');
+    if (!(await mailer.isConfigured())) return res.status(400).json({ error: 'Önce SMTP ayarlarını yapın (Site Ayarları → E-Posta).' });
+    const template = await dbAsync.get('SELECT * FROM email_templates WHERE id = ?', [req.body.template_id]);
+    if (!template) return res.status(404).json({ error: 'Şablon bulunamadı.' });
+    if (req.body.mode === 'selected' && !req.body.user_ids?.length) {
+      return res.status(400).json({ error: 'En az bir alıcı seçin.' });
+    }
+
+    let sql = `SELECT id, username, email FROM users WHERE role = 'client' AND banned = 0 AND email_opt_out = 0`;
+    const params = [];
+    if (req.body.mode === 'selected') {
+      sql += ` AND id IN (${req.body.user_ids.map(() => '?').join(',')})`;
+      params.push(...req.body.user_ids);
+    }
+    const recipients = await dbAsync.all(sql, params);
+    if (!recipients.length) return res.status(400).json({ error: 'Uygun alıcı bulunamadı (banlı ve listeden çıkanlar hariç tutulur).' });
+
+    const siteRow = await dbAsync.get("SELECT value FROM site_settings WHERE key = 'site_name'");
+    const siteName = siteRow?.value || 'SMM Panel';
+    const baseUrl = process.env.PUBLIC_BASE_URL || '';
+    const batchId = createOpaqueToken('EM').slice(0, 24);
+
+    // Arka plan gonderimi: istek yaniti beklemez.
+    (async () => {
+      for (const user of recipients) {
+        try {
+          const rendered = renderMarketingEmail(template, user, siteName, baseUrl);
+          await mailer.sendMail({ to: user.email, subject: rendered.subject, html: rendered.html, text: '' });
+          await dbAsync.run('INSERT INTO email_logs (batch_id, template_name, subject, user_id, email, status) VALUES (?, ?, ?, ?, ?, ?)',
+            [batchId, template.name, rendered.subject, user.id, user.email, 'sent']);
+        } catch (err) {
+          await dbAsync.run('INSERT INTO email_logs (batch_id, template_name, subject, user_id, email, status, error) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [batchId, template.name, template.subject, user.id, user.email, 'failed', normalizePlainText(err.message, 300)]).catch(() => {});
+        }
+        // SMTP saglayicisini bogmamak icin e-postalar arasi bekleme.
+        await new Promise(resolve => setTimeout(resolve, 400));
+      }
+      require('../services/telegramNotifier').notifyPaymentEvent('📧 Toplu E-Posta Tamamlandı', [
+        `📝 Şablon: ${template.name}`,
+        `👥 Alıcı: ${recipients.length}`,
+        '📊 Ayrıntılar: Admin Panel → E-Posta Pazarlama'
+      ]).catch(() => {});
+    })();
+
+    await dbAsync.run('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'email_blast_started', 'email_batch', batchId, JSON.stringify({ template: template.name, recipients: recipients.length }), req.ip]);
+    res.json({ message: `Gönderim başladı: ${recipients.length} alıcı. Sonuçları aşağıdaki geçmiş bölümünden takip edebilirsin.`, batch_id: batchId, total: recipients.length });
+  } catch (err) { res.status(500).json({ error: 'Gönderim başlatılamadı.' }); }
+});
+
+router.get('/email/stats', async (req, res) => {
+  try {
+    const totals = await dbAsync.get(`SELECT
+      SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
+      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+      FROM email_logs`);
+    const audience = await dbAsync.get("SELECT COUNT(*) as count FROM users WHERE role = 'client' AND banned = 0 AND email_opt_out = 0");
+    const optedOut = await dbAsync.get("SELECT COUNT(*) as count FROM users WHERE role = 'client' AND email_opt_out = 1");
+    const batches = await dbAsync.all(`SELECT batch_id, template_name, MIN(created_at) as started_at,
+      COUNT(*) as total,
+      SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
+      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+      FROM email_logs GROUP BY batch_id ORDER BY MIN(created_at) DESC LIMIT 20`);
+    res.json({
+      totals: { sent: totals?.sent || 0, failed: totals?.failed || 0 },
+      audience: audience?.count || 0,
+      opted_out: optedOut?.count || 0,
+      batches
+    });
+  } catch (err) { res.status(500).json({ error: 'İstatistikler alınamadı.' }); }
+});
+
+router.get('/email/failures/:batchId', async (req, res) => {
+  try {
+    const batchId = String(req.params.batchId || '').slice(0, 32);
+    const failures = await dbAsync.all(
+      "SELECT email, error, created_at FROM email_logs WHERE batch_id = ? AND status = 'failed' ORDER BY id ASC LIMIT 500",
+      [batchId]
+    );
+    res.json({ failures });
+  } catch (err) { res.status(500).json({ error: 'Hata listesi alınamadı.' }); }
+});
+
+// E-POSTA (SMTP) TESTI: istege bagli hedef adres; bos birakilirsa admin'in
+// kendi adresine gider.
+router.post('/email/test', validate(z.object({
+  to: z.email().max(254).optional().nullable()
+})), async (req, res) => {
+  try {
+    const mailer = require('../services/mailer');
+    if (!(await mailer.isConfigured())) {
+      return res.status(400).json({ error: 'SMTP ayarları eksik. Sunucu, kullanıcı ve şifre alanlarını doldurup kaydedin.' });
+    }
+    const target = req.body.to || req.user.email;
+    await mailer.sendMail({
+      to: target,
+      subject: 'SMMJET — SMTP test e-postası ✅',
+      text: 'Bu bir test e-postasıdır. SMTP ayarlarınız çalışıyor!',
+      html: '<p>Bu bir test e-postasıdır. <b>SMTP ayarlarınız çalışıyor!</b> 🎉</p>'
+    });
+    res.json({ message: `Test e-postası ${target} adresine gönderildi. Gelen kutunu (ve spam klasörünü) kontrol et.` });
+  } catch (err) {
+    res.status(400).json({ error: `E-posta gönderilemedi: ${err.message}` });
+  }
+});
+
+// TELEGRAM BILDIRIM BOTU
+// Test ve chat listesi uclari, kaydedilmis ayarlarin gercekten calistigini
+// yoneticinin panelden dogrulayabilmesi icindir.
+router.post('/telegram/test', async (req, res) => {
+  try {
+    await telegram.sendTestMessage();
+    res.json({ message: 'Test mesajı gönderildi. Telegram sohbetini kontrol edin.' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/telegram/chats', async (req, res) => {
+  try {
+    const chats = await telegram.listRecentChats();
+    res.json({ chats });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 
@@ -754,7 +1693,11 @@ router.post('/payment-notifications/:id/approve', requireIdParam, async (req, re
       await tx.run('UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?', [amountKurus, amountKurus, notif.user_id]);
       const txId = createOpaqueToken('BANK_').slice(0, 28);
       await tx.run(`INSERT INTO payments (user_id, amount, amount_kurus, method, status, transaction_id) VALUES (?, ?, ?, ?, 'completed', ?)`, [notif.user_id, fromKurus(amountKurus), amountKurus, `Banka/Papara (${normalizePlainText(notif.bank_name, 80)})`, txId]);
+      // Aktif bakiye bonusu kampanyasi banka yuklemelerinde de gecerlidir.
+      const bankBonus = await require('./payments').applyDepositBonus(tx, notif.user_id, amountKurus, 'BANK');
       await tx.run('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)', [req.user.id, 'payment_approved', 'payment_notification', String(notifId), JSON.stringify({ amount_kurus: amountKurus, user_id: notif.user_id }), req.ip]);
+      const bankUser = await tx.get('SELECT username FROM users WHERE id = ?', [notif.user_id]);
+      telegram.notifyDeposit({ username: bankUser?.username || `#${notif.user_id}`, amount: fromKurus(amountKurus), method: `Banka/Papara (onaylandı)`, bonus: fromKurus(bankBonus) });
       return amountKurus;
     });
     res.json({ message: `₺${fromKurus(approved).toFixed(2)} ödeme onaylandı.` });
@@ -787,16 +1730,28 @@ router.get('/coupons', async (req, res) => {
 
 router.post('/coupons', validate(couponSchema), async (req, res) => {
   try {
-    const { code, amount, max_uses } = req.body;
+    const { code, code_en, amount, max_uses } = req.body;
     const cleanCode = normalizePlainText(code, 64).toUpperCase();
+    const cleanCodeEn = code_en ? normalizePlainText(code_en, 64).toUpperCase() : null;
     if (!cleanCode) return res.status(400).json({ error: 'Lütfen geçerli bir kupon kodu girin.' });
+    if (cleanCodeEn && cleanCodeEn === cleanCode) return res.status(400).json({ error: 'İngilizce kod, Türkçe kod ile aynı olamaz.' });
+
+    // code_en kolonu ALTER ile eklendigi icin UNIQUE kisiti yok; benzersizlik
+    // iki kolona karsi burada dogrulanir.
+    const codesToCheck = [cleanCode, cleanCodeEn].filter(Boolean);
+    const clash = await dbAsync.get(
+      `SELECT id FROM coupons WHERE code COLLATE NOCASE IN (${codesToCheck.map(() => '?').join(',')})
+          OR (code_en IS NOT NULL AND code_en COLLATE NOCASE IN (${codesToCheck.map(() => '?').join(',')}))`,
+      [...codesToCheck, ...codesToCheck]
+    );
+    if (clash) return res.status(400).json({ error: 'Bu kupon kodu (veya İngilizce karşılığı) zaten mevcut.' });
 
     await dbAsync.run(
-      `INSERT INTO coupons (code, amount, amount_kurus, max_uses) VALUES (?, ?, ?, ?)`,
-      [cleanCode, amount, toKurus(amount), max_uses]
+      `INSERT INTO coupons (code, code_en, amount, amount_kurus, max_uses) VALUES (?, ?, ?, ?, ?)`,
+      [cleanCode, cleanCodeEn, amount, toKurus(amount), max_uses]
     );
 
-    res.json({ message: `"${cleanCode}" promosyon kuponu başarıyla oluşturuldu!` });
+    res.json({ message: `"${cleanCode}"${cleanCodeEn ? ` (+ EN: "${cleanCodeEn}")` : ''} promosyon kuponu başarıyla oluşturuldu!` });
   } catch (err) {
     if (err.message && err.message.includes('UNIQUE')) {
       return res.status(400).json({ error: 'Bu kupon kodu zaten mevcut.' });
@@ -805,10 +1760,43 @@ router.post('/coupons', validate(couponSchema), async (req, res) => {
   }
 });
 
+// Kuponu kimlerin kullandigi (kullanici adi + tarih) — admin kontrol listesi.
+router.get('/coupons/:id/usages', requireIdParam, async (req, res) => {
+  try {
+    const coupon = await dbAsync.get('SELECT id, code, code_en FROM coupons WHERE id = ?', [req.recordId]);
+    if (!coupon) return res.status(404).json({ error: 'Kupon bulunamadı.' });
+    const usages = await dbAsync.all(
+      `SELECT u.username, u.email, uc.used_at FROM user_coupons uc
+       JOIN users u ON u.id = uc.user_id
+       WHERE uc.coupon_id = ? ORDER BY uc.id DESC LIMIT 1000`,
+      [req.recordId]
+    );
+    res.json({ coupon, usages });
+  } catch (err) {
+    res.status(500).json({ error: 'Kupon kullanımları alınamadı.' });
+  }
+});
+
 router.delete('/coupons/:id', requireIdParam, async (req, res) => {
   try {
-    await dbAsync.run(`DELETE FROM coupons WHERE id = ?`, [req.recordId]);
-    res.json({ message: 'Kupon silindi.' });
+    // Kupon bir kez bile kullanildiysa user_coupons'ta kayit olusur ve
+    // foreign_keys=ON oldugu icin dogrudan DELETE "constraint failed" verir.
+    // Once kullanim kayitlarini, sonra kuponu siliyoruz (tek islemde).
+    const result = await withTransaction(async tx => {
+      const coupon = await tx.get('SELECT id FROM coupons WHERE id = ?', [req.recordId]);
+      if (!coupon) return { found: false, usages: 0 };
+      const usages = await tx.get('SELECT COUNT(*) AS count FROM user_coupons WHERE coupon_id = ?', [req.recordId]);
+      await tx.run('DELETE FROM user_coupons WHERE coupon_id = ?', [req.recordId]);
+      await tx.run('DELETE FROM coupons WHERE id = ?', [req.recordId]);
+      return { found: true, usages: usages?.count || 0 };
+    });
+
+    if (!result.found) return res.status(404).json({ error: 'Kupon bulunamadı.' });
+    res.json({
+      message: result.usages > 0
+        ? `Kupon silindi (${result.usages} kullanım kaydı da temizlendi).`
+        : 'Kupon silindi.'
+    });
   } catch (err) {
     res.status(500).json({ error: 'Kupon silinemedi.' });
   }
@@ -851,9 +1839,14 @@ router.post('/blog', async (req, res) => {
        safeSummaryTr, safeSummaryEn,
        sanitizeRichText(content_tr || content), sanitizeRichText(content_en || content_tr || content),
        normalizePlainText(seo_title_tr || safeTitleTr, 180), normalizePlainText(seo_title_en || safeTitleEn, 180),
-       normalizePlainText(seo_description_tr || summary_tr || summary || '', 500), normalizePlainText(seo_description_en || summary_en || '', 500),
+       // Meta aciklama arama sonucunda kesilmemesi icin 160 karaktere sigdirilir.
+       buildMetaDescription([seo_description_tr, summary_tr, summary, content_tr, content], safeTitleTr),
+       buildMetaDescription([seo_description_en, summary_en, summary, content_en, content_tr, content], safeTitleEn),
        postStatus, req.user.id, Math.max(1, Math.min(60, parseInt(reading_minutes || 3))), postStatus]
     );
+    // Yayinlanan yazi IndexNow ile Bing'e aninda bildirilir (AI aramalarinin
+    // — ozellikle ChatGPT'nin — dizin kaynagi Bing'dir). Yaniti geciktirmez.
+    if (postStatus === 'published') require('../services/indexNow').notifyBlogPublished(slug);
     res.json({ message: postStatus === 'draft' ? 'Blog taslağı kaydedildi.' : 'Blog yazısı yayınlandı!' });
   } catch (err) {
     res.status(500).json({ error: 'Blog eklenemedi.' });
@@ -881,9 +1874,12 @@ router.put('/blog/:id', requireIdParam, async (req, res) => {
       normalizePlainText(req.body.summary_en ?? current.summary_en ?? current.summary ?? '', 500), sanitizeRichText(req.body.content_tr ?? current.content_tr ?? current.content),
       sanitizeRichText(req.body.content_tr ?? current.content_tr ?? current.content), sanitizeRichText(req.body.content_en ?? current.content_en ?? current.content),
       safeImageUrl, normalizePlainText(req.body.seo_title_tr || titleTr, 180),
-      normalizePlainText(req.body.seo_title_en || titleEn, 180), normalizePlainText(req.body.seo_description_tr || '', 500),
-      normalizePlainText(req.body.seo_description_en || '', 500), status, Math.max(1, Math.min(60, parseInt(req.body.reading_minutes || current.reading_minutes || 3))), status, req.recordId
+      normalizePlainText(req.body.seo_title_en || titleEn, 180),
+      buildMetaDescription([req.body.seo_description_tr, req.body.summary_tr, current.summary_tr, current.summary], titleTr),
+      buildMetaDescription([req.body.seo_description_en, req.body.summary_en, current.summary_en, current.summary], titleEn), status, Math.max(1, Math.min(60, parseInt(req.body.reading_minutes || current.reading_minutes || 3))), status, req.recordId
     ]);
+    // Guncellenen yazi da IndexNow ile bildirilir (yayinda ise).
+    if (status === 'published' && current.slug) require('../services/indexNow').notifyBlogPublished(current.slug);
     res.json({ message: 'Blog yazısı güncellendi.' });
   } catch (err) {
     res.status(500).json({ error: 'Blog güncellenemedi.' });
@@ -896,6 +1892,58 @@ router.delete('/blog/:id', requireIdParam, async (req, res) => {
     res.json({ message: 'Blog yazısı silindi.' });
   } catch (err) {
     res.status(500).json({ error: 'Blog silinemedi.' });
+  }
+});
+
+// MÜŞTERİ YORUMLARI (ADMIN DENETİMİ)
+// Kullanici yorumlari onaydan gecer; admin elle yorum da ekleyebilir
+// (musteri Telegram/WhatsApp'tan iletmisse). Isimler sitede maskelenir.
+router.get('/reviews', async (req, res) => {
+  try {
+    const reviews = await dbAsync.all(`
+      SELECT r.id, r.rating, r.comment, r.status, r.created_at, r.display_name, r.order_id, u.username
+      FROM reviews r LEFT JOIN users u ON r.user_id = u.id
+      ORDER BY CASE r.status WHEN 'pending' THEN 0 ELSE 1 END, r.id DESC`);
+    res.json({ reviews });
+  } catch (err) {
+    res.status(500).json({ error: 'Yorumlar alınamadı.' });
+  }
+});
+
+router.post('/reviews', async (req, res) => {
+  try {
+    const rating = Math.round(Number(req.body?.rating));
+    const comment = String(req.body?.comment || '').replace(/\s+/g, ' ').trim();
+    const displayName = String(req.body?.display_name || '').trim().slice(0, 60);
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) return res.status(400).json({ error: 'Puan 1-5 arasında olmalıdır.' });
+    if (comment.length < 10 || comment.length > 400) return res.status(400).json({ error: 'Yorum 10-400 karakter arasında olmalıdır.' });
+    if (!displayName) return res.status(400).json({ error: 'Görünen ad gereklidir (sitede maskelenerek yayınlanır).' });
+    await dbAsync.run(
+      "INSERT INTO reviews (display_name, rating, comment, status) VALUES (?, ?, ?, 'approved')",
+      [displayName, rating, comment]
+    );
+    res.status(201).json({ message: 'Yorum eklendi ve yayınlandı.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Yorum eklenemedi.' });
+  }
+});
+
+router.put('/reviews/:id/status', requireIdParam, async (req, res) => {
+  try {
+    const status = req.body?.status === 'approved' ? 'approved' : 'pending';
+    await dbAsync.run('UPDATE reviews SET status = ? WHERE id = ?', [status, req.recordId]);
+    res.json({ message: status === 'approved' ? 'Yorum onaylandı ve yayında.' : 'Yorum yayından kaldırıldı (beklemede).' });
+  } catch (err) {
+    res.status(500).json({ error: 'Yorum durumu güncellenemedi.' });
+  }
+});
+
+router.delete('/reviews/:id', requireIdParam, async (req, res) => {
+  try {
+    await dbAsync.run('DELETE FROM reviews WHERE id = ?', [req.recordId]);
+    res.json({ message: 'Yorum silindi.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Yorum silinemedi.' });
   }
 });
 

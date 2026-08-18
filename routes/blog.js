@@ -82,6 +82,8 @@ router.get('/:slug', async (req, res) => {
     if (!post) {
       return res.status(404).json({ error: 'Blog yazısı bulunamadı.' });
     }
+    // Okunma sayaci: istatistik ugruna yanit geciktirilmez, hata yutulur.
+    dbAsync.run('UPDATE blog_posts SET views = COALESCE(views, 0) + 1 WHERE id = ?', [post.id]).catch(() => {});
     res.json({ post });
   } catch (err) {
     res.status(500).json({ error: 'Blog detayı alınamadı.' });

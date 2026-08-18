@@ -45,8 +45,13 @@ class SmmProviderClient {
       );
       return response.data;
     } catch (err) {
-      console.error(`SMM Provider addOrder Error [${this.apiUrl}]:`, err.message);
-      throw new Error(`Sipariş sağlayıcıya iletilemedi: ${err.message}`);
+      // Saglayicinin JSON govdesindeki asil hata mesaji ("Invalid link",
+      // "Not enough funds" vb.) axios'un "status code 400" metninde kaybolur;
+      // varsa onu one cikart ki musteriye/admine gercek sebep gosterilebilsin.
+      const providerMessage = err.response?.data?.error || err.response?.data?.message;
+      const detail = providerMessage ? String(providerMessage) : err.message;
+      console.error(`SMM Provider addOrder Error [${this.apiUrl}]:`, detail);
+      throw new Error(`Sipariş sağlayıcıya iletilemedi: ${detail}`);
     }
   }
 

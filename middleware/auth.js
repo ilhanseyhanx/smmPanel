@@ -14,9 +14,13 @@ function getRequestToken(req) {
   return req.cookies?.smm_session || null;
 }
 
+// Mobil kullanicilar siteyi gun asiri acip kapattigi icin 12 saatlik oturum
+// surekli "tekrar giris yap" uyarisina donusuyordu; sure 7 gune cikarildi.
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 function signSession(user, extra = {}) {
   return jwt.sign({ id: user.id, role: user.role, ver: user.token_version || 0, ...extra }, JWT_SECRET, {
-    expiresIn: '12h',
+    expiresIn: '7d',
     issuer: 'smmpanel',
     audience: 'smmpanel-web'
   });
@@ -26,8 +30,11 @@ function setSessionCookie(res, token) {
   res.cookie('smm_session', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 12 * 60 * 60 * 1000,
+    // 'strict' bazi mobil tarayici/WebView senaryolarinda (dis uygulamadan
+    // gelen gecislerde) cerezi dusurebiliyordu; 'lax' ayni CSRF korumasini
+    // POST istekleri icin korur ve mobilde oturumu stabil tutar.
+    sameSite: 'lax',
+    maxAge: SESSION_TTL_MS,
     path: '/'
   });
 }
@@ -41,11 +48,13 @@ async function authenticateToken(req, res, next) {
     const user = await dbAsync.get(
       `SELECT id, username, email, role, balance, balance_kurus, api_key,
               referral_balance_kurus, email_verified, must_change_password
-              , two_factor_enabled, token_version
+              , two_factor_enabled, token_version, banned
        FROM users WHERE id = ?`,
       [decoded.id]
     );
     if (!user || user.role !== decoded.role || user.token_version !== decoded.ver) return res.status(403).json({ error: 'Geçersiz kullanıcı oturumu.' });
+    // Banlanan kullanicinin acik oturumlari da aninda kapanir.
+    if (user.banned) return res.status(403).json({ error: 'Hesabınız askıya alınmıştır. Destek ekibiyle iletişime geçin.' });
     req.user = user;
     req.auth = decoded;
     next();

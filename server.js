@@ -1284,6 +1284,12 @@ async function startServer() {
 
     // Start background order status sync worker
     startOrderWorker();
+    // Webhook gecikirse/kacarsa Shopier'in siparis API'sinden mutabakat yap.
+    const reconcileShopier = () => paymentsRoutes.reconcilePendingShopierPayments?.()
+      .catch(err => console.error('Shopier mutabakat worker:', err.message));
+    reconcileShopier();
+    const shopierReconcileTimer = setInterval(reconcileShopier, 60 * 1000);
+    shopierReconcileTimer.unref?.();
     // Telegram hesap eslestirme + hatirlatma e-postasi isleri
     require('./services/marketingWorker').startMarketingWorker();
   });

@@ -29,6 +29,7 @@ const ADMIN_PASSWORD = 'GuvenliAdminSifre_2026';
 const sahte = {
   urunler: new Map(),
   webhooklar: new Map(),
+  siparisler: [],
   sonrakiId: 1000,
   patHatasi: false
 };
@@ -49,6 +50,12 @@ function sahteShopierKur() {
   mock.delete('/v1/products/:id', (req, res) => {
     sahte.urunler.delete(String(req.params.id));
     res.json({ success: true });
+  });
+  mock.get('/v1/orders', (req, res) => {
+    const productId = String(req.query.productId || '');
+    res.json(productId
+      ? sahte.siparisler.filter(order => order.lineItems?.some(item => String(item.productId) === productId))
+      : sahte.siparisler);
   });
   mock.post('/v1/webhooks', (req, res) => {
     const id = String(sahte.sonrakiId++);
@@ -111,11 +118,12 @@ function webhookGonder(govde, { token = WEBHOOK_TOKEN, kodlama = 'hex', imza } =
     .send(metin);
 }
 
-function siparis(productId, { paymentStatus = 'paid', id } = {}) {
+function siparis(productId, { paymentStatus = 'paid', id, amount = 100 } = {}) {
+  const total = Number(amount).toFixed(2);
   return {
     id: id || `ORD-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     paymentStatus,
-    lineItems: [{ productId, price: '100', total: '100', quantity: 1 }],
+    lineItems: [{ productId, price: total, total, quantity: 1 }],
     shippingInfo: { email: 'alici@ornek.com' }
   };
 }
@@ -209,7 +217,7 @@ test('imzalı ödeme bildirimi bakiyeyi yükler, ürünü siler ve tekrarı yok 
   const intent = await dbAsync.get('SELECT * FROM payment_intents WHERE merchant_oid = ?', [create.body.merchant_oid]);
   const oncesi = await bakiye();
 
-  const govde = siparis(intent.provider_ref);
+  const govde = siparis(intent.provider_ref, { amount: 200 });
   const res = await webhookGonder(govde);
   assert.equal(res.status, 200, res.text);
 
@@ -235,9 +243,44 @@ test('base64 kodlu imza da kabul edilir', async () => {
   const intent = await dbAsync.get('SELECT provider_ref FROM payment_intents WHERE merchant_oid = ?', [create.body.merchant_oid]);
   const oncesi = await bakiye();
 
-  const res = await webhookGonder(siparis(intent.provider_ref), { kodlama: 'base64' });
+  const res = await webhookGonder(siparis(intent.provider_ref, { amount: 60 }), { kodlama: 'base64' });
   assert.equal(res.status, 200);
   assert.equal(await bakiye() - oncesi, 6000);
+});
+
+test('tek siparisteki birden fazla bakiye urununun tamami yuklenir', async () => {
+  const agent = await musteriAgent();
+  const first = await agent.post('/api/payments/shopier/create').send({ amount: 10 });
+  const second = await agent.post('/api/payments/shopier/create').send({ amount: 25 });
+  const intents = await dbAsync.all(
+    'SELECT provider_ref, amount_kurus FROM payment_intents WHERE merchant_oid IN (?, ?) ORDER BY id',
+    [first.body.merchant_oid, second.body.merchant_oid]
+  );
+  const order = {
+    id: `ORD-MULTI-${Date.now()}`,
+    paymentStatus: 'paid',
+    lineItems: intents.map(intent => ({
+      productId: intent.provider_ref,
+      price: (intent.amount_kurus / 100).toFixed(2),
+      total: (intent.amount_kurus / 100).toFixed(2),
+      quantity: 1
+    }))
+  };
+  const before = await bakiye();
+  assert.equal((await webhookGonder(order)).status, 200);
+  assert.equal(await bakiye() - before, 3500);
+});
+
+test('webhook kacarsa durum sorgusu odemeyi Shopier API ile mutabik hale getirir', async () => {
+  const agent = await musteriAgent();
+  const create = await agent.post('/api/payments/shopier/create').send({ amount: 45 });
+  const intent = await dbAsync.get('SELECT provider_ref FROM payment_intents WHERE merchant_oid = ?', [create.body.merchant_oid]);
+  sahte.siparisler.push(siparis(intent.provider_ref, { amount: 45, id: `ORD-RECON-${Date.now()}` }));
+  const before = await bakiye();
+  const status = await agent.get(`/api/payments/shopier/status/${create.body.merchant_oid}`);
+  assert.equal(status.status, 200);
+  assert.equal(status.body.status, 'completed');
+  assert.equal(await bakiye() - before, 4500);
 });
 
 test('sahte imzalı bildirim reddedilir, bakiye değişmez', async () => {

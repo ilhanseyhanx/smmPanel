@@ -132,6 +132,27 @@ async function request(method, path, { body, pat } = {}) {
   return response.data;
 }
 
+// Webhook teslim edilemezse odemeyi kaybetmemek icin siparisler API'den de
+// dogrulanir. Shopier liste ucu dogrudan bir dizi dondurur.
+async function listOrders(params = {}) {
+  const query = new URLSearchParams();
+  query.set('limit', String(Math.min(50, Math.max(1, Number(params.limit) || 20))));
+  query.set('sort', params.sort || 'dateDesc');
+  if (params.productId) query.set('productId', String(params.productId));
+  const result = await request('get', `/orders?${query.toString()}`);
+  return Array.isArray(result) ? result : [];
+}
+
+async function findPaidOrderByProductId(productId) {
+  if (!productId) return null;
+  const orders = await listOrders({ productId, limit: 20 });
+  return orders.find(order =>
+    String(order?.paymentStatus || '').toLowerCase() === 'paid' &&
+    Array.isArray(order?.lineItems) &&
+    order.lineItems.some(item => String(item?.productId || '') === String(productId))
+  ) || null;
+}
+
 // ---------------------------------------------------------------------------
 // WEBHOOK ABONELIGI
 // Panelden degil API'den kurulur; imza anahtari (token) YALNIZCA olusturma
@@ -314,5 +335,6 @@ module.exports = {
   getConfig, isConfigured, getStatus, saveSecret, savePlain,
   registerWebhook, removeWebhook,
   verifyWebhookSignature, verifyWebhook,
+  listOrders, findPaidOrderByProductId,
   createTopUpProduct, deleteProduct, sweepAbandonedProducts, setProductImage
 };

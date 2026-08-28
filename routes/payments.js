@@ -96,6 +96,93 @@ router.post('/paytr/token', authenticateToken, validate(z.object({ amount: z.coe
 
 const SHOPIER_MIN_TRY = 10;
 
+function shopierLineAmountKurus(lineItem) {
+  const raw = lineItem?.total ?? lineItem?.price;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return null;
+  const quantity = lineItem?.total == null ? Math.max(1, Number(lineItem?.quantity) || 1) : 1;
+  return toKurus(value * quantity);
+}
+
+// Webhook ve API mutabakati ayni idempotent muhasebe yolunu kullanir. Bir
+// sepette birden fazla bakiye urunu olabildigi icin eslesen tum niyetler
+// islenir; her satirin tutari niyet tutariyla ayrica dogrulanir.
+async function settleShopierOrder(order, source = 'webhook') {
+  const orderId = String(order?.id || '').slice(0, 64);
+  if (!orderId || String(order?.paymentStatus || '').toLowerCase() !== 'paid') return [];
+  const lines = Array.isArray(order.lineItems) ? order.lineItems : [];
+  const productIds = [...new Set(lines.map(item => String(item?.productId || '')).filter(Boolean))];
+  if (!productIds.length) return [];
+
+  const completed = [];
+  await withTransaction(async tx => {
+    const placeholders = productIds.map(() => '?').join(',');
+    const intents = await tx.all(
+      `SELECT * FROM payment_intents WHERE provider = 'shopier' AND provider_ref IN (${placeholders})`,
+      productIds
+    );
+    for (const intent of intents) {
+      if (intent.status !== 'pending') continue;
+      const line = lines.find(item => String(item?.productId || '') === String(intent.provider_ref));
+      const paidKurus = shopierLineAmountKurus(line);
+      if (paidKurus == null || paidKurus !== intent.amount_kurus) {
+        console.error('Shopier tutar eslesmedi:', { orderId, productId: intent.provider_ref, paidKurus, expectedKurus: intent.amount_kurus });
+        continue;
+      }
+      const dedupe = await tx.run(
+        'INSERT OR IGNORE INTO payment_webhooks (provider, external_id, payload) VALUES (?, ?, ?)',
+        ['shopier', `order:${orderId}:product:${intent.provider_ref}`, JSON.stringify({ source, order })]
+      );
+      if (dedupe.changes !== 1) continue;
+      const claimed = await tx.run(
+        "UPDATE payment_intents SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'",
+        [intent.id]
+      );
+      if (claimed.changes !== 1) continue;
+      await tx.run('UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?',
+        [intent.amount_kurus, intent.amount_kurus, intent.user_id]);
+      await tx.run(`INSERT INTO payments (user_id, amount, amount_kurus, method, status, transaction_id) VALUES (?, ?, ?, 'Shopier', 'completed', ?)`,
+        [intent.user_id, fromKurus(intent.amount_kurus), intent.amount_kurus, intent.merchant_oid]);
+      await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)',
+        [intent.user_id, 'payment', 'Ödeme tamamlandı', `₺${fromKurus(intent.amount_kurus).toFixed(2)} bakiyenize eklendi.`]);
+      const bonusKurus = await applyDepositBonus(tx, intent.user_id, intent.amount_kurus, 'SHOPIER');
+      const user = await tx.get('SELECT username FROM users WHERE id = ?', [intent.user_id]);
+      completed.push({ productId: intent.provider_ref, username: user?.username || `#${intent.user_id}`, amount: fromKurus(intent.amount_kurus), bonus: fromKurus(bonusKurus) });
+    }
+  });
+  for (const item of completed) {
+    telegram.notifyDeposit({ username: item.username, amount: item.amount, bonus: item.bonus, method: 'Shopier (Kart)' });
+    Shopier.deleteProduct(item.productId).catch(() => {});
+  }
+  return completed;
+}
+
+async function reconcileShopierIntent(intent) {
+  if (!intent || intent.status !== 'pending' || !intent.provider_ref) return false;
+  const order = await Shopier.findPaidOrderByProductId(intent.provider_ref);
+  if (!order) return false;
+  const completed = await settleShopierOrder(order, 'api-reconciliation');
+  return completed.some(item => String(item.productId) === String(intent.provider_ref));
+}
+
+async function reconcilePendingShopierPayments(limit = 50) {
+  const intents = await dbAsync.all(
+    `SELECT * FROM payment_intents WHERE provider = 'shopier' AND status = 'pending' AND provider_ref IS NOT NULL ORDER BY id DESC LIMIT ?`,
+    [limit]
+  );
+  if (!intents.length) return 0;
+  const pendingProducts = new Set(intents.map(intent => String(intent.provider_ref)));
+  const orders = await Shopier.listOrders({ limit: 50 });
+  let count = 0;
+  for (const order of orders) {
+    const belongsToPending = order?.lineItems?.some(item => pendingProducts.has(String(item?.productId || '')));
+    if (!belongsToPending || String(order?.paymentStatus || '').toLowerCase() !== 'paid') continue;
+    try { count += (await settleShopierOrder(order, 'api-reconciliation')).length; }
+    catch (err) { console.error('Shopier mutabakat hatasi:', order?.id, err.message); }
+  }
+  return count;
+}
+
 router.post('/shopier/create', authenticateToken, validate(z.object({
   amount: z.coerce.number().min(SHOPIER_MIN_TRY).max(100000)
 })), async (req, res, next) => {
@@ -133,10 +220,15 @@ router.get('/shopier/status/:oid', authenticateToken, async (req, res, next) => 
   try {
     const oid = String(req.params.oid || '').slice(0, 64);
     const intent = await dbAsync.get(
-      "SELECT status, amount_kurus, failure_reason FROM payment_intents WHERE provider = 'shopier' AND merchant_oid = ? AND user_id = ?",
+      "SELECT * FROM payment_intents WHERE provider = 'shopier' AND merchant_oid = ? AND user_id = ?",
       [oid, req.user.id]
     );
     if (!intent) return res.status(404).json({ error: 'Ödeme kaydı bulunamadı.' });
+    if (intent.status === 'pending') {
+      await reconcileShopierIntent(intent).catch(err => console.error('Shopier durum mutabakati:', err.message));
+      const refreshed = await dbAsync.get('SELECT status, amount_kurus, failure_reason FROM payment_intents WHERE id = ?', [intent.id]);
+      return res.json({ status: refreshed.status, amount: fromKurus(refreshed.amount_kurus), failure_reason: refreshed.failure_reason });
+    }
     res.json({ status: intent.status, amount: fromKurus(intent.amount_kurus), failure_reason: intent.failure_reason });
   } catch (err) { next(err); }
 });
@@ -151,58 +243,7 @@ router.post('/shopier/webhook', async (req, res) => {
       return res.status(400).type('text').send('bad signature');
     }
 
-    const order = req.body || {};
-    const orderId = String(order.id || '').slice(0, 64);
-    const paid = String(order.paymentStatus || '').toLowerCase() === 'paid';
-    // Satirlardaki urun kimlikleri: hangi bakiye yuklemesi oldugunu bunlar soyler.
-    const productIds = Array.isArray(order.lineItems)
-      ? order.lineItems.map(item => String(item?.productId || '')).filter(Boolean)
-      : [];
-    if (!orderId || !productIds.length) return res.type('text').send('OK');
-    if (!paid) return res.type('text').send('OK');
-
-    let completedInfo = null;
-    let productToDelete = null;
-    await withTransaction(async tx => {
-      const placeholders = productIds.map(() => '?').join(',');
-      const intent = await tx.get(
-        `SELECT * FROM payment_intents WHERE provider = 'shopier' AND provider_ref IN (${placeholders})`,
-        productIds
-      );
-      // Bize ait olmayan bir siparis (magazadaki normal satis) sessizce gecilir.
-      if (!intent || intent.status === 'completed' || intent.status === 'failed') return;
-
-      // Ayni bildirim yalnizca bir kez islenir.
-      const dedupe = await tx.run(
-        'INSERT OR IGNORE INTO payment_webhooks (provider, external_id, payload) VALUES (?, ?, ?)',
-        ['shopier', `order:${orderId}`, JSON.stringify(order)]
-      );
-      if (dedupe.changes !== 1) return;
-
-      const claimed = await tx.run(
-        "UPDATE payment_intents SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'",
-        [intent.id]
-      );
-      if (claimed.changes !== 1) return;
-
-      await tx.run('UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?',
-        [intent.amount_kurus, intent.amount_kurus, intent.user_id]);
-      await tx.run(`INSERT INTO payments (user_id, amount, amount_kurus, method, status, transaction_id) VALUES (?, ?, ?, 'Shopier', 'completed', ?)`,
-        [intent.user_id, fromKurus(intent.amount_kurus), intent.amount_kurus, intent.merchant_oid]);
-      await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)',
-        [intent.user_id, 'payment', 'Ödeme tamamlandı', `₺${fromKurus(intent.amount_kurus).toFixed(2)} bakiyenize eklendi.`]);
-      const bonusKurus = await applyDepositBonus(tx, intent.user_id, intent.amount_kurus, 'SHOPIER');
-      const user = await tx.get('SELECT username FROM users WHERE id = ?', [intent.user_id]);
-      completedInfo = { username: user?.username || `#${intent.user_id}`, amount: fromKurus(intent.amount_kurus), bonus: fromKurus(bonusKurus) };
-      productToDelete = intent.provider_ref;
-    });
-
-    if (completedInfo) telegram.notifyDeposit({ ...completedInfo, method: 'Shopier (Kart)' });
-    // Gecici urun magazadan temizlenir; hatasi yutulur, odeme zaten tamamlandi.
-    if (productToDelete) {
-      await Shopier.deleteProduct(productToDelete);
-      await dbAsync.run('UPDATE payment_intents SET provider_ref = NULL WHERE provider_ref = ?', [productToDelete]);
-    }
+    await settleShopierOrder(req.body || {}, 'webhook');
     return res.type('text').send('OK');
   } catch (err) {
     console.error('Shopier webhook error:', err.message);
@@ -491,3 +532,5 @@ router.post('/notification', authenticateToken, validate(z.object({
 
 module.exports = router;
 module.exports.applyDepositBonus = applyDepositBonus;
+module.exports.settleShopierOrder = settleShopierOrder;
+module.exports.reconcilePendingShopierPayments = reconcilePendingShopierPayments;

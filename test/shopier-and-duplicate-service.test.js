@@ -1,10 +1,12 @@
-// Shopier kart odemesi + ayni saglayici servisinin ikinci kez eklenmesi.
+// Shopier (PAT + webhook) kart odemesi ve ayni saglayici servisinin
+// ikinci kez eklenmesinin engellenmesi.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const express = require('express');
 const request = require('supertest');
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'smmpanel-shopier-'));
@@ -18,20 +20,65 @@ const { app } = require('../server');
 const { initDatabase, dbAsync, db } = require('../config/database');
 const Shopier = require('../services/shopier');
 
-const API_KEY = 'test-shopier-api-key';
-const API_SECRET = 'test-shopier-api-secret';
+const PAT = 'test-personal-access-token-123456';
+const WEBHOOK_TOKEN = 'test-webhook-signing-token';
 const ADMIN_PASSWORD = 'GuvenliAdminSifre_2026';
+
+// --- Sahte Shopier sunucusu -------------------------------------------------
+// Gercek api.shopier.com'a hic cikmadan urun/webhook uclarini taklit eder.
+const sahte = {
+  urunler: new Map(),
+  webhooklar: new Map(),
+  sonrakiId: 1000,
+  patHatasi: false
+};
+
+function sahteShopierKur() {
+  const mock = express();
+  mock.use(express.json());
+  mock.use((req, res, next) => {
+    if (sahte.patHatasi) return res.status(401).json({ message: 'Invalid token' });
+    if (req.headers.authorization !== `Bearer ${PAT}`) return res.status(401).json({ message: 'Invalid token' });
+    next();
+  });
+  mock.post('/v1/products', (req, res) => {
+    const id = String(sahte.sonrakiId++);
+    sahte.urunler.set(id, req.body);
+    res.json({ id, url: `https://www.shopier.com/${id}`, title: req.body.title, stockStatus: 'inStock' });
+  });
+  mock.delete('/v1/products/:id', (req, res) => {
+    sahte.urunler.delete(String(req.params.id));
+    res.json({ success: true });
+  });
+  mock.post('/v1/webhooks', (req, res) => {
+    const id = String(sahte.sonrakiId++);
+    sahte.webhooklar.set(id, req.body);
+    res.json({ id, event: req.body.event, url: req.body.url, token: WEBHOOK_TOKEN });
+  });
+  mock.delete('/v1/webhooks/:id', (req, res) => {
+    sahte.webhooklar.delete(String(req.params.id));
+    res.json({ success: true });
+  });
+  return new Promise(resolve => {
+    const server = mock.listen(0, '127.0.0.1', () => {
+      process.env.SHOPIER_API_BASE = `http://127.0.0.1:${server.address().port}/v1`;
+      resolve(server);
+    });
+  });
+}
+
+let mockServer;
 
 test.before(async () => {
   await initDatabase();
-  await dbAsync.run("INSERT OR REPLACE INTO site_settings (key, value) VALUES ('shopier_api_key', ?)", [API_KEY]);
-  await dbAsync.run("INSERT OR REPLACE INTO site_settings (key, value) VALUES ('shopier_api_secret', ?)", [API_SECRET]);
+  mockServer = await sahteShopierKur();
   const agent = request.agent(app);
   await agent.post('/api/auth/login').send({ username: 'admin', password: 'admin12345' });
   await agent.post('/api/admin/change-password').send({ current_password: 'admin12345', new_password: ADMIN_PASSWORD });
 });
 
 test.after(async () => {
+  await new Promise(resolve => mockServer.close(resolve));
   await new Promise(resolve => db.close(resolve));
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
@@ -50,120 +97,193 @@ async function adminAgent() {
   return agent;
 }
 
-function callbackImzasi(randomNr, orderId) {
-  return crypto.createHmac('sha256', API_SECRET).update(`${randomNr}${orderId}`).digest('base64');
+function imzala(govdeMetni, token = WEBHOOK_TOKEN, kodlama = 'hex') {
+  return crypto.createHmac('sha256', token).update(govdeMetni).digest(kodlama);
 }
 
-// --- ÖDEME FORMU ----------------------------------------------------------
+// Webhook'u HAM govdeyle gonderir; imza tam olarak bu metin uzerinden hesaplanir.
+function webhookGonder(govde, { token = WEBHOOK_TOKEN, kodlama = 'hex', imza } = {}) {
+  const metin = JSON.stringify(govde);
+  return request(app)
+    .post('/api/payments/shopier/webhook')
+    .set('Content-Type', 'application/json')
+    .set('Shopier-Signature', imza !== undefined ? imza : imzala(metin, token, kodlama))
+    .send(metin);
+}
 
-test('Shopier ödeme formu imzalı alanlarla döner', async () => {
+function siparis(productId, { paymentStatus = 'paid', id } = {}) {
+  return {
+    id: id || `ORD-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    paymentStatus,
+    lineItems: [{ productId, price: '100', total: '100', quantity: 1 }],
+    shippingInfo: { email: 'alici@ornek.com' }
+  };
+}
+
+async function bakiye() {
+  const row = await dbAsync.get('SELECT balance_kurus FROM users WHERE username = ?', ['demo_user']);
+  return row.balance_kurus;
+}
+
+// --- KURULUM ---------------------------------------------------------------
+
+test('PAT kaydedilince webhook aboneliği otomatik kurulur', async () => {
+  const agent = await adminAgent();
+  const res = await agent.post('/api/admin/shopier/pat').send({ pat: PAT });
+  assert.equal(res.status, 200, res.body.error);
+  assert.equal(res.body.status.pat_saved, true);
+  assert.equal(res.body.status.webhook_registered, true);
+  assert.equal(res.body.status.ready, true);
+
+  // Shopier'de gercekten order.created aboneligi acilmis olmali.
+  const abonelikler = [...sahte.webhooklar.values()];
+  assert.equal(abonelikler.length, 1);
+  assert.equal(abonelikler[0].event, 'order.created');
+  assert.match(abonelikler[0].url, /\/api\/payments\/shopier\/webhook$/);
+});
+
+test('anahtar ve imza tokeni veritabanında düz metin durmaz', async () => {
+  const rows = await dbAsync.all(
+    "SELECT key, value FROM site_settings WHERE key IN ('shopier_pat', 'shopier_webhook_token')"
+  );
+  assert.equal(rows.length, 2);
+  for (const row of rows) {
+    assert.ok(row.value, `${row.key} boş kaydedilmiş`);
+    assert.ok(!row.value.includes(PAT), `${row.key} PAT'i düz metin saklıyor!`);
+    assert.ok(!row.value.includes(WEBHOOK_TOKEN), `${row.key} imza tokenini düz metin saklıyor!`);
+  }
+});
+
+test('geçersiz PAT kaydedilmez', async () => {
+  const agent = await adminAgent();
+  sahte.patHatasi = true;
+  try {
+    const res = await agent.post('/api/admin/shopier/pat').send({ pat: 'gecersiz-anahtar-12345' });
+    assert.equal(res.status, 400, 'geçersiz anahtar kabul edildi');
+    // Onceki calisan yapilandirma bozulmamis olmali.
+    const config = await Shopier.getConfig();
+    assert.equal(config.pat, PAT, 'geçersiz anahtar mevcut yapılandırmanın üzerine yazmış');
+  } finally {
+    sahte.patHatasi = false;
+  }
+});
+
+test('Shopier hazır olunca ödeme yöntemi listesinde görünür', async () => {
+  const res = await request(app).get('/api/services');
+  assert.equal(res.body.paymentMethods.shopier, true);
+});
+
+// --- ÖDEME BAŞLATMA --------------------------------------------------------
+
+test('ödeme başlatınca geçici ürün oluşturulur ve niyete bağlanır', async () => {
   const agent = await musteriAgent();
   const res = await agent.post('/api/payments/shopier/create').send({ amount: 150 });
   assert.equal(res.status, 201, res.body.error);
-  assert.equal(res.body.action, Shopier.SHOPIER_PAY_URL);
-
-  const f = res.body.fields;
-  assert.equal(f.API_key, API_KEY);
-  assert.equal(f.total_order_value, '150.00', 'tutar 2 haneli biçimlenmeli (imza buna bağlı)');
-  assert.equal(f.currency, '0', '0 = TL');
-  assert.equal(f.platform_order_id, res.body.merchant_oid);
-
-  // İmza: random_nr + platform_order_id + total_order_value + currency
-  const beklenen = crypto.createHmac('sha256', API_SECRET)
-    .update(`${f.random_nr}${f.platform_order_id}${f.total_order_value}${f.currency}`)
-    .digest('base64');
-  assert.equal(f.signature, beklenen, 'Shopier imzası yanlış — ödeme sayfası isteği reddeder');
+  assert.match(res.body.payment_url, /^https:\/\/www\.shopier\.com\/\d+$/);
+  assert.equal(res.body.amount, 150);
 
   const intent = await dbAsync.get('SELECT * FROM payment_intents WHERE merchant_oid = ?', [res.body.merchant_oid]);
   assert.equal(intent.provider, 'shopier');
   assert.equal(intent.status, 'pending');
-  assert.equal(intent.amount_kurus, 15000, 'tutar kuruş cinsinden saklanmalı');
+  assert.equal(intent.amount_kurus, 15000);
+  assert.ok(intent.provider_ref, 'ürün kimliği kaydedilmemiş — webhook eşleşmesi imkânsız olur');
+
+  // Shopier'e giden urun dogru tutarda ve dijital olmali.
+  const urun = sahte.urunler.get(intent.provider_ref);
+  assert.equal(urun.priceData.price, '150.00');
+  assert.equal(urun.priceData.currency, 'TRY');
+  assert.equal(urun.type, 'digital');
+  assert.ok(urun.media && urun.media[0] && urun.media[0].url, 'ürün görseli zorunlu, gönderilmemiş');
 });
 
-test('oturumsuz kullanıcı Shopier ödemesi başlatamaz', async () => {
+test('oturumsuz kullanıcı ödeme başlatamaz', async () => {
   const res = await request(app).post('/api/payments/shopier/create').send({ amount: 100 });
   assert.equal(res.status, 401);
 });
 
-// --- GERİ DÖNÜŞ (CALLBACK) ------------------------------------------------
+// --- WEBHOOK ---------------------------------------------------------------
 
-test('geçerli imzalı başarı bildirimi bakiyeyi yükler ve tekrarı yok sayar', async () => {
+test('imzalı ödeme bildirimi bakiyeyi yükler, ürünü siler ve tekrarı yok sayar', async () => {
   const agent = await musteriAgent();
   const create = await agent.post('/api/payments/shopier/create').send({ amount: 200 });
-  const oid = create.body.merchant_oid;
+  const intent = await dbAsync.get('SELECT * FROM payment_intents WHERE merchant_oid = ?', [create.body.merchant_oid]);
+  const oncesi = await bakiye();
 
-  const oncesi = await dbAsync.get('SELECT balance_kurus FROM users WHERE username = ?', ['demo_user']);
+  const govde = siparis(intent.provider_ref);
+  const res = await webhookGonder(govde);
+  assert.equal(res.status, 200, res.text);
 
-  const randomNr = '123456';
-  const govde = {
-    platform_order_id: oid,
-    payment_id: 'PAY-1',
-    installment: '0',
-    status: 'success',
-    random_nr: randomNr,
-    signature: callbackImzasi(randomNr, oid)
-  };
+  assert.equal(await bakiye() - oncesi, 20000, '200 TL bakiyeye eklenmemiş');
 
-  const res = await request(app).post('/api/payments/shopier/callback').type('form').send(govde);
-  assert.equal(res.status, 303, 'müşteri sonuç sayfasına yönlendirilmeli');
-  assert.match(res.headers.location, /^\/payment-success/);
-
-  const sonrasi = await dbAsync.get('SELECT balance_kurus FROM users WHERE username = ?', ['demo_user']);
-  assert.equal(sonrasi.balance_kurus - oncesi.balance_kurus, 20000, '200 TL bakiyeye eklenmemiş');
-
-  const odeme = await dbAsync.get('SELECT * FROM payments WHERE transaction_id = ?', [oid]);
+  const odeme = await dbAsync.get('SELECT * FROM payments WHERE transaction_id = ?', [create.body.merchant_oid]);
   assert.equal(odeme.method, 'Shopier');
   assert.equal(odeme.status, 'completed');
 
-  // Shopier aynı bildirimi tekrar gönderirse bakiye ikinci kez yüklenmemeli.
-  const tekrar = await request(app).post('/api/payments/shopier/callback').type('form').send(govde);
-  assert.equal(tekrar.status, 303);
-  const sonHal = await dbAsync.get('SELECT balance_kurus FROM users WHERE username = ?', ['demo_user']);
-  assert.equal(sonHal.balance_kurus, sonrasi.balance_kurus, 'mükerrer bildirim bakiyeyi tekrar yüklemiş');
+  // Gecici urun magazadan silinmis olmali.
+  assert.equal(sahte.urunler.has(intent.provider_ref), false, 'geçici ürün mağazada kalmış');
+
+  // Ayni bildirim tekrar gelirse bakiye ikinci kez yuklenmemeli.
+  const sonrasi = await bakiye();
+  const tekrar = await webhookGonder(govde);
+  assert.equal(tekrar.status, 200);
+  assert.equal(await bakiye(), sonrasi, 'mükerrer bildirim bakiyeyi tekrar yüklemiş');
 });
 
-test('imzası geçersiz bildirim bakiyeye dokunmaz', async () => {
+test('base64 kodlu imza da kabul edilir', async () => {
+  const agent = await musteriAgent();
+  const create = await agent.post('/api/payments/shopier/create').send({ amount: 60 });
+  const intent = await dbAsync.get('SELECT provider_ref FROM payment_intents WHERE merchant_oid = ?', [create.body.merchant_oid]);
+  const oncesi = await bakiye();
+
+  const res = await webhookGonder(siparis(intent.provider_ref), { kodlama: 'base64' });
+  assert.equal(res.status, 200);
+  assert.equal(await bakiye() - oncesi, 6000);
+});
+
+test('sahte imzalı bildirim reddedilir, bakiye değişmez', async () => {
   const agent = await musteriAgent();
   const create = await agent.post('/api/payments/shopier/create').send({ amount: 500 });
-  const oid = create.body.merchant_oid;
-  const oncesi = await dbAsync.get('SELECT balance_kurus FROM users WHERE username = ?', ['demo_user']);
+  const intent = await dbAsync.get('SELECT provider_ref FROM payment_intents WHERE merchant_oid = ?', [create.body.merchant_oid]);
+  const oncesi = await bakiye();
 
-  const res = await request(app).post('/api/payments/shopier/callback').type('form').send({
-    platform_order_id: oid,
-    status: 'success',
-    random_nr: '999999',
-    signature: Buffer.from('sahte-imza-sahte-imza-sahte-imz').toString('base64')
-  });
-  assert.equal(res.status, 303);
-  assert.match(res.headers.location, /^\/payment-failed/);
+  const res = await webhookGonder(siparis(intent.provider_ref), { token: 'yanlis-token' });
+  assert.equal(res.status, 400, 'sahte imza kabul edildi!');
+  assert.equal(await bakiye(), oncesi, 'sahte imzalı bildirim bakiye yüklemiş!');
 
-  const sonrasi = await dbAsync.get('SELECT balance_kurus FROM users WHERE username = ?', ['demo_user']);
-  assert.equal(sonrasi.balance_kurus, oncesi.balance_kurus, 'sahte imzalı bildirim bakiye yüklemiş!');
-  const intent = await dbAsync.get('SELECT status FROM payment_intents WHERE merchant_oid = ?', [oid]);
-  assert.equal(intent.status, 'pending', 'imza doğrulanmadan niyet durumu değişmemeli');
+  const sonra = await dbAsync.get('SELECT status FROM payment_intents WHERE merchant_oid = ?', [create.body.merchant_oid]);
+  assert.equal(sonra.status, 'pending');
 });
 
-test('başarısız ödeme bildirimi niyeti failed yapar, bakiye değişmez', async () => {
+test('imzasız bildirim reddedilir', async () => {
   const agent = await musteriAgent();
-  const create = await agent.post('/api/payments/shopier/create').send({ amount: 75 });
-  const oid = create.body.merchant_oid;
-  const oncesi = await dbAsync.get('SELECT balance_kurus FROM users WHERE username = ?', ['demo_user']);
+  const create = await agent.post('/api/payments/shopier/create').send({ amount: 90 });
+  const intent = await dbAsync.get('SELECT provider_ref FROM payment_intents WHERE merchant_oid = ?', [create.body.merchant_oid]);
+  const oncesi = await bakiye();
 
-  const randomNr = '246810';
-  const res = await request(app).post('/api/payments/shopier/callback').type('form').send({
-    platform_order_id: oid,
-    payment_id: 'PAY-FAIL',
-    status: 'failed',
-    random_nr: randomNr,
-    signature: callbackImzasi(randomNr, oid)
-  });
-  assert.equal(res.status, 303);
-  assert.match(res.headers.location, /^\/payment-failed/);
+  const res = await webhookGonder(siparis(intent.provider_ref), { imza: '' });
+  assert.equal(res.status, 400);
+  assert.equal(await bakiye(), oncesi);
+});
 
-  const sonrasi = await dbAsync.get('SELECT balance_kurus FROM users WHERE username = ?', ['demo_user']);
-  assert.equal(sonrasi.balance_kurus, oncesi.balance_kurus);
-  const intent = await dbAsync.get('SELECT status FROM payment_intents WHERE merchant_oid = ?', [oid]);
-  assert.equal(intent.status, 'failed');
+test('ödenmemiş sipariş bakiye yüklemez', async () => {
+  const agent = await musteriAgent();
+  const create = await agent.post('/api/payments/shopier/create').send({ amount: 300 });
+  const intent = await dbAsync.get('SELECT provider_ref FROM payment_intents WHERE merchant_oid = ?', [create.body.merchant_oid]);
+  const oncesi = await bakiye();
+
+  const res = await webhookGonder(siparis(intent.provider_ref, { paymentStatus: 'unpaid' }));
+  assert.equal(res.status, 200);
+  assert.equal(await bakiye(), oncesi, 'ödenmemiş sipariş bakiye yüklemiş!');
+  const sonra = await dbAsync.get('SELECT status FROM payment_intents WHERE merchant_oid = ?', [create.body.merchant_oid]);
+  assert.equal(sonra.status, 'pending');
+});
+
+test('mağazadaki normal satış bakiye yüklemez', async () => {
+  const oncesi = await bakiye();
+  // Bize ait olmayan bir urun kimligi: sessizce gecilmeli.
+  const res = await webhookGonder(siparis('999999999'));
+  assert.equal(res.status, 200);
+  assert.equal(await bakiye(), oncesi);
 });
 
 test('ödeme durumu ucu yalnızca kendi kaydını gösterir', async () => {
@@ -180,31 +300,43 @@ test('ödeme durumu ucu yalnızca kendi kaydını gösterir', async () => {
   assert.equal(baskasi.status, 404, 'başka kullanıcının ödeme kaydı görünüyor!');
 });
 
-// --- YAPILANDIRMA ---------------------------------------------------------
+// --- TEMİZLİK VE KAPATMA ---------------------------------------------------
 
-test('Shopier yapılandırılmışsa ödeme yöntemi listesinde görünür', async () => {
-  const res = await request(app).get('/api/services');
-  assert.equal(res.status, 200);
-  assert.equal(res.body.paymentMethods.shopier, true);
+test('ödenmeden bırakılan ürünler süresi dolunca temizlenir', async () => {
+  const agent = await musteriAgent();
+  const create = await agent.post('/api/payments/shopier/create').send({ amount: 45 });
+  const intent = await dbAsync.get('SELECT * FROM payment_intents WHERE merchant_oid = ?', [create.body.merchant_oid]);
+  assert.ok(sahte.urunler.has(intent.provider_ref));
+
+  // Kaydi 2 gun eskitip supurgeyi calistir.
+  await dbAsync.run("UPDATE payment_intents SET created_at = datetime('now', '-2 days') WHERE id = ?", [intent.id]);
+  const temizlenen = await Shopier.sweepAbandonedProducts();
+
+  assert.ok(temizlenen >= 1, 'eski ürün temizlenmedi');
+  assert.equal(sahte.urunler.has(intent.provider_ref), false, 'geçici ürün mağazada kalmış');
+  const sonra = await dbAsync.get('SELECT status, provider_ref FROM payment_intents WHERE id = ?', [intent.id]);
+  assert.equal(sonra.status, 'failed');
+  assert.equal(sonra.provider_ref, null);
 });
 
-test('anahtarlar silinince Shopier kapanır ve ödeme başlatılamaz', async () => {
-  await dbAsync.run("UPDATE site_settings SET value = '' WHERE key IN ('shopier_api_key', 'shopier_api_secret')");
-  try {
-    const liste = await request(app).get('/api/services');
-    assert.equal(liste.body.paymentMethods.shopier, false);
+test('yapılandırma kaldırılınca ödeme yöntemi kapanır', async () => {
+  const agent = await adminAgent();
+  const res = await agent.delete('/api/admin/shopier/config');
+  assert.equal(res.status, 200, res.body.error);
+  assert.equal(res.body.status.ready, false);
 
-    const agent = await musteriAgent();
-    const res = await agent.post('/api/payments/shopier/create').send({ amount: 100 });
-    assert.equal(res.status, 503, 'yapılandırılmamış Shopier ile ödeme başlatılabiliyor');
+  const liste = await request(app).get('/api/services');
+  assert.equal(liste.body.paymentMethods.shopier, false);
 
-    // Yarım kalan niyet "failed" olarak kapatılmalı ki listede asılı kalmasın.
-    const asili = await dbAsync.get("SELECT COUNT(*) c FROM payment_intents WHERE provider = 'shopier' AND status = 'pending' AND amount_kurus = 10000");
-    assert.equal(asili.c, 0, 'başarısız ödeme niyeti pending kalmış');
-  } finally {
-    await dbAsync.run("UPDATE site_settings SET value = ? WHERE key = 'shopier_api_key'", [API_KEY]);
-    await dbAsync.run("UPDATE site_settings SET value = ? WHERE key = 'shopier_api_secret'", [API_SECRET]);
-  }
+  const musteri = await musteriAgent();
+  const odeme = await musteri.post('/api/payments/shopier/create').send({ amount: 100 });
+  assert.equal(odeme.status, 503, 'yapılandırılmamış Shopier ile ödeme başlatılabiliyor');
+
+  // Yarim kalan niyet pending kalmamali.
+  const asili = await dbAsync.get(
+    "SELECT COUNT(*) c FROM payment_intents WHERE provider = 'shopier' AND status = 'pending' AND amount_kurus = 10000"
+  );
+  assert.equal(asili.c, 0, 'başarısız ödeme niyeti pending kalmış');
 });
 
 // --- AYNI SERVİSİN İKİNCİ KEZ EKLENMESİ -----------------------------------

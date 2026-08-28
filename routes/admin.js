@@ -13,6 +13,7 @@ const { friendlyProviderReason } = require('../utils/providerErrors');
 const { fetchProviderCatalog } = require('../services/providerCatalog');
 const { chooseBlogCover, isLocalBlogCover } = require('../services/blogCover');
 const telegram = require('../services/telegramNotifier');
+const Shopier = require('../services/shopier');
 const { buildXlsx, columnsFromRows } = require('../utils/xlsx');
 const { buildMetaDescription } = require('../utils/metaDescription');
 
@@ -81,8 +82,9 @@ const ALLOWED_SETTING_KEYS = ['site_name', 'currency', 'telegram_link', 'support
   'social_proof_enabled', 'reminder_email_enabled',
   // NOWPayments kripto odeme anahtarlari
   'nowpayments_api_key', 'nowpayments_ipn_secret',
-  // Shopier kart odeme anahtarlari
-  'shopier_api_key', 'shopier_api_secret',
+  // Not: Shopier PAT'i ve webhook token'i buraya girmez — hesaba tam erisim
+  // verdikleri icin sifreli saklanir ve /admin/shopier/* uclarindan yonetilir.
+
   // SMTP (e-posta) ayarlari
   'smtp_host', 'smtp_port', 'smtp_secure', 'smtp_user', 'smtp_pass', 'mail_from',
   // SEO & analitik: GA olcum kimligi, Search Console ve Bing Webmaster dogrulama kodlari
@@ -1463,6 +1465,50 @@ router.post('/settings', validate(settingsSchema), async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Ayarlar kaydedilemedi.' });
   }
+});
+
+// --- SHOPIER (KART ÖDEMESİ) -------------------------------------------------
+// PAT ve webhook imza anahtari hesaba tam erisim verdigi icin normal ayar
+// akisindan ayri tutulur: sifreli saklanir ve hicbir uctan geri okunmaz.
+
+router.get('/shopier/status', async (req, res, next) => {
+  try {
+    res.json(await Shopier.getStatus());
+  } catch (err) { next(err); }
+});
+
+// Anahtar kaydedilir ve hemen ardindan webhook aboneligi kurulur: webhooksuz
+// yapilandirma odemeyi alir ama bakiyeyi hic yuklemez.
+router.post('/shopier/pat', validate(z.object({
+  // Shopier anahtari JWT biciminde ve uzun olabiliyor; 500 karakter dar geldi.
+  pat: z.string().trim().min(10).max(4000)
+})), async (req, res, next) => {
+  try {
+    const pat = req.body.pat;
+    // Anahtar once dogrulanir; gecersizse hic kaydedilmez.
+    await Shopier.registerWebhook(pat);
+    await Shopier.saveSecret('shopier_pat', pat);
+    const status = await Shopier.getStatus();
+    res.json({ message: 'Shopier anahtarı kaydedildi ve ödeme bildirimi (webhook) kuruldu.', status });
+  } catch (err) { next(err); }
+});
+
+// Webhook'u elle yeniden kurmak icin (adres degistiyse veya abonelik silindiyse).
+router.post('/shopier/register-webhook', async (req, res, next) => {
+  try {
+    const created = await Shopier.registerWebhook();
+    res.json({ message: `Ödeme bildirimi kuruldu: ${created.url}`, status: await Shopier.getStatus() });
+  } catch (err) { next(err); }
+});
+
+router.delete('/shopier/config', async (req, res, next) => {
+  try {
+    await Shopier.removeWebhook().catch(() => {});
+    await Shopier.saveSecret('shopier_pat', '');
+    await Shopier.saveSecret('shopier_webhook_token', '');
+    await Shopier.savePlain('shopier_webhook_id', '');
+    res.json({ message: 'Shopier yapılandırması kaldırıldı.', status: await Shopier.getStatus() });
+  } catch (err) { next(err); }
 });
 
 // CAMPAIGNS (indirim + bonus + popup)

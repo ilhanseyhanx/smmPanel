@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260828b">
+  <link rel="stylesheet" href="/css/style.css?v=20260828c">
 </head>
 <body>
 
@@ -2350,35 +2350,41 @@ Content-Type: application/json
                   <div class="glass-card mb-20">
                     <h3 style="margin-bottom: 8px; color: #fff;"><i class="fa-solid fa-bag-shopping" style="color: #7c3aed;"></i> Shopier Kart Ödemeleri</h3>
                     <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 16px;">
-                      Shopier panelinden <b>Ayarlar → Kişisel Erişim Anahtarları</b> bölümünde ürettiğiniz
-                      <b>API Anahtarı</b> ve <b>API Şifresi</b> değerlerini girin. İkisi de doluysa Bakiye Yükle
-                      sayfasında "Shopier ile Öde" seçeneği otomatik açılır.
-                      <br><b>Önemli:</b> Shopier panelinde <b>Geri Dönüş (Callback) Adresi</b> alanına aşağıdaki adresi yazın —
-                      ödeme sonucu bu adrese gelir, yoksa bakiye otomatik yüklenmez:
+                      Shopier panelinde <b>Hesap Yönetimi → Kişisel Erişim Anahtarı</b> bölümünden bir anahtar üretip buraya yapıştır.
+                      Anahtar Shopier'de <b>yalnızca bir kez</b> gösterilir; kaydettikten sonra burada da bir daha görüntülenmez.
+                      <br>Kaydettiğin anda ödeme bildirimi (webhook) <b>otomatik olarak kurulur</b> — Shopier panelinde elle bir şey ayarlaman gerekmez.
+                      <br><b>Not:</b> Anahtarı üretebilmek için Shopier hesabında <b>iki adımlı doğrulama</b> açık olmalıdır.
                     </p>
-                    <div class="form-group">
-                      <label for="shopier-callback-url" class="form-label">Shopier Geri Dönüş Adresi</label>
-                      <div style="display: flex; gap: 8px;">
-                        <input type="text" id="shopier-callback-url" class="form-control" readonly value="https://siteniz.com/api/payments/shopier/callback">
-                        <button type="button" class="btn btn-outline btn-sm" onclick="app.copyShopierCallbackUrl(this)" title="Kopyala"><i class="fa-solid fa-copy"></i></button>
-                      </div>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                      <div class="form-group">
-                        <label for="setting-shopier-key" class="form-label">Shopier API Anahtarı</label>
+
+                    <div id="shopier-status-box" style="margin-bottom: 16px;"></div>
+
+                    <div style="display: grid; grid-template-columns: 2fr auto; gap: 12px; align-items: end;">
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label for="setting-shopier-pat" class="form-label">Kişisel Erişim Anahtarı (PAT)</label>
                         <div style="display: flex; gap: 8px;">
-                          <input type="password" id="setting-shopier-key" class="form-control" autocomplete="off" placeholder="a1b2c3...">
-                          <button type="button" class="btn btn-outline btn-sm" onclick="app.toggleSecretField('setting-shopier-key', this)" title="Göster / Gizle"><i class="fa-solid fa-eye"></i></button>
+                          <input type="password" id="setting-shopier-pat" class="form-control" autocomplete="off" placeholder="Anahtarı buraya yapıştır">
+                          <button type="button" class="btn btn-outline btn-sm" onclick="app.toggleSecretField('setting-shopier-pat', this)" title="Göster / Gizle"><i class="fa-solid fa-eye"></i></button>
                         </div>
                       </div>
-                      <div class="form-group">
-                        <label for="setting-shopier-secret" class="form-label">Shopier API Şifresi</label>
-                        <div style="display: flex; gap: 8px;">
-                          <input type="password" id="setting-shopier-secret" class="form-control" autocomplete="off" placeholder="d4e5f6...">
-                          <button type="button" class="btn btn-outline btn-sm" onclick="app.toggleSecretField('setting-shopier-secret', this)" title="Göster / Gizle"><i class="fa-solid fa-eye"></i></button>
-                        </div>
+                      <div style="display: flex; gap: 8px; padding-bottom: 2px;">
+                        <button type="button" class="btn btn-primary" onclick="app.saveShopierPat()"><i class="fa-solid fa-key"></i> Kaydet ve Kur</button>
                       </div>
                     </div>
+
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;">
+                      <button type="button" class="btn btn-outline btn-sm" onclick="app.registerShopierWebhook()">
+                        <i class="fa-solid fa-rotate"></i> Bildirimi Yeniden Kur
+                      </button>
+                      <button type="button" class="btn btn-outline btn-sm" onclick="app.removeShopierConfig()" style="color: var(--danger);">
+                        <i class="fa-solid fa-trash"></i> Yapılandırmayı Kaldır
+                      </button>
+                    </div>
+
+                    <p style="font-size: 0.82rem; color: var(--text-dim); margin-top: 14px; line-height: 1.6;">
+                      <b>Nasıl çalışır:</b> Müşteri tutarı girip ödemeye bastığında Shopier mağazanda o tutarda geçici bir ürün oluşturulur
+                      ve müşteri yeni sekmede o ürünün ödeme sayfasına gider. Ödeme onaylanınca Shopier bize bildirim yollar,
+                      bakiye otomatik yüklenir ve geçici ürün mağazandan silinir. Ödenmeden bırakılan ürünler 1 gün sonra otomatik temizlenir.
+                    </p>
                   </div>
 
                   <div class="glass-card mb-20">
@@ -3734,7 +3740,7 @@ Content-Type: application/json
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260828b" defer></script>
-  <script src="/js/app.js?v=20260828b" defer></script>
+  <script src="/js/api.js?v=20260828c" defer></script>
+  <script src="/js/app.js?v=20260828c" defer></script>
 </body>
 </html>

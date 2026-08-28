@@ -405,6 +405,11 @@ async function runMigrations() {
     DELETE FROM categories WHERE NOT EXISTS (SELECT 1 FROM services WHERE services.category_id = categories.id);
   `);
 
+  // Shopier: odeme icin olusturulan gecici urunun kimligi. Webhook'ta kendi
+  // referansimizi tasiyacak alan olmadigi icin eslestirme bunun uzerinden yapilir.
+  // (payment_intents yukaridaki blokta olusturuluyor, bu yuzden burada.)
+  await addColumnIfMissing('payment_intents', 'provider_ref', 'TEXT');
+
   const admins = await dbAsync.all("SELECT id, password FROM users WHERE role = 'admin' AND must_change_password = 0");
   for (const admin of admins) {
     if (await bcrypt.compare('admin123', admin.password)) {

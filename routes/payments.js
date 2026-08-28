@@ -88,44 +88,47 @@ router.post('/paytr/token', authenticateToken, validate(z.object({ amount: z.coe
 
 // ---------------------------------------------------------------------------
 // SHOPIER (KART) BAKİYE YÜKLEME
-// Akis PayTR ile ayni iskelette: intent olustur -> musteri Shopier'de odesin ->
-// imzali geri donuste bakiye yaz. Fark: Shopier sonucu musterinin tarayicisi
-// uzerinden POST eder, bu yuzden callback islemi bitince kullanici sonuc
-// sayfasina yonlendirilir.
+// Shopier'in "odeme baslat" ucu olmadigi icin akis su sekilde: her yukleme icin
+// magazada gecici bir urun olusturulur, musteri o urunun sayfasinda oder,
+// order.created webhook'u gelince bakiye yazilir ve urun silinir.
+// Eslestirme urun kimligi (payment_intents.provider_ref) uzerinden yapilir.
 // ---------------------------------------------------------------------------
 
 const SHOPIER_MIN_TRY = 10;
 
-// Odeme formunun alanlari: istemci bunlari gizli bir form olarak Shopier'e
-// POST eder. Kart bilgisi hicbir zaman bizim sunucumuza ugramaz.
 router.post('/shopier/create', authenticateToken, validate(z.object({
   amount: z.coerce.number().min(SHOPIER_MIN_TRY).max(100000)
 })), async (req, res, next) => {
   try {
     const amountKurus = toKurus(req.body.amount);
     const merchantOid = createOpaqueToken('SH').replace(/[^a-zA-Z0-9]/g, '').slice(0, 40);
-    await dbAsync.run("INSERT INTO payment_intents (user_id, provider, merchant_oid, amount_kurus) VALUES (?, 'shopier', ?, ?)", [req.user.id, merchantOid, amountKurus]);
+    const intent = await dbAsync.run(
+      "INSERT INTO payment_intents (user_id, provider, merchant_oid, amount_kurus) VALUES (?, 'shopier', ?, ?)",
+      [req.user.id, merchantOid, amountKurus]
+    );
     try {
-      // Hesap yasi Shopier'in dolandiricilik puanlamasinda kullanilir;
-      // oturum nesnesinde tasinmadigi icin burada okunur.
-      const account = await dbAsync.get('SELECT created_at FROM users WHERE id = ?', [req.user.id]);
-      const form = await Shopier.buildPaymentForm({
-        user: req.user,
+      const product = await Shopier.createTopUpProduct({
         amountKurus,
         merchantOid,
-        createdAt: account?.created_at
+        username: req.user.username
       });
-      // Talep bildirimi beklenmez; hatalari servis icinde yutulur.
+      // Webhook'ta kendi referansimiz gelmedigi icin eslestirme buradan yapilir.
+      await dbAsync.run('UPDATE payment_intents SET provider_ref = ? WHERE id = ?', [product.productId, intent.id]);
+
       telegram.notifyPaymentEvent('🛍️ Yükleme Talebi Oluşturuldu (Shopier)', [
         `👤 Kullanıcı: ${req.user.username}`,
         `➕ Tutar: ₺${fromKurus(amountKurus).toFixed(2)}`,
         '⏳ Kart ödemesi bekleniyor…'
       ]);
-      res.status(201).json({ merchant_oid: merchantOid, action: form.action, fields: form.fields });
+      res.status(201).json({ merchant_oid: merchantOid, payment_url: product.url, amount: fromKurus(amountKurus) });
     } catch (err) {
-      await dbAsync.run("UPDATE payment_intents SET status = 'failed', failure_reason = ? WHERE merchant_oid = ?", [normalizePlainText(err.message, 500), merchantOid]);
+      await dbAsync.run("UPDATE payment_intents SET status = 'failed', failure_reason = ? WHERE id = ?",
+        [normalizePlainText(err.message, 500), intent.id]);
       throw err;
     }
+    // Odenmeden birakilmis eski yuklemelerin urunleri arka planda toplanir;
+    // yanit beklemez, magazada urun birikmesini engeller.
+    Shopier.sweepAbandonedProducts().catch(() => {});
   } catch (err) { next(err); }
 });
 
@@ -142,54 +145,72 @@ router.get('/shopier/status/:oid', authenticateToken, async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
-// Shopier hem bildirimi hem musteriyi bu adrese POST eder; bu yuzden yanit
-// duz metin degil, sonuc sayfasina yonlendirmedir.
-router.post('/shopier/callback', async (req, res) => {
-  const resultRedirect = (path) => res.redirect(303, path);
+// Shopier order.created bildirimi. Imza ham govde uzerinden dogrulanir
+// (server.js express.json'un verify kancasinda req.rawBody'e alinir).
+router.post('/shopier/webhook', async (req, res) => {
   try {
-    if (!await Shopier.verifyCallback(req.body)) {
-      console.error('Shopier callback: imza doğrulanamadı.');
-      return resultRedirect('/payment-failed?provider=shopier&reason=signature');
+    const rawBody = req.rawBody;
+    if (!rawBody || !await Shopier.verifyWebhook(rawBody, req.headers['shopier-signature'])) {
+      console.error('Shopier webhook: imza doğrulanamadı.');
+      return res.status(400).type('text').send('bad signature');
     }
-    const merchantOid = String(req.body.platform_order_id || '').slice(0, 64);
-    const paymentId = String(req.body.payment_id || merchantOid).slice(0, 64);
-    const success = String(req.body.status || '').toLowerCase() === 'success';
-    if (!merchantOid) return resultRedirect('/payment-failed?provider=shopier&reason=missing_order');
+
+    const order = req.body || {};
+    const orderId = String(order.id || '').slice(0, 64);
+    const paid = String(order.paymentStatus || '').toLowerCase() === 'paid';
+    // Satirlardaki urun kimlikleri: hangi bakiye yuklemesi oldugunu bunlar soyler.
+    const productIds = Array.isArray(order.lineItems)
+      ? order.lineItems.map(item => String(item?.productId || '')).filter(Boolean)
+      : [];
+    if (!orderId || !productIds.length) return res.type('text').send('OK');
+    if (!paid) return res.type('text').send('OK');
 
     let completedInfo = null;
+    let productToDelete = null;
     await withTransaction(async tx => {
-      const intent = await tx.get("SELECT * FROM payment_intents WHERE provider = 'shopier' AND merchant_oid = ?", [merchantOid]);
+      const placeholders = productIds.map(() => '?').join(',');
+      const intent = await tx.get(
+        `SELECT * FROM payment_intents WHERE provider = 'shopier' AND provider_ref IN (${placeholders})`,
+        productIds
+      );
+      // Bize ait olmayan bir siparis (magazadaki normal satis) sessizce gecilir.
       if (!intent || intent.status === 'completed' || intent.status === 'failed') return;
 
-      // Ayni bildirim yalnizca bir kez islenir (Shopier tekrar gonderebilir).
-      const { signature, ...safeCallback } = req.body;
+      // Ayni bildirim yalnizca bir kez islenir.
       const dedupe = await tx.run(
         'INSERT OR IGNORE INTO payment_webhooks (provider, external_id, payload) VALUES (?, ?, ?)',
-        ['shopier', `${paymentId}:${merchantOid}`, JSON.stringify(safeCallback)]
+        ['shopier', `order:${orderId}`, JSON.stringify(order)]
       );
       if (dedupe.changes !== 1) return;
 
-      if (success) {
-        const claimed = await tx.run("UPDATE payment_intents SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'", [intent.id]);
-        if (claimed.changes !== 1) return;
-        await tx.run('UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?', [intent.amount_kurus, intent.amount_kurus, intent.user_id]);
-        await tx.run(`INSERT INTO payments (user_id, amount, amount_kurus, method, status, transaction_id) VALUES (?, ?, ?, 'Shopier', 'completed', ?)`, [intent.user_id, fromKurus(intent.amount_kurus), intent.amount_kurus, merchantOid]);
-        await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)', [intent.user_id, 'payment', 'Ödeme tamamlandı', `₺${fromKurus(intent.amount_kurus).toFixed(2)} bakiyenize eklendi.`]);
-        const bonusKurus = await applyDepositBonus(tx, intent.user_id, intent.amount_kurus, 'SHOPIER');
-        const user = await tx.get('SELECT username FROM users WHERE id = ?', [intent.user_id]);
-        completedInfo = { username: user?.username || `#${intent.user_id}`, amount: fromKurus(intent.amount_kurus), bonus: fromKurus(bonusKurus) };
-      } else {
-        await tx.run("UPDATE payment_intents SET status = 'failed', failure_reason = ? WHERE id = ? AND status = 'pending'", [normalizePlainText(`Shopier: ${req.body.status || 'ödeme tamamlanmadı'}`, 500), intent.id]);
-      }
+      const claimed = await tx.run(
+        "UPDATE payment_intents SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'",
+        [intent.id]
+      );
+      if (claimed.changes !== 1) return;
+
+      await tx.run('UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?',
+        [intent.amount_kurus, intent.amount_kurus, intent.user_id]);
+      await tx.run(`INSERT INTO payments (user_id, amount, amount_kurus, method, status, transaction_id) VALUES (?, ?, ?, 'Shopier', 'completed', ?)`,
+        [intent.user_id, fromKurus(intent.amount_kurus), intent.amount_kurus, intent.merchant_oid]);
+      await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)',
+        [intent.user_id, 'payment', 'Ödeme tamamlandı', `₺${fromKurus(intent.amount_kurus).toFixed(2)} bakiyenize eklendi.`]);
+      const bonusKurus = await applyDepositBonus(tx, intent.user_id, intent.amount_kurus, 'SHOPIER');
+      const user = await tx.get('SELECT username FROM users WHERE id = ?', [intent.user_id]);
+      completedInfo = { username: user?.username || `#${intent.user_id}`, amount: fromKurus(intent.amount_kurus), bonus: fromKurus(bonusKurus) };
+      productToDelete = intent.provider_ref;
     });
 
     if (completedInfo) telegram.notifyDeposit({ ...completedInfo, method: 'Shopier (Kart)' });
-    return resultRedirect(success
-      ? `/payment-success?provider=shopier&oid=${encodeURIComponent(merchantOid)}`
-      : `/payment-failed?provider=shopier&oid=${encodeURIComponent(merchantOid)}`);
+    // Gecici urun magazadan temizlenir; hatasi yutulur, odeme zaten tamamlandi.
+    if (productToDelete) {
+      await Shopier.deleteProduct(productToDelete);
+      await dbAsync.run('UPDATE payment_intents SET provider_ref = NULL WHERE provider_ref = ?', [productToDelete]);
+    }
+    return res.type('text').send('OK');
   } catch (err) {
-    console.error('Shopier callback error:', err.message);
-    return resultRedirect('/payment-failed?provider=shopier&reason=error');
+    console.error('Shopier webhook error:', err.message);
+    return res.status(500).type('text').send('ERROR');
   }
 });
 

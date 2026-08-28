@@ -1,124 +1,286 @@
 const crypto = require('crypto');
+const axios = require('axios');
 const { dbAsync } = require('../config/database');
+const { encryptSecret, decryptSecret } = require('../utils/security');
 
-// Shopier'in odeme sayfasi bir REST ucu degil: imzali bir HTML formu bu adrese
-// POST edilir, musteri Shopier'de oder, sonuc yine POST ile geri doner.
-const SHOPIER_PAY_URL = 'https://www.shopier.com/ShowProduct/api_pay4.php';
+// Shopier REST API. Kisisel Erisim Anahtari (PAT) ile KENDI satici hesabimiza
+// erisiriz — sozlesmenin 4.7. maddesi bu kullanimi acikca kapsar.
+//
+// AKIS: Shopier'in "odeme baslat" diye bir ucu YOK. Bunun yerine her bakiye
+// yuklemesi icin magazada gecici bir urun olustururuz, musteriyi o urunun
+// sayfasina yollariz, odeme bitince order.created webhook'u gelir ve urunu
+// sileriz. Urun kimligi payment_intents.provider_ref'te tutulur; webhook'u
+// dogru kullaniciyla bu sayede eslestiririz (Shopier'de urune/siparise kendi
+// referansimizi yazacak alan yok).
+// Adres cagri aninda okunur (modul yuklenirken degil): testler sahte bir
+// Shopier sunucusuna yonlendirebilsin diye.
+function apiBase() {
+  return String(process.env.SHOPIER_API_BASE || 'https://api.shopier.com/v1').replace(/\/$/, '');
+}
 
-// Anahtarlar admin panelinden yonetilir; .env yalnizca yedektir
-// (NOWPayments ile ayni kalip).
-async function getConfig() {
+// ---------------------------------------------------------------------------
+// YAPILANDIRMA
+// PAT hesaba "suresiz ve sinirsiz" erisim verdigi icin (Shopier'in kendi
+// uyarisi) duz metin saklanmaz; site_settings'e sifreli yazilir.
+// ---------------------------------------------------------------------------
+const SETTING_KEYS = ['shopier_pat', 'shopier_webhook_token', 'shopier_webhook_id'];
+
+async function readSettings() {
   const rows = await dbAsync.all(
-    `SELECT key, value FROM site_settings WHERE key IN ('shopier_api_key', 'shopier_api_secret')`
+    `SELECT key, value FROM site_settings WHERE key IN (${SETTING_KEYS.map(() => '?').join(',')})`,
+    SETTING_KEYS
   );
   const stored = {};
   rows.forEach(row => { stored[row.key] = row.value; });
+  return stored;
+}
+
+// Sifresi cozulemeyen deger (anahtar rotasyonu, elle duzenleme) akisi
+// cokertmemeli; bos sayilir ve yontem kapali gorunur.
+function decryptOrEmpty(value) {
+  if (!value) return '';
+  try {
+    return decryptSecret(value);
+  } catch {
+    return '';
+  }
+}
+
+async function getConfig() {
+  const stored = await readSettings();
   return {
-    apiKey: String(stored.shopier_api_key || process.env.SHOPIER_API_KEY || '').trim(),
-    apiSecret: String(stored.shopier_api_secret || process.env.SHOPIER_API_SECRET || '').trim(),
+    pat: decryptOrEmpty(stored.shopier_pat) || String(process.env.SHOPIER_PAT || '').trim(),
+    webhookToken: decryptOrEmpty(stored.shopier_webhook_token) || String(process.env.SHOPIER_WEBHOOK_TOKEN || '').trim(),
+    webhookId: String(stored.shopier_webhook_id || '').trim(),
     baseUrl: String(process.env.PUBLIC_BASE_URL || '').trim()
   };
 }
 
+async function saveSecret(key, plainValue) {
+  const value = plainValue ? encryptSecret(plainValue) : '';
+  await dbAsync.run(
+    `INSERT INTO site_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    [key, value]
+  );
+}
+
+async function savePlain(key, value) {
+  await dbAsync.run(
+    `INSERT INTO site_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    [key, String(value || '')]
+  );
+}
+
+// Odeme yontemi ancak anahtar VE webhook birlikte hazirsa acilir: webhook
+// olmadan odeme alinir ama bakiye hic yuklenmez — en kotu senaryo budur.
 async function isConfigured() {
   const config = await getConfig();
-  return Boolean(config.apiKey && config.apiSecret);
+  return Boolean(config.pat && config.webhookToken && config.baseUrl);
 }
 
-// Shopier alici alanlari yalnizca harf/rakam kabul eder; kullanici adindaki
-// nokta, alt cizgi gibi karakterler odeme formunu reddettirir.
-function safeName(value, fallback) {
-  const clean = String(value || '')
-    .replace(/[^\p{L}\p{N} ]/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 40);
-  return clean || fallback;
-}
-
-function hmacBase64(value, secret) {
-  return crypto.createHmac('sha256', secret).update(value).digest('base64');
-}
-
-/**
- * Odeme formunun alanlarini uretir. Istemci bu alanlari gizli bir form olarak
- * Shopier'e POST eder; kart bilgisi hicbir zaman bizim sunucumuza ugramaz.
- */
-async function buildPaymentForm({ user, amountKurus, merchantOid, createdAt }) {
+async function getStatus() {
   const config = await getConfig();
-  if (!config.apiKey || !config.apiSecret) {
-    const error = new Error('Shopier ödemesi henüz yapılandırılmamış. Admin panelinden API anahtarı ve şifresini ekleyin.');
-    error.status = 503;
-    throw error;
-  }
-  if (!config.baseUrl) {
-    const error = new Error('PUBLIC_BASE_URL ayarlanmadan Shopier ödemesi alınamaz (ödeme onayı bu adrese gelir).');
-    error.status = 503;
-    throw error;
-  }
-
-  // Imza bu metnin tam olarak gonderilen haliyle alinir; tutari once
-  // bicimlendirip sonra imzalamak sart (10 ile 10.00 farkli imza uretir).
-  const totalOrderValue = (amountKurus / 100).toFixed(2);
-  const currency = '0'; // 0 = TL, 1 = USD, 2 = EUR
-  const randomNr = String(crypto.randomInt(100000, 1000000));
-
-  // Hesap yasi (gun): Shopier'in dolandiricilik puanlamasinda kullanilir.
-  const accountAgeDays = createdAt
-    ? Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000))
-    : 0;
-
-  const fields = {
-    API_key: config.apiKey,
-    website_index: '1',
-    platform_order_id: merchantOid,
-    product_name: 'SMM Panel Bakiye Yükleme',
-    product_type: '1', // 1 = dijital / indirilebilir urun
-    buyer_name: safeName(user.username, 'Musteri'),
-    buyer_surname: safeName(user.username, 'Kullanici'),
-    buyer_email: String(user.email || '').slice(0, 100),
-    buyer_account_age: String(accountAgeDays),
-    buyer_id_nr: String(user.id),
-    buyer_phone: '05000000000',
-    billing_address: 'Online Hizmet',
-    billing_city: 'Istanbul',
-    billing_country: 'Turkiye',
-    billing_postcode: '34000',
-    shipping_address: 'Online Hizmet',
-    shipping_city: 'Istanbul',
-    shipping_country: 'Turkiye',
-    shipping_postcode: '34000',
-    total_order_value: totalOrderValue,
-    currency,
-    platform: '0',
-    is_in_frame: '0',
-    current_language: '0', // 0 = tr-TR
-    modul_version: '1.0.4',
-    random_nr: randomNr
+  return {
+    pat_saved: Boolean(config.pat),
+    webhook_registered: Boolean(config.webhookToken && config.webhookId),
+    webhook_id: config.webhookId || null,
+    base_url_set: Boolean(config.baseUrl),
+    ready: Boolean(config.pat && config.webhookToken && config.baseUrl)
   };
+}
 
-  fields.signature = hmacBase64(
-    `${randomNr}${merchantOid}${totalOrderValue}${currency}`,
-    config.apiSecret
-  );
+// ---------------------------------------------------------------------------
+// HTTP
+// ---------------------------------------------------------------------------
+function configError(message) {
+  const error = new Error(message);
+  error.status = 503;
+  return error;
+}
 
-  return { action: SHOPIER_PAY_URL, fields };
+async function request(method, path, { body, pat } = {}) {
+  const token = pat || (await getConfig()).pat;
+  if (!token) throw configError('Shopier ödemesi henüz yapılandırılmamış. Admin panelinden Kişisel Erişim Anahtarını ekleyin.');
+
+  const response = await axios({
+    method,
+    url: `${apiBase()}${path}`,
+    data: body,
+    timeout: 20000,
+    maxContentLength: 1024 * 1024,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    validateStatus: () => true
+  });
+
+  if (response.status >= 400) {
+    const raw = String(response.data?.message || response.data?.error || '');
+    let error;
+    if (response.status === 401 || response.status === 403) {
+      error = new Error('Shopier Kişisel Erişim Anahtarı geçersiz veya yetkisiz. Admin panelinden anahtarı yenileyin.');
+    } else if (response.status === 429) {
+      error = new Error('Shopier istek sınırına takıldı, lütfen birkaç saniye sonra tekrar deneyin.');
+    } else {
+      error = new Error(raw ? `Shopier hatası: ${raw}` : `Shopier ${path} isteği başarısız (HTTP ${response.status}).`);
+    }
+    // 400 verilir ki errorHandler mesaji musteriye aynen iletsin (500'ler
+    // genel mesaja cevriliyor).
+    error.status = 400;
+    throw error;
+  }
+  return response.data;
+}
+
+// ---------------------------------------------------------------------------
+// WEBHOOK ABONELIGI
+// Panelden degil API'den kurulur; imza anahtari (token) YALNIZCA olusturma
+// yanitinda bir kez doner, o yuzden hemen sifreli kaydedilir.
+// ---------------------------------------------------------------------------
+async function registerWebhook(patOverride) {
+  const config = await getConfig();
+  const pat = patOverride || config.pat;
+  if (!pat) throw configError('Önce Kişisel Erişim Anahtarını kaydedin.');
+  if (!config.baseUrl) throw configError('PUBLIC_BASE_URL ayarlanmadan webhook kurulamaz (ödeme onayı bu adrese gelir).');
+
+  const url = `${config.baseUrl.replace(/\/$/, '')}/api/payments/shopier/webhook`;
+
+  // Ayni adrese ikinci bir abonelik birakmayalim: varsa once temizlenir.
+  await removeWebhook(pat).catch(() => {});
+
+  const created = await request('post', '/webhooks', { pat, body: { event: 'order.created', url } });
+  if (!created?.token) {
+    const error = new Error('Shopier webhook aboneliği oluşturuldu ama imza anahtarı (token) dönmedi. Aboneliği silip tekrar deneyin.');
+    error.status = 502;
+    throw error;
+  }
+  await saveSecret('shopier_webhook_token', String(created.token));
+  await savePlain('shopier_webhook_id', String(created.id || ''));
+  return { id: created.id, url, event: created.event || 'order.created' };
+}
+
+async function removeWebhook(patOverride) {
+  const config = await getConfig();
+  const pat = patOverride || config.pat;
+  if (!pat || !config.webhookId) return false;
+  await request('delete', `/webhooks/${encodeURIComponent(config.webhookId)}`, { pat });
+  await saveSecret('shopier_webhook_token', '');
+  await savePlain('shopier_webhook_id', '');
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// IMZA DOGRULAMA
+// Shopier webhook govdesini HS256 (HMAC-SHA256) ile imzalar ve Shopier-Signature
+// basliginda gonderir. Kodlamanin hex mi base64 mu oldugu dokumanda yazmiyor;
+// ikisi de ayni HMAC'ten turedigi icin her iki bicim de sabit surede denenir.
+// ---------------------------------------------------------------------------
+function timingSafeEqualString(a, b) {
+  const left = Buffer.from(String(a));
+  const right = Buffer.from(String(b));
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function verifyWebhookSignature(rawBody, signatureHeader, token) {
+  if (!token || !signatureHeader || !rawBody) return false;
+  // Bazi gonderimlerde imza "sha256=..." onekiyle gelir.
+  const provided = String(signatureHeader).replace(/^sha256=/i, '').trim();
+  const mac = crypto.createHmac('sha256', token).update(rawBody);
+  const digest = mac.digest();
+  return timingSafeEqualString(provided, digest.toString('hex'))
+    || timingSafeEqualString(provided, digest.toString('base64'));
+}
+
+async function verifyWebhook(rawBody, signatureHeader) {
+  const config = await getConfig();
+  return verifyWebhookSignature(rawBody, signatureHeader, config.webhookToken);
+}
+
+// ---------------------------------------------------------------------------
+// ÖDEME: GEÇİCİ ÜRÜN
+// ---------------------------------------------------------------------------
+// Urun gorseli zorunlu; sitenin kendi paylasim gorseli kullanilir.
+function productImageUrl(baseUrl) {
+  return `${baseUrl.replace(/\/$/, '')}/og-image.png`;
 }
 
 /**
- * Shopier'in geri donus imzasi: random_nr + platform_order_id metninin
- * API sifresiyle alinmis HMAC-SHA256'sinin base64'u.
+ * Bakiye yuklemesi icin gecici bir urun olusturur.
+ * @returns {{productId: string, url: string}} musterinin yonlendirilecegi adres
  */
-async function verifyCallback(body) {
+async function createTopUpProduct({ amountKurus, merchantOid, username }) {
   const config = await getConfig();
-  if (!config.apiSecret) return false;
-  // Form-encoded govdede '+' karakteri bosluga cevrilebiliyor; base64 imza
-  // bu yuzden bozulur.
-  const provided = String(body?.signature || '').replace(/ /g, '+');
-  const expected = hmacBase64(`${body?.random_nr || ''}${body?.platform_order_id || ''}`, config.apiSecret);
-  const providedBuffer = Buffer.from(provided);
-  const expectedBuffer = Buffer.from(expected);
-  return providedBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(providedBuffer, expectedBuffer);
+  if (!config.pat) throw configError('Shopier ödemesi henüz yapılandırılmamış. Admin panelinden Kişisel Erişim Anahtarını ekleyin.');
+  if (!config.webhookToken) throw configError('Shopier webhook kaydı yapılmadan ödeme alınamaz (ödeme onayı gelmez, bakiye yüklenmez).');
+  if (!config.baseUrl) throw configError('PUBLIC_BASE_URL ayarlanmadan Shopier ödemesi alınamaz.');
+
+  const amount = (amountKurus / 100).toFixed(2);
+  const product = await request('post', '/products', {
+    body: {
+      title: `Bakiye Yükleme ₺${amount}`,
+      type: 'digital',
+      description: `Jet SMM Panel bakiye yüklemesi. Sipariş referansı: ${merchantOid}${username ? ` · Kullanıcı: ${username}` : ''}. Ödeme onaylandığında bakiye otomatik yüklenir.`,
+      media: [{ type: 'image', url: productImageUrl(config.baseUrl), placement: 1 }],
+      priceData: { currency: 'TRY', price: amount },
+      // Dijital urun; kargo yok ama alan zorunlu.
+      shippingPayer: 'sellerPays',
+      // Tek kullanimlik: ayni urunden ikinci bir alim yapilamasin.
+      stockQuantity: 1
+    }
+  });
+
+  const productId = product?.id;
+  const url = product?.url;
+  if (!productId || !url) {
+    const error = new Error('Shopier ödeme sayfası oluşturulamadı (ürün kimliği veya adresi dönmedi).');
+    error.status = 502;
+    throw error;
+  }
+  return { productId: String(productId), url: String(url) };
 }
 
-module.exports = { SHOPIER_PAY_URL, getConfig, isConfigured, buildPaymentForm, verifyCallback };
+// Odeme bitince (veya yarim kalinca) gecici urun magazadan silinir; aksi halde
+// dukkanda yuzlerce "Bakiye Yukleme" urunu birikir. Hata yutulur: temizlik
+// basarisiz olsa da odeme akisi etkilenmemeli.
+async function deleteProduct(productId) {
+  if (!productId) return false;
+  try {
+    await request('delete', `/products/${encodeURIComponent(productId)}`);
+    return true;
+  } catch (err) {
+    console.error('Shopier ürün silinemedi:', productId, err.message);
+    return false;
+  }
+}
+
+/**
+ * Odenmeden birakilmis eski yuklemelerin urunlerini toplar.
+ * Ayri bir zamanlanmis is kurmamak icin yeni odeme baslatilirken cagrilir;
+ * her seferinde en fazla `limit` kayit islenir.
+ */
+async function sweepAbandonedProducts(limit = 10) {
+  const stale = await dbAsync.all(
+    `SELECT id, provider_ref FROM payment_intents
+     WHERE provider = 'shopier' AND status = 'pending' AND provider_ref IS NOT NULL
+       AND created_at < datetime('now', '-1 day')
+     ORDER BY id ASC LIMIT ?`,
+    [limit]
+  );
+  let cleaned = 0;
+  for (const intent of stale) {
+    const removed = await deleteProduct(intent.provider_ref);
+    // Silinsin ya da silinmesin tekrar denememek icin niyet kapatilir.
+    await dbAsync.run(
+      "UPDATE payment_intents SET status = 'failed', failure_reason = ?, provider_ref = NULL WHERE id = ? AND status = 'pending'",
+      ['Ödeme tamamlanmadı (süresi doldu).', intent.id]
+    );
+    if (removed) cleaned++;
+  }
+  return cleaned;
+}
+
+module.exports = {
+  apiBase,
+  getConfig, isConfigured, getStatus, saveSecret, savePlain,
+  registerWebhook, removeWebhook,
+  verifyWebhookSignature, verifyWebhook,
+  createTopUpProduct, deleteProduct, sweepAbandonedProducts
+};

@@ -2339,9 +2339,14 @@ class SmmApp {
         this.renderCryptoPaymentPanel(res);
         this.watchCryptoPayment(res.merchant_oid, amount);
       } else if (this.selectedPayMethod === 'shopier') {
-        if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${this.ui('Shopier’e yönlendiriliyorsun…', 'Redirecting to Shopier…')}`; }
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${this.ui('Ödeme sayfası hazırlanıyor…', 'Preparing payment page…')}`; }
         const res = await API.createShopierPayment(amount);
-        this.submitShopierForm(res);
+        // Shopier'in odeme sayfasi kendi alan adinda acilir ve bize geri
+        // donmez; bu yuzden yeni sekmede acilir, bu sekme durumu yoklamaya
+        // devam eder ve odeme onaylaninca ekran kendiliginden guncellenir.
+        const opened = window.open(res.payment_url, '_blank', 'noopener');
+        this.renderShopierWaitPanel(res, !opened);
+        this.watchShopierPayment(res.merchant_oid);
       } else {
         const res = await API.createPaytrPayment(amount);
         window.location.assign(res.iframe_url);
@@ -2360,31 +2365,67 @@ class SmmApp {
     }
   }
 
-  // Shopier'in odeme sayfasi imzali bir form POST'u bekler (hazir bir
-  // yonlendirme adresi vermez). Alanlar sunucuda imzalanir, burada yalnizca
-  // gizli forma yazilip gonderilir; kart bilgisi bize hic ugramaz.
-  submitShopierForm(payment) {
-    if (!payment || !payment.action || !payment.fields) {
-      showToast(this.ui('Shopier ödeme formu oluşturulamadı.', 'Could not build the Shopier payment form.'), 'error');
-      return;
-    }
-    this.shopierRedirecting = true;
-    // Donusteki sonuc kutusu icin siparis numarasi saklanir.
-    try { sessionStorage.setItem('shopierOdemeNo', payment.merchant_oid || ''); } catch {}
+  // Shopier odemesi yeni sekmede yapilir; bu panel bekleyen odemeyi gosterir.
+  renderShopierWaitPanel(payment, popupBlocked) {
+    const box = document.getElementById('crypto-wait-box');
+    if (!box) return;
+    box.style.display = 'block';
+    box.innerHTML = `
+      <div class="crypto-pay-panel">
+        <div class="crypto-pay-head">
+          <i class="fa-solid fa-bag-shopping"></i>
+          <div>
+            <strong>${this.ui(`₺${Number(payment.amount).toFixed(2)} için ödeme sayfası açıldı`, `Payment page opened for ₺${Number(payment.amount).toFixed(2)}`)}</strong><br>
+            <small>${popupBlocked
+              ? this.ui('Tarayıcın yeni sekmeyi engelledi. Ödemeye devam etmek için aşağıdaki bağlantıya tıkla.',
+                'Your browser blocked the new tab. Use the link below to continue to payment.')
+              : this.ui('Ödemeni Shopier sayfasında tamamla, sonra bu sekmeye dön — bakiyen otomatik güncellenecek.',
+                'Complete your payment on the Shopier page, then come back to this tab — your balance updates automatically.')}</small>
+          </div>
+        </div>
+        <div class="crypto-pay-fields" style="margin-top: 12px;">
+          <a class="btn btn-primary" href="${this.escapeHtml(payment.payment_url)}" target="_blank" rel="noopener">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i> ${this.ui('Ödeme Sayfasını Aç', 'Open Payment Page')}
+          </a>
+          <div class="crypto-status-line" id="shopier-status-line" style="margin-top: 12px;">
+            <i class="fa-solid fa-hourglass-half fa-spin"></i> ${this.ui(
+              'Ödeme bekleniyor… Onay gelince bakiyen otomatik yüklenecek.',
+              'Waiting for payment… Your balance will be added automatically once confirmed.')}
+          </div>
+        </div>
+      </div>`;
+    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
 
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = payment.action;
-    form.style.display = 'none';
-    Object.entries(payment.fields).forEach(([key, value]) => {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = key;
-      input.value = String(value ?? '');
-      form.appendChild(input);
-    });
-    document.body.appendChild(form);
-    form.submit();
+  // Odeme sonucunu arka planda yoklar (kripto akisiyla ayni desen).
+  watchShopierPayment(merchantOid) {
+    if (this.shopierPollTimer) clearInterval(this.shopierPollTimer);
+    const box = document.getElementById('crypto-wait-box');
+    const startedAt = Date.now();
+    this.shopierPollTimer = setInterval(async () => {
+      // 1 saat sonra yoklama durur; webhook bakiyeyi yine de yukler.
+      if (Date.now() - startedAt > 3600000) { clearInterval(this.shopierPollTimer); this.shopierPollTimer = null; return; }
+      try {
+        const res = await API.getShopierPaymentStatus(merchantOid);
+        if (res.status === 'completed') {
+          clearInterval(this.shopierPollTimer);
+          this.shopierPollTimer = null;
+          if (box) box.innerHTML = `
+            <div class="crypto-wait success">
+              <i class="fa-solid fa-circle-check"></i>
+              <div><strong>${this.ui('Ödeme tamamlandı! 🎉', 'Payment completed! 🎉')}</strong><br><small>${this.ui(`₺${Number(res.amount).toFixed(2)} bakiyene eklendi.`, `₺${Number(res.amount).toFixed(2)} was added to your balance.`)}</small></div>
+            </div>`;
+          showToast(this.ui(`₺${Number(res.amount).toFixed(2)} bakiyene eklendi! 🎉`, `₺${Number(res.amount).toFixed(2)} added to your balance! 🎉`), 'success');
+          try { const me = await API.getMe(); this.currentUser = me.user; this.updateUserHeader(); } catch {}
+        } else if (res.status === 'failed') {
+          clearInterval(this.shopierPollTimer);
+          this.shopierPollTimer = null;
+          const line = document.getElementById('shopier-status-line');
+          const reason = res.failure_reason || this.ui('bilinmeyen neden', 'unknown reason');
+          if (line) line.innerHTML = `<i class="fa-solid fa-circle-xmark" style="color: var(--danger);"></i> ${this.ui(`Ödeme tamamlanamadı: ${this.escapeHtml(reason)}`, `Payment failed: ${this.escapeHtml(reason)}`)}`;
+        }
+      } catch {}
+    }, 8000);
   }
 
   // Odeme saglayicisindan donuste (/payment-success, /payment-failed) sonucu
@@ -6329,11 +6370,8 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       if (document.getElementById('setting-paytr-salt')) document.getElementById('setting-paytr-salt').value = s.paytr_merchant_salt || '';
       if (document.getElementById('setting-bank-accounts')) document.getElementById('setting-bank-accounts').value = s.bank_accounts || '';
       if (document.getElementById('setting-provider-threshold')) document.getElementById('setting-provider-threshold').value = s.provider_balance_threshold || '';
-      if (document.getElementById('setting-shopier-key')) document.getElementById('setting-shopier-key').value = s.shopier_api_key || '';
-      if (document.getElementById('setting-shopier-secret')) document.getElementById('setting-shopier-secret').value = s.shopier_api_secret || '';
-      // Shopier panelindeki "geri donus adresi" alanina yazilacak tam adres.
-      const shopierCallbackEl = document.getElementById('shopier-callback-url');
-      if (shopierCallbackEl) shopierCallbackEl.value = `${window.location.origin}/api/payments/shopier/callback`;
+      // Shopier anahtari sifreli saklanir ve geri okunmaz; yalnizca durumu gosterilir.
+      this.loadShopierStatus();
       if (document.getElementById('setting-nowpayments-key')) document.getElementById('setting-nowpayments-key').value = s.nowpayments_api_key || '';
       if (document.getElementById('setting-nowpayments-ipn')) document.getElementById('setting-nowpayments-ipn').value = s.nowpayments_ipn_secret || '';
       if (document.getElementById('setting-telegram-notify-ticket')) document.getElementById('setting-telegram-notify-ticket').checked = s.telegram_notify_ticket !== '0';
@@ -6395,8 +6433,6 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       paytr_merchant_salt: document.getElementById('setting-paytr-salt').value,
       bank_accounts: document.getElementById('setting-bank-accounts').value,
       provider_balance_threshold: document.getElementById('setting-provider-threshold').value.trim(),
-      shopier_api_key: document.getElementById('setting-shopier-key')?.value.trim() || '',
-      shopier_api_secret: document.getElementById('setting-shopier-secret')?.value.trim() || '',
       nowpayments_api_key: document.getElementById('setting-nowpayments-key').value.trim(),
       nowpayments_ipn_secret: document.getElementById('setting-nowpayments-ipn').value.trim(),
       telegram_notify_ticket: document.getElementById('setting-telegram-notify-ticket').checked ? '1' : '0',
@@ -6440,18 +6476,75 @@ print(sonuc.get("error") or sonuc.get("order"))`;
     }
   }
 
-  // Shopier panelindeki "Geri Donus Adresi" alanina yapistirilacak adres.
-  async copyShopierCallbackUrl(button) {
-    const field = document.getElementById('shopier-callback-url');
-    if (!field) return;
+  // --- SHOPIER YAPILANDIRMASI (ADMIN) ---
+  // Anahtar sunucuda sifreli durur ve hicbir uctan geri okunmaz; burada
+  // yalnizca "kurulu mu, bildirim calisiyor mu" durumu gosterilir.
+  async loadShopierStatus() {
+    const box = document.getElementById('shopier-status-box');
+    if (!box) return;
     try {
-      await navigator.clipboard.writeText(field.value);
-      const original = button.innerHTML;
-      button.innerHTML = '<i class="fa-solid fa-check"></i>';
-      setTimeout(() => { button.innerHTML = original; }, 1800);
-    } catch {
-      field.select();
-      showToast('Kopyalanamadı; adresi elle seçip kopyalayabilirsin.', 'warning');
+      this.renderShopierStatus(await API.getShopierStatus());
+    } catch (err) {
+      box.innerHTML = `<div class="badge badge-canceled">Durum alınamadı: ${this.escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  renderShopierStatus(status) {
+    const box = document.getElementById('shopier-status-box');
+    if (!box) return;
+    const satir = (tamam, metin) => `
+      <div style="display: flex; align-items: center; gap: 8px; font-size: .88rem; margin-bottom: 6px;">
+        <i class="fa-solid ${tamam ? 'fa-circle-check' : 'fa-circle-xmark'}" style="color: ${tamam ? 'var(--success)' : 'var(--danger)'};"></i>
+        <span>${metin}</span>
+      </div>`;
+    box.innerHTML = `
+      ${satir(status.pat_saved, status.pat_saved ? 'Kişisel erişim anahtarı kayıtlı' : 'Kişisel erişim anahtarı girilmedi')}
+      ${satir(status.webhook_registered, status.webhook_registered ? `Ödeme bildirimi kurulu (abonelik #${this.escapeHtml(String(status.webhook_id || '-'))})` : 'Ödeme bildirimi kurulu değil — bakiye otomatik yüklenmez')}
+      ${satir(status.base_url_set, status.base_url_set ? 'Site adresi (PUBLIC_BASE_URL) tanımlı' : 'PUBLIC_BASE_URL tanımsız — bildirim adresi üretilemez')}
+      <div class="badge ${status.ready ? 'badge-completed' : 'badge-pending'}" style="margin-top: 8px;">
+        ${status.ready ? 'Shopier ödeme yöntemi AÇIK' : 'Shopier ödeme yöntemi kapalı'}
+      </div>`;
+  }
+
+  async saveShopierPat() {
+    const field = document.getElementById('setting-shopier-pat');
+    const pat = (field?.value || '').trim();
+    if (pat.length < 10) {
+      showToast('Geçerli bir Kişisel Erişim Anahtarı yapıştır.', 'warning');
+      return;
+    }
+    try {
+      const res = await API.saveShopierPat(pat);
+      // Anahtar ekranda kalmasin.
+      if (field) field.value = '';
+      this.renderShopierStatus(res.status);
+      showToast(res.message, 'success');
+    } catch (err) {
+      showToast(`Shopier kurulamadı: ${err.message}`, 'error');
+      this.loadShopierStatus();
+    }
+  }
+
+  async registerShopierWebhook() {
+    try {
+      const res = await API.registerShopierWebhook();
+      this.renderShopierStatus(res.status);
+      showToast(res.message, 'success');
+    } catch (err) {
+      showToast(`Bildirim kurulamadı: ${err.message}`, 'error');
+    }
+  }
+
+  async removeShopierConfig() {
+    if (!await confirmDialog('Shopier anahtarı ve ödeme bildirimi silinecek. Kart ödemesi kapanır.', {
+      title: 'Shopier yapılandırmasını kaldır', icon: 'fa-trash', confirmText: 'Kaldır'
+    })) return;
+    try {
+      const res = await API.removeShopierConfig();
+      this.renderShopierStatus(res.status);
+      showToast(res.message, 'success');
+    } catch (err) {
+      showToast(`Kaldırılamadı: ${err.message}`, 'error');
     }
   }
 

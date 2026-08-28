@@ -92,7 +92,15 @@ app.use(cors({
 }));
 app.use(cookieParser());
 app.use(compression());
-app.use(express.json({ limit: '512kb' }));
+// Shopier webhook imzasi HAM govde uzerinden hesaplanir; JSON'a cevrildikten
+// sonra (bosluk/anahtar sirasi degisebilecegi icin) dogrulanamaz. Yalnizca o
+// adres icin ham govde saklanir, diger isteklerde ek bellek maliyeti olmaz.
+app.use(express.json({
+  limit: '512kb',
+  verify(req, res, buf) {
+    if (req.originalUrl && req.originalUrl.split('?')[0] === '/api/payments/shopier/webhook') req.rawBody = buf;
+  }
+}));
 app.use(express.urlencoded({ extended: false, limit: '512kb' }));
 
 // API yanitlari (siparis durumu, bakiye vb.) asla onbelleklenmemeli; mobil

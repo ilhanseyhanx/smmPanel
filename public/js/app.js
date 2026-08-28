@@ -285,7 +285,10 @@ class SmmApp {
         'home.completed_orders': 'Tamamlanan Siparişler', 'home.order_frequency': 'Sipariş Sıklığı',
         'services.title': '📋 Tüm Hizmetler ve Fiyat Listesi', 'services.subtitle': 'Anlık teslimatlı güncel servislerimizi inceleyin.',
         'blog.title': '📰 SMM & Sosyal Medya Rehberi', 'blog.subtitle': 'Google sıralamanızı yükseltecek, hesabınızı organik ve hızlı büyütecek en güncel tüyo ve makaleler.',
-        'blog.back': 'Tüm Makalelere Dön'
+        'blog.back': 'Tüm Makalelere Dön',
+        'info.price_1000': '1000 Adet', 'info.limits': 'Limit', 'info.button': 'Bilgi', 'info.buy': 'Satın Al',
+        'info.start_time': 'Başlama Süresi', 'info.speed': 'Hız', 'info.guarantee': 'Garanti', 'info.features': 'Özellikler',
+        'info.description': 'Açıklama', 'info.min_max': 'Min / Max', 'info.no_details': 'Bu servis için ek bilgi girilmemiş.'
       },
       en: {
         'nav.home': 'Home', 'nav.services': 'Services', 'nav.order': 'New Order',
@@ -299,7 +302,10 @@ class SmmApp {
         'home.completed_orders': 'Completed Orders', 'home.order_frequency': 'Order Frequency',
         'services.title': '📋 All Services and Price List', 'services.subtitle': 'Browse our current instant-delivery services.',
         'blog.title': '📰 SMM & Social Media Guide', 'blog.subtitle': 'Current guides and articles to grow your account quickly and improve its visibility.',
-        'blog.back': 'Back to All Articles'
+        'blog.back': 'Back to All Articles',
+        'info.price_1000': 'Per 1000', 'info.limits': 'Limits', 'info.button': 'Info', 'info.buy': 'Buy Now',
+        'info.start_time': 'Start Time', 'info.speed': 'Speed', 'info.guarantee': 'Guarantee', 'info.features': 'Features',
+        'info.description': 'Description', 'info.min_max': 'Min / Max', 'info.no_details': 'No extra details have been added for this service.'
       }
     };
     return dictionary[this.locale]?.[key] || dictionary.tr[key] || key;
@@ -529,6 +535,8 @@ class SmmApp {
       'Ödemeni bildir': 'Notify us of your payment',
       'Kredi / Banka Kartı': 'Credit / Debit Card',
       'PayTR güvenli ödeme': 'Secure payment via PayTR',
+      'Shopier güvenli ödeme': 'Secure payment via Shopier',
+      'Güvenli Öde — Shopier': 'Pay Securely — Shopier',
       'Kripto Para': 'Cryptocurrency',
       'USDT, BTC ve 300+ coin': 'USDT, BTC and 300+ coins',
       'Havale / Papara': 'Bank Transfer / Papara',
@@ -612,6 +620,7 @@ class SmmApp {
     if (this.currentUser) await this.loadAccountSummary();
     if (this.currentView === 'blog') await this.loadBlogPosts();
     else if (this.currentView === 'blog-detail' && this.currentBlogSlug) await this.loadBlogPostDetail(this.currentBlogSlug);
+    else if (this.currentView === 'landing-page' && this.currentLandingSlug) await this.openLandingPage(this.currentLandingSlug, false);
     else if (this.currentView === 'services') this.renderFullServicesTable();
     else if (this.currentView === 'landing') this.renderLandingServices();
     else if (this.currentView === 'orders' && this.currentUser) { await this.loadUserOrders(); this.loadTelegramConnectCard(); }
@@ -833,6 +842,11 @@ class SmmApp {
     else if (route === 'register') this.showAuthPage('register');
     else if (route === 'reset-password') await this.completePasswordReset(new URLSearchParams(query).get('token'));
     else if (route === 'verify-email') await this.completeEmailVerification(new URLSearchParams(query).get('token'));
+    else if (route === 'payment-success' || route === 'payment-failed') await this.showPaymentResult(route === 'payment-success', query);
+    else if (!document.getElementById(`view-${route}`) && document.getElementById('view-landing-page')?.dataset.lpSlug === route) {
+      // Satis sayfasi (sunucu SSR ile basti); makine ve tablo canli veriyle hidrate edilir.
+      await this.openLandingPage(route, false);
+    }
     else {
       this.navigate(route, false);
       const linkedServiceId = Number(new URLSearchParams(query).get('service'));
@@ -855,11 +869,14 @@ class SmmApp {
       const path = window.location.pathname.replace(/^\/+|\/+$/g, '') || 'landing';
       const [popRoute] = path.split('?');
       if (popRoute.startsWith('blog/')) this.loadBlogPostDetail(decodeURIComponent(popRoute.slice(5)), false);
+      else if (!document.getElementById(`view-${popRoute}`) && /^[a-z0-9-]+$/.test(popRoute)) this.openLandingPage(popRoute, false);
       else this.navigate(popRoute, false);
     });
   }
 
   updateUserHeader() {
+    // Satis sayfasi acikken oturum sonradan yuklenirse dugme metni de guncellenir.
+    this.updateLpCta();
     const badge = document.getElementById('user-header-badge');
     const authNavs = document.querySelectorAll('.auth-required');
     const adminNavs = document.querySelectorAll('.admin-only');
@@ -1516,9 +1533,14 @@ class SmmApp {
             ${isRefill ? `<span class="badge badge-completed"><i class="fa-solid fa-shield-check"></i> ${this.t('guaranteed')}</span>` : `<span class="badge badge-pending">${this.t('standard')}</span>`}
           </td>
           <td class="cell-nowrap" style="text-align: right;">
-            <button class="btn btn-primary btn-sm" onclick="app.selectServiceForOrder(${s.id})">
-              ${this.t('order_now')}
-            </button>
+            <div class="service-row-actions">
+              <button type="button" class="btn btn-outline btn-sm service-info-btn" onclick="app.openServiceInfoModal(${s.id})" title="${this.t('info.button')}" aria-label="${this.t('info.button')}">
+                <i class="fa-solid fa-circle-info"></i><span class="service-info-btn-text"> ${this.t('info.button')}</span>
+              </button>
+              <button class="btn btn-primary btn-sm" onclick="app.selectServiceForOrder(${s.id})">
+                ${this.t('order_now')}
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -1605,6 +1627,77 @@ class SmmApp {
     }, 100);
   }
 
+  // --- SERVIS BILGI PENCERESI ---
+  // Admin panelde girilen baslama suresi / hiz / ozellik / aciklama alanlarini
+  // aktif dile gore toplar. Ozellikler satir satir saklanir.
+  serviceInfoOf(service) {
+    const pick = (tr, en) => {
+      const value = this.locale === 'en' ? (en || tr) : (tr || en);
+      return String(value || '').trim();
+    };
+    const features = pick(service.features_tr, service.features_en)
+      .split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const guaranteed = service.refill == 1 || /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün/i.test(`${service.name} ${service.category_name}`);
+    return {
+      startTime: pick(service.start_time_tr, service.start_time_en),
+      speed: pick(service.speed_tr, service.speed_en),
+      description: String(service.description || '').trim(),
+      features,
+      guaranteed
+    };
+  }
+
+  // Bilgi kartlari: sipariş sayfasindaki kutuda ve "i" popup'inda ortak kullanilir.
+  renderServiceInfoDetails(service, { withDescription = true, withLimits = false } = {}) {
+    const info = this.serviceInfoOf(service);
+    const stats = [];
+    if (info.startTime) stats.push({ icon: 'fa-clock', label: this.t('info.start_time'), value: info.startTime });
+    if (info.speed) stats.push({ icon: 'fa-gauge-high', label: this.t('info.speed'), value: info.speed });
+    stats.push({
+      icon: info.guaranteed ? 'fa-shield-check' : 'fa-bolt',
+      label: this.t('info.guarantee'),
+      value: info.guaranteed ? this.t('guaranteed') : this.t('standard'),
+      tone: info.guaranteed ? 'ok' : 'muted'
+    });
+    if (withLimits) stats.push({ icon: 'fa-arrows-left-right', label: this.t('info.min_max'), value: `${service.min_quantity} - ${service.max_quantity}` });
+
+    let html = `<div class="service-info-grid">${stats.map(stat => `
+      <div class="service-info-stat ${stat.tone ? `tone-${stat.tone}` : ''}">
+        <i class="fa-solid ${stat.icon}"></i>
+        <div><small>${this.escapeHtml(stat.label)}</small><strong>${this.escapeHtml(stat.value)}</strong></div>
+      </div>`).join('')}</div>`;
+
+    if (info.features.length) {
+      html += `<div class="service-info-block"><div class="service-info-block-title"><i class="fa-solid fa-list-check"></i> ${this.t('info.features')}</div>
+        <ul class="service-info-features">${info.features.map(f => `<li><i class="fa-solid fa-check"></i> ${this.escapeHtml(f)}</li>`).join('')}</ul></div>`;
+    }
+    if (withDescription && info.description) {
+      html += `<div class="service-info-block"><div class="service-info-block-title"><i class="fa-solid fa-align-left"></i> ${this.t('info.description')}</div>
+        <p class="service-info-desc-text">${this.escapeHtml(info.description)}</p></div>`;
+    }
+    return html;
+  }
+
+  openServiceInfoModal(serviceId) {
+    const service = this.allServices.find(s => s.id === serviceId);
+    if (!service) return;
+    this.serviceInfoModalId = serviceId;
+    document.getElementById('service-info-category').textContent = service.category_name || '';
+    document.getElementById('service-info-title').textContent = `#${service.id} · ${service.name}`;
+    document.getElementById('service-info-modal-body').innerHTML = this.renderServiceInfoDetails(service, { withDescription: true, withLimits: true });
+    document.getElementById('service-info-price-label').textContent = this.t('info.price_1000');
+    document.getElementById('service-info-price').innerHTML = service.discount_percent ? this.renderPriceHtml(service) : this.formatServicePrice(service);
+    const buyBtn = document.getElementById('service-info-buy-btn');
+    if (buyBtn) buyBtn.innerHTML = `<i class="fa-solid fa-cart-shopping"></i> ${this.t('info.buy')}`;
+    document.getElementById('modal-service-info').classList.add('active');
+  }
+
+  buyFromServiceInfo() {
+    const serviceId = this.serviceInfoModalId;
+    this.closeModal('modal-service-info');
+    if (serviceId) this.selectServiceForOrder(serviceId);
+  }
+
   // --- NEW ORDER FORM LOGIC ---
   populateOrderCategories() {
     const catSelect = document.getElementById('order-category-select');
@@ -1645,6 +1738,8 @@ class SmmApp {
       document.getElementById('service-desc').innerText = this.ui('Servis bulunamadı.', 'Service not found.');
       document.getElementById('service-rate').innerText = this.locale === 'en' ? '$0.00 / ₺0.00' : '₺0.00';
       document.getElementById('service-limits').innerText = '0 - 0';
+      const extraEmpty = document.getElementById('service-info-extra');
+      if (extraEmpty) extraEmpty.innerHTML = '';
       this.updateOrderLinkHint(null);
       return;
     }
@@ -1652,6 +1747,9 @@ class SmmApp {
     document.getElementById('service-desc').innerText = service.description || this.ui('Hızlı ve otomatik aktarımlı sosyal medya hizmeti.', 'Fast, automatically delivered social media service.');
     document.getElementById('service-rate').innerText = this.formatServicePrice(service);
     document.getElementById('service-limits').innerText = `${service.min_quantity} - ${service.max_quantity}`;
+    // Baslama suresi / hiz / ozellik kartlari (admin doldurduysa).
+    const extra = document.getElementById('service-info-extra');
+    if (extra) extra.innerHTML = this.renderServiceInfoDetails(service, { withDescription: false });
 
     this.updateOrderLinkHint(service);
     this.calculateOrderCharge();
@@ -1837,9 +1935,14 @@ class SmmApp {
             ${isRefill ? `<span class="badge badge-completed"><i class="fa-solid fa-shield-check"></i> ${this.t('guaranteed')}</span>` : `<span class="badge badge-pending">${this.t('standard')}</span>`}
           </td>
           <td class="cell-nowrap" style="text-align: right;">
-            <button class="btn btn-primary btn-sm" onclick="app.selectServiceForOrder(${s.id})">
-              ${this.t('order_now')}
-            </button>
+            <div class="service-row-actions">
+              <button type="button" class="btn btn-outline btn-sm service-info-btn" onclick="app.openServiceInfoModal(${s.id})" title="${this.t('info.button')}" aria-label="${this.t('info.button')}">
+                <i class="fa-solid fa-circle-info"></i><span class="service-info-btn-text"> ${this.t('info.button')}</span>
+              </button>
+              <button class="btn btn-primary btn-sm" onclick="app.selectServiceForOrder(${s.id})">
+                ${this.t('order_now')}
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -1921,8 +2024,12 @@ class SmmApp {
     let firstVisible = null;
     tiles.forEach(tile => {
       const method = tile.dataset.method;
-      // Havale/Papara her zaman acik; kart ve kripto yapilandirmaya bagli.
-      const visible = method === 'bank' || (method === 'paytr' ? methods.paytr !== false : methods.crypto === true);
+      // Havale/Papara her zaman acik; kart (PayTR/Shopier) ve kripto
+      // yapilandirmaya bagli.
+      const visible = method === 'bank' ? true
+        : method === 'paytr' ? methods.paytr !== false
+          : method === 'shopier' ? methods.shopier === true
+            : methods.crypto === true;
       tile.style.display = visible ? '' : 'none';
       if (visible && !firstVisible) firstVisible = method;
     });
@@ -2069,6 +2176,12 @@ class SmmApp {
         note.textContent = this.ui(
           'Sana özel adres ve QR kod oluşturulur; gönderim onaylanınca bakiyen otomatik yüklenir.',
           'A unique address and QR code will be generated for you; your balance is added automatically once the transfer is confirmed.'
+        );
+      } else if (method === 'shopier') {
+        submit.innerHTML = `<i class="fa-solid fa-lock"></i> ${this.ui('Güvenli Öde — Shopier', 'Pay Securely — Shopier')}`;
+        note.textContent = this.ui(
+          "Kart bilgilerin Shopier'in güvenli sayfasında işlenir; sitemizde saklanmaz. Ödeme onaylanınca bakiyen otomatik yüklenir.",
+          "Your card details are processed on Shopier's secure page; we never store them. Your balance is added automatically once the payment is approved."
         );
       } else {
         submit.innerHTML = `<i class="fa-solid fa-lock"></i> ${this.ui('Güvenli Öde — Kart', 'Pay Securely — Card')}`;
@@ -2225,6 +2338,10 @@ class SmmApp {
         // Odeme ekrani sitenin icinde cizilir; harici sayfa acilmaz.
         this.renderCryptoPaymentPanel(res);
         this.watchCryptoPayment(res.merchant_oid, amount);
+      } else if (this.selectedPayMethod === 'shopier') {
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${this.ui('Shopier’e yönlendiriliyorsun…', 'Redirecting to Shopier…')}`; }
+        const res = await API.createShopierPayment(amount);
+        this.submitShopierForm(res);
       } else {
         const res = await API.createPaytrPayment(amount);
         window.location.assign(res.iframe_url);
@@ -2235,6 +2352,91 @@ class SmmApp {
       if (submitBtn && this.selectedPayMethod === 'crypto') {
         submitBtn.disabled = false;
         submitBtn.innerHTML = `<i class="fa-brands fa-bitcoin"></i> ${this.ui('Ödeme Adresi Oluştur', 'Generate Payment Address')}`;
+      } else if (submitBtn && this.selectedPayMethod === 'shopier' && !this.shopierRedirecting) {
+        // Yonlendirme basladiysa dugmeye dokunulmaz; sayfa zaten Shopier'e gidiyor.
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<i class="fa-solid fa-lock"></i> ${this.ui('Güvenli Öde — Shopier', 'Pay Securely — Shopier')}`;
+      }
+    }
+  }
+
+  // Shopier'in odeme sayfasi imzali bir form POST'u bekler (hazir bir
+  // yonlendirme adresi vermez). Alanlar sunucuda imzalanir, burada yalnizca
+  // gizli forma yazilip gonderilir; kart bilgisi bize hic ugramaz.
+  submitShopierForm(payment) {
+    if (!payment || !payment.action || !payment.fields) {
+      showToast(this.ui('Shopier ödeme formu oluşturulamadı.', 'Could not build the Shopier payment form.'), 'error');
+      return;
+    }
+    this.shopierRedirecting = true;
+    // Donusteki sonuc kutusu icin siparis numarasi saklanir.
+    try { sessionStorage.setItem('shopierOdemeNo', payment.merchant_oid || ''); } catch {}
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = payment.action;
+    form.style.display = 'none';
+    Object.entries(payment.fields).forEach(([key, value]) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = key;
+      input.value = String(value ?? '');
+      form.appendChild(input);
+    });
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  // Odeme saglayicisindan donuste (/payment-success, /payment-failed) sonucu
+  // Bakiye Yukle ekraninda gosterir ve bakiyeyi tazeler.
+  async showPaymentResult(basarili, query) {
+    this.navigate('add-funds', false);
+    history.replaceState(null, '', '/add-funds');
+
+    const box = document.getElementById('crypto-wait-box');
+    let oid = new URLSearchParams(query).get('oid') || '';
+    if (!oid) { try { oid = sessionStorage.getItem('shopierOdemeNo') || ''; } catch {} }
+    try { sessionStorage.removeItem('shopierOdemeNo'); } catch {}
+
+    let amountText = '';
+    if (basarili && oid) {
+      // Tutari sunucudan dogrulariz; adres cubugundaki degere guvenilmez.
+      try {
+        const res = await API.getShopierPaymentStatus(oid);
+        if (res.status === 'completed') amountText = `₺${Number(res.amount).toFixed(2)}`;
+      } catch {}
+    }
+
+    if (basarili) {
+      showToast(this.ui(
+        amountText ? `${amountText} bakiyene eklendi! 🎉` : 'Ödemen alındı, bakiyen güncelleniyor.',
+        amountText ? `${amountText} was added to your balance! 🎉` : 'Payment received, your balance is being updated.'
+      ), 'success');
+      if (box) {
+        box.style.display = 'block';
+        box.innerHTML = `
+          <div class="crypto-wait success">
+            <i class="fa-solid fa-circle-check"></i>
+            <div><strong>${this.ui('Ödeme tamamlandı! 🎉', 'Payment completed! 🎉')}</strong><br><small>${this.ui(
+              amountText ? `${amountText} bakiyene eklendi.` : 'Bakiyen birkaç saniye içinde güncellenir.',
+              amountText ? `${amountText} was added to your balance.` : 'Your balance will update within a few seconds.'
+            )}</small></div>
+          </div>`;
+      }
+      try { const me = await API.getMe(); this.currentUser = me.user; this.updateUserHeader(); } catch {}
+    } else {
+      showToast(this.ui('Ödeme tamamlanamadı. Tutar hesabından çekilmediyse tekrar deneyebilirsin.',
+        'The payment could not be completed. If you were not charged, you can try again.'), 'error');
+      if (box) {
+        box.style.display = 'block';
+        box.innerHTML = `
+          <div class="crypto-wait">
+            <i class="fa-solid fa-circle-xmark" style="color: var(--danger);"></i>
+            <div><strong>${this.ui('Ödeme tamamlanamadı', 'Payment could not be completed')}</strong><br><small>${this.ui(
+              'Kart ödemesi onaylanmadı. Tekrar deneyebilir veya havale/kripto seçeneklerini kullanabilirsin.',
+              'The card payment was not approved. You can try again or use bank transfer / crypto instead.'
+            )}</small></div>
+          </div>`;
       }
     }
   }
@@ -2283,8 +2485,162 @@ class SmmApp {
       this.updateUserHeader();
       document.getElementById('coupon-code-input').value = '';
     } catch (err) {
+      // Kupon dogrulanmis e-posta ister: animasyonlu dogrulama akisi acilir,
+      // dogrulama biter bitmez ayni kupon otomatik tekrar denenir.
+      if (err.code === 'email_verification_required') {
+        this.openEmailVerifyModal(() => this.handleRedeemCoupon(new Event('submit')));
+        return;
+      }
       showToast(`Kupon hatası: ${err.message}`, 'error');
     }
+  }
+
+  // === E-POSTA DOĞRULAMA MODALI =============================================
+  // Uc adim: davet -> 6 haneli kod -> basari animasyonu. Dogrulama bitince
+  // (varsa) bekleyen islem (ör. kupon) otomatik tekrar calistirilir.
+
+  openEmailVerifyModal(sonrasinda) {
+    this.afterEmailVerify = sonrasinda || null;
+    const modal = document.getElementById('modal-email-verify');
+    if (!modal) return;
+    // Adimlar sifirlanir.
+    document.getElementById('ev-step-intro').style.display = '';
+    document.getElementById('ev-step-code').style.display = 'none';
+    document.getElementById('ev-step-success').style.display = 'none';
+    document.getElementById('ev-error').textContent = '';
+    // E-posta maskeli gosterilir: ab***@gmail.com
+    const email = this.currentUser?.email || '';
+    const [kutu, alan] = email.split('@');
+    document.getElementById('ev-email').textContent = kutu && alan ? `${kutu.slice(0, 2)}***@${alan}` : email;
+    this.setupVerifyCodeBoxes();
+    modal.classList.add('active');
+  }
+
+  closeEmailVerifyModal() {
+    document.getElementById('modal-email-verify')?.classList.remove('active');
+    if (this.evResendInterval) { clearInterval(this.evResendInterval); this.evResendInterval = null; }
+  }
+
+  // Kod kutulari: yazinca sonrakine gecer, silince geri doner, yapistirilan
+  // 6 haneli kod kutulara dagitilir. (Kurulum idempotenttir.)
+  setupVerifyCodeBoxes() {
+    const kutular = [...document.querySelectorAll('.ev-code-box')];
+    kutular.forEach((kutu, i) => {
+      if (kutu.dataset.bagli) return;
+      kutu.dataset.bagli = '1';
+      kutu.addEventListener('input', () => {
+        kutu.value = kutu.value.replace(/\D/g, '').slice(0, 1);
+        kutu.classList.toggle('dolu', Boolean(kutu.value));
+        if (kutu.value && i < kutular.length - 1) kutular[i + 1].focus();
+        // Tum kutular doluysa otomatik dogrula.
+        if (kutular.every(k => k.value)) this.confirmVerifyCode();
+      });
+      kutu.addEventListener('keydown', ev => {
+        if (ev.key === 'Backspace' && !kutu.value && i > 0) kutular[i - 1].focus();
+      });
+      kutu.addEventListener('paste', ev => {
+        const metin = (ev.clipboardData?.getData('text') || '').replace(/\D/g, '');
+        if (metin.length >= 2) {
+          ev.preventDefault();
+          metin.slice(0, 6).split('').forEach((hane, j) => {
+            if (kutular[j]) { kutular[j].value = hane; kutular[j].classList.add('dolu'); }
+          });
+          kutular[Math.min(metin.length, 6) - 1].focus();
+          if (metin.length >= 6) this.confirmVerifyCode();
+        }
+      });
+    });
+    kutular.forEach(k => { k.value = ''; k.classList.remove('dolu'); });
+  }
+
+  async sendVerifyCode(tekrar = false) {
+    const buton = tekrar ? document.getElementById('ev-resend-btn') : document.getElementById('ev-send-btn');
+    if (buton) buton.disabled = true;
+    try {
+      const res = await API.requestVerifyCode();
+      if (res.already_verified) {
+        this.showVerifySuccess(res.message);
+        return;
+      }
+      showToast(res.message, 'success');
+      document.getElementById('ev-step-intro').style.display = 'none';
+      document.getElementById('ev-step-code').style.display = '';
+      document.getElementById('ev-error').textContent = '';
+      document.querySelector('.ev-code-box')?.focus();
+      this.startResendTimer(60);
+    } catch (err) {
+      showToast(err.message, 'error');
+      // 429 (cok erken tekrar) durumunda da kod ekraninda kal.
+      if (err.status === 429 && document.getElementById('ev-step-code').style.display === 'none') {
+        document.getElementById('ev-step-intro').style.display = 'none';
+        document.getElementById('ev-step-code').style.display = '';
+        this.startResendTimer(60);
+      }
+    } finally {
+      if (buton) buton.disabled = false;
+    }
+  }
+
+  startResendTimer(saniye) {
+    const buton = document.getElementById('ev-resend-btn');
+    const sayac = document.getElementById('ev-resend-timer');
+    if (this.evResendInterval) clearInterval(this.evResendInterval);
+    let kalan = saniye;
+    if (buton) buton.disabled = true;
+    if (sayac) sayac.textContent = `(${kalan}s)`;
+    this.evResendInterval = setInterval(() => {
+      kalan--;
+      if (sayac) sayac.textContent = kalan > 0 ? `(${kalan}s)` : '';
+      if (kalan <= 0) {
+        clearInterval(this.evResendInterval);
+        this.evResendInterval = null;
+        if (buton) buton.disabled = false;
+      }
+    }, 1000);
+  }
+
+  async confirmVerifyCode() {
+    const kutular = [...document.querySelectorAll('.ev-code-box')];
+    const kod = kutular.map(k => k.value).join('');
+    const hata = document.getElementById('ev-error');
+    if (kod.length !== 6) {
+      if (hata) hata.textContent = 'Lütfen 6 haneli kodun tamamını gir.';
+      return;
+    }
+    const buton = document.getElementById('ev-confirm-btn');
+    if (buton) buton.disabled = true;
+    try {
+      const res = await API.confirmVerifyCode(kod);
+      this.showVerifySuccess(res.message);
+    } catch (err) {
+      if (hata) hata.textContent = err.message;
+      // Yanlis kod: kutular sarsilir ve temizlenir.
+      const satir = document.getElementById('ev-code-row');
+      satir?.classList.add('ev-shake');
+      setTimeout(() => satir?.classList.remove('ev-shake'), 450);
+      kutular.forEach(k => { k.value = ''; k.classList.remove('dolu'); });
+      kutular[0]?.focus();
+    } finally {
+      if (buton) buton.disabled = false;
+    }
+  }
+
+  showVerifySuccess(mesaj) {
+    if (this.currentUser) this.currentUser.email_verified = true;
+    document.getElementById('ev-step-intro').style.display = 'none';
+    document.getElementById('ev-step-code').style.display = 'none';
+    document.getElementById('ev-step-success').style.display = '';
+    if (mesaj) {
+      const metin = document.getElementById('ev-success-text');
+      if (metin && this.afterEmailVerify) metin.textContent = 'E-posta adresin doğrulandı. Kuponun şimdi uygulanıyor...';
+    }
+    // Basari animasyonu izlensin, ardindan modal kapanip bekleyen islem calisir.
+    setTimeout(() => {
+      this.closeEmailVerifyModal();
+      const devam = this.afterEmailVerify;
+      this.afterEmailVerify = null;
+      if (devam) devam();
+    }, 1800);
   }
 
   async handleSendPaymentNotification(e) {
@@ -2555,6 +2911,7 @@ class SmmApp {
     if (tabName === 'tickets') this.loadAdminTickets();
     if (tabName === 'reviews') this.loadAdminReviews();
     if (tabName === 'landing-design') this.loadAdminLandingDesign();
+    if (tabName === 'landing-pages') this.loadAdminLandingPages();
     if (tabName === 'ai-studio') this.loadAiStudio();
     if (tabName === 'users') this.loadAdminUsers();
     if (tabName === 'orders') this.loadAdminOrders();
@@ -3083,6 +3440,8 @@ class SmmApp {
     const tbody = document.getElementById('admin-providers-tbody');
     try {
       const res = await API.getAdminProviders();
+      // Tekil servis ekleme popup'inda saglayici adini gostermek icin.
+      this.adminProviderNames = Object.fromEntries(res.providers.map(p => [String(p.id), p.name]));
       tbody.innerHTML = res.providers.map(p => `
         <tr>
           <td>#${p.id}</td>
@@ -3118,6 +3477,9 @@ class SmmApp {
       // Saglayicinin para birimi ve panel kuru: fiyat hesabi bunlara dayanir.
       this.explorerCurrency = String(res.currency || 'USD').toUpperCase();
       this.explorerUsdTryRate = Number(res.usd_try_rate) > 0 ? Number(res.usd_try_rate) : 35;
+      // Sitemizde bu saglayicidan zaten ekli olan servislerin ID'leri; ayni
+      // servisi ikinci kez eklemeyi engellemek icin kullanilir.
+      this.explorerAddedIds = new Set((res.added_service_ids || []).map(String));
       const rawList = res.services || [];
       // Pre-compute lowercase searchIndex for 60fps instant searching
       this.currentExplorerServices = rawList.map(s => {
@@ -3276,10 +3638,12 @@ class SmmApp {
       const isRefill = s.refill == 1 || /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün/i.test(`${s._name} ${s._cat}`);
       const rawIdStr = s._sId.toString();
       const displayId = (rawIdStr.length > 10) ? `#${rawIdStr.slice(0, 8)}...` : `#${rawIdStr}`;
+      // Ayni servis daha once eklendiyse satir soluklasir, secim ve ekleme kilitlenir.
+      const alreadyAdded = this.explorerAddedIds?.has(rawIdStr);
 
       return `
-        <tr>
-          <td style="width: 45px; text-align: center;"><input type="checkbox" class="explorer-service-checkbox" value="${this.escapeHtml(s._sId)}" style="cursor: pointer;"></td>
+        <tr${alreadyAdded ? ' style="opacity: .55;"' : ''}>
+          <td style="width: 45px; text-align: center;"><input type="checkbox" class="explorer-service-checkbox" value="${this.escapeHtml(s._sId)}" ${alreadyAdded ? 'disabled title="Bu servis sitende zaten ekli"' : ''} style="cursor: ${alreadyAdded ? 'not-allowed' : 'pointer'};"></td>
           <td class="cell-nowrap" style="width: 120px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; padding-left: 10px; font-weight: 700; color: var(--accent-cyan);" title="#${this.escapeHtml(s._sId)}">${this.escapeHtml(displayId)}</td>
           <td class="cell-nowrap" style="width: 220px; max-width: 220px; overflow: hidden; text-overflow: ellipsis;"><span class="badge badge-processing" title="${this.escapeHtml(s._cat)}">${this.escapeHtml(s._cat)}</span></td>
           <td class="cell-service-title" title="${this.escapeHtml(s._name)}">${this.escapeHtml(s._name)}</td>
@@ -3289,9 +3653,13 @@ class SmmApp {
             ${isRefill ? '<span class="badge badge-completed"><i class="fa-solid fa-shield-check"></i> Garantili</span>' : '<span class="badge badge-pending">Standart</span>'}
           </td>
           <td class="cell-actions" style="text-align: right;">
-            <button class="btn btn-cyan btn-sm" onclick="app.openAddSingleServiceModal('${s._sId}', '${encodeURIComponent(s._cat)}', '${encodeURIComponent(s._name)}', ${s._rate}, ${s._min}, ${s._max})">
-              <i class="fa-solid fa-plus"></i> Siteme Ekle
-            </button>
+            ${alreadyAdded
+              ? `<button class="btn btn-outline btn-sm" disabled title="Bu servis sitende zaten ekli" style="opacity:.75; cursor: not-allowed;">
+                   <i class="fa-solid fa-circle-check" style="color: var(--success);"></i> Sitene Eklendi
+                 </button>`
+              : `<button class="btn btn-cyan btn-sm" onclick="app.openAddSingleServiceModal('${s._sId}', '${encodeURIComponent(s._cat)}', '${encodeURIComponent(s._name)}', ${s._rate}, ${s._min}, ${s._max})">
+                   <i class="fa-solid fa-plus"></i> Siteme Ekle
+                 </button>`}
           </td>
         </tr>
       `;
@@ -3349,8 +3717,8 @@ class SmmApp {
   }
 
   toggleSelectAllExplorerServices(checked) {
-    const checkboxes = document.querySelectorAll('.explorer-service-checkbox');
-    checkboxes.forEach(cb => cb.checked = checked);
+    // Sitede zaten ekli olan satirlarin kutucugu kilitlidir; onlara dokunulmaz.
+    document.querySelectorAll('.explorer-service-checkbox:not([disabled])').forEach(cb => { cb.checked = checked; });
   }
 
   async handleBulkImportSelectedFromExplorer() {
@@ -3369,9 +3737,12 @@ class SmmApp {
       title: 'Servisleri içe aktar', icon: 'fa-cloud-arrow-down', confirmText: 'Aktar'
     })) {
       let addedCount = 0;
+      let skippedCount = 0;
       for (const sId of selectedIds) {
         const item = (this.currentExplorerServices || []).find(s => s._sId.toString() === sId.toString());
         if (!item) continue;
+        // Sitede zaten ekli olan servis tekrar gonderilmez (sunucu da reddeder).
+        if (this.explorerAddedIds?.has(sId.toString())) { skippedCount++; continue; }
 
         // Saglayici fiyati sabit para birimindedir (genelde USD). Once panelin
         // kuruyla TL'ye cevrilir, sonra kar marji uygulanir. Eskiden "fiyat 1'den
@@ -3400,12 +3771,23 @@ class SmmApp {
             refill: isRefill ? 1 : 0
           });
           addedCount++;
+          this.explorerAddedIds?.add(sId.toString());
         } catch (err) {
-          console.error(`Service #${sId} import error:`, err);
+          // Sunucu "zaten ekli" derse bu bir hata degil, atlanan satirdir.
+          if (err.code === 'service_already_added') {
+            skippedCount++;
+            this.explorerAddedIds?.add(sId.toString());
+          } else {
+            console.error(`Service #${sId} import error:`, err);
+          }
         }
       }
 
-      showToast(`${addedCount} adet servis başarıyla %${margin} kar marjı uygulanarak sitenize eklendi!`, 'success');
+      showToast(
+        `${addedCount} adet servis başarıyla %${margin} kar marjı uygulanarak sitenize eklendi!` +
+        (skippedCount ? ` ${skippedCount} servis zaten ekli olduğu için atlandı.` : ''),
+        addedCount ? 'success' : 'warning'
+      );
       this.closeModal('modal-provider-explorer');
       await this.loadAdminAddedServices();
       await this.loadServicesData();
@@ -3413,6 +3795,11 @@ class SmmApp {
   }
 
   openAddSingleServiceModal(sId, encCat, encName, costRate, minQty, maxQty) {
+    // Ayni saglayici servisi ikinci kez eklenemez.
+    if (this.explorerAddedIds?.has(String(sId))) {
+      showToast(`Bu servis (#${sId}) sitende zaten ekli.`, 'warning');
+      return;
+    }
     const cat = decodeURIComponent(encCat);
     const name = decodeURIComponent(encName);
 
@@ -3422,19 +3809,36 @@ class SmmApp {
     document.getElementById('single-category-name-en').value = cat;
     document.getElementById('single-service-name').value = name;
     document.getElementById('single-service-name-en').value = name;
-    document.getElementById('single-cost-price').value = `$${parseFloat(costRate).toFixed(3)}`;
+    // Saglayici maliyeti kaydedilmek uzere saklanir; eskiden yalnizca ekranda
+    // gosteriliyor, sunucuya gonderilmiyordu -> "Sağlayıcı Maliyeti" hep 0 kaliyordu.
+    const cost = Number(costRate) || 0;
+    const currency = String(this.explorerCurrency || 'USD').toUpperCase();
+    const usdTry = Number(this.explorerUsdTryRate) > 0 ? Number(this.explorerUsdTryRate) : 35;
+    this.singleServiceCost = { rate: cost, currency };
+    document.getElementById('single-cost-price').value = `${currency === 'TRY' ? '₺' : '$'}${cost.toFixed(4)}${currency === 'TRY' ? '' : ` ≈ ₺${(cost * usdTry).toFixed(2)}`}`;
 
     // Auto detect refill status for modal select
     const isRefill = /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün/i.test(`${name} ${cat}`);
     const refillSelect = document.getElementById('single-refill-select');
     if (refillSelect) refillSelect.value = isRefill ? "1" : "0";
 
-    const suggestedSellPrice = (parseFloat(costRate) * 1.5 * 35).toFixed(2);
-    document.getElementById('single-sell-price').value = suggestedSellPrice > 1 ? suggestedSellPrice : 15.00;
-    document.getElementById('single-sell-price-usd').value = (parseFloat(costRate) * 1.5).toFixed(4);
+    // Onerilen satis fiyati: maliyet -> TL (panel kuru) -> %50 kar.
+    const costInTry = currency === 'TRY' ? cost : cost * usdTry;
+    const suggestedSellPrice = (costInTry * 1.5).toFixed(2);
+    document.getElementById('single-sell-price').value = Number(suggestedSellPrice) > 0 ? suggestedSellPrice : 15.00;
+    document.getElementById('single-sell-price-usd').value = ((costInTry / usdTry) * 1.5).toFixed(4);
 
     document.getElementById('single-min-qty').value = minQty;
     document.getElementById('single-max-qty').value = maxQty;
+
+    // Bilgi penceresi alanlari her acilista temizlenir (onceki servisten kalmasin).
+    ['single-start-time-tr', 'single-start-time-en', 'single-speed-tr', 'single-speed-en',
+      'single-features-tr', 'single-features-en', 'single-description-tr', 'single-description-en']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    const providerLabel = document.getElementById('single-provider-label');
+    if (providerLabel) providerLabel.textContent = this.adminProviderNames?.[String(this.currentExplorerProviderId)] || `#${this.currentExplorerProviderId}`;
+    const providerServiceLabel = document.getElementById('single-provider-service-label');
+    if (providerServiceLabel) providerServiceLabel.textContent = sId;
 
     document.getElementById('modal-add-single-service').classList.add('active');
   }
@@ -3451,8 +3855,17 @@ class SmmApp {
       name_en: document.getElementById('single-service-name-en').value,
       rate_per_1000: document.getElementById('single-sell-price').value,
       rate_per_1000_usd: document.getElementById('single-sell-price-usd').value,
+      // Kar/zarar raporu ve fiyat denetimi icin saglayici maliyeti de kaydedilir.
+      provider_cost_rate: this.singleServiceCost?.rate || 0,
+      provider_cost_currency: this.singleServiceCost?.currency || 'USD',
       description_tr: document.getElementById('single-description-tr').value,
       description_en: document.getElementById('single-description-en').value,
+      start_time_tr: document.getElementById('single-start-time-tr').value,
+      start_time_en: document.getElementById('single-start-time-en').value,
+      speed_tr: document.getElementById('single-speed-tr').value,
+      speed_en: document.getElementById('single-speed-en').value,
+      features_tr: document.getElementById('single-features-tr').value,
+      features_en: document.getElementById('single-features-en').value,
       min_quantity: document.getElementById('single-min-qty').value,
       max_quantity: document.getElementById('single-max-qty').value,
       refill: document.getElementById('single-refill-select')?.value || 0
@@ -3462,8 +3875,20 @@ class SmmApp {
       const res = await API.addAdminService(data);
       showToast(res.message, 'success');
       this.closeModal('modal-add-single-service');
+      // Explorer acik kalir: eklenen satir aninda "Sitene Eklendi"ye doner.
+      if (data.provider_service_id) {
+        this.explorerAddedIds?.add(String(data.provider_service_id));
+        if (document.getElementById('modal-provider-explorer')?.classList.contains('active')) this.filterExplorerTable(false);
+      }
       await this.loadServicesData();
     } catch (err) {
+      if (err.code === 'service_already_added') {
+        this.explorerAddedIds?.add(String(data.provider_service_id));
+        this.closeModal('modal-add-single-service');
+        if (document.getElementById('modal-provider-explorer')?.classList.contains('active')) this.filterExplorerTable(false);
+        showToast(err.message, 'warning');
+        return;
+      }
       showToast(`Servis eklenemedi: ${err.message}`, 'error');
     }
   }
@@ -3480,7 +3905,9 @@ class SmmApp {
       const rawList = res.services || [];
       this.currentAdminAddedServices = rawList.map(s => ({
         ...s,
-        _searchIndex: `${s.id} ${s.name || ''} ${s.category_name || ''} ${s.provider_name || ''}`.toLowerCase()
+        // Saglayicidaki servis ID'si de aranabilir olmali: admin katalogda
+        // gordugu numarayla "bunu eklemis miyim?" diye bakiyor.
+        _searchIndex: `${s.id} ${s.name || ''} ${s.name_tr || ''} ${s.name_en || ''} ${s.category_name || ''} ${s.provider_name || ''} ${s.provider_service_id ?? ''}`.toLowerCase()
       }));
       this.syncAdminServicesProviderFilter();
       this.filterAdminAddedServicesTable();
@@ -3708,7 +4135,23 @@ class SmmApp {
     this.adminServicesPage = 1;
     document.getElementById('admin-services-tab-active')?.classList.toggle('active', status === 1);
     document.getElementById('admin-services-tab-passive')?.classList.toggle('active', status === 0);
+    document.getElementById('admin-services-tab-favorite')?.classList.toggle('active', status === 'favorite');
     this.filterAdminAddedServicesTable();
+  }
+
+  // Satirdaki yildiz: favoriye ekler/cikarir; liste sunucuya gitmeden guncellenir.
+  async toggleAdminServiceFavorite(serviceId) {
+    const service = (this.currentAdminAddedServices || []).find(s => s.id === serviceId);
+    if (!service) return;
+    const next = Number(service.is_favorite) === 1 ? 0 : 1;
+    try {
+      const res = await API.setAdminServiceFavorite(serviceId, next);
+      service.is_favorite = next;
+      showToast(res.message, 'success');
+      this.filterAdminAddedServicesTable();
+    } catch (err) {
+      showToast(`Favori güncellenemedi: ${err.message}`, 'error');
+    }
   }
 
   onAdminServicesProviderChange() {
@@ -3777,6 +4220,8 @@ class SmmApp {
     const passiveBadge = document.getElementById('admin-services-passive-count');
     if (activeBadge) activeBadge.innerText = activeTotal;
     if (passiveBadge) passiveBadge.innerText = passiveTotal;
+    const favoriteBadge = document.getElementById('admin-services-favorite-count');
+    if (favoriteBadge) favoriteBadge.innerText = all.filter(s => Number(s.is_favorite) === 1).length;
 
     if (all.length === 0) {
       tbody.innerHTML = `<tr><td colspan="12" class="text-center">Sitenize eklenmiş hiç servis bulunmuyor. Sağlayıcılar sekmesinden servis seçerek ekleyebilirsiniz.</td></tr>`;
@@ -3785,7 +4230,10 @@ class SmmApp {
       return;
     }
 
-    let filtered = all.filter(s => Number(s.status) === statusFilter);
+    // Favori sekmesi aktif/pasif ayrimi yapmaz; yildizli her servis listelenir.
+    let filtered = statusFilter === 'favorite'
+      ? all.filter(s => Number(s.is_favorite) === 1)
+      : all.filter(s => Number(s.status) === statusFilter);
     if (providerFilter !== 'all') filtered = filtered.filter(s => this.providerLabelOf(s) === providerFilter);
     if (search) {
       filtered = filtered.filter(s => s._searchIndex ? s._searchIndex.includes(search) : (s.name || '').toLowerCase().includes(search));
@@ -3798,9 +4246,11 @@ class SmmApp {
     });
 
     if (filtered.length === 0) {
-      const emptyMsg = statusFilter === 1
-        ? 'Bu filtreyle eşleşen aktif servis bulunamadı.'
-        : 'Pasife alınmış servis bulunmuyor.';
+      const emptyMsg = statusFilter === 'favorite'
+        ? 'Henüz favori servisiniz yok. Aktif/Pasif listesinde satırdaki ⭐ butonuna basarak ekleyebilirsiniz.'
+        : statusFilter === 1
+          ? 'Bu filtreyle eşleşen aktif servis bulunamadı.'
+          : 'Pasife alınmış servis bulunmuyor.';
       tbody.innerHTML = `<tr><td colspan="12" class="text-center">${emptyMsg}</td></tr>`;
       this.renderAdminServicesPagination(0, 0, 1, pageSize);
       this.updateSelectedServicesCount();
@@ -3882,6 +4332,9 @@ class SmmApp {
         </td>
         <td class="cell-actions">
           <div style="display: inline-flex; gap: 6px;">
+            <button class="btn btn-outline btn-sm admin-fav-btn ${Number(s.is_favorite) === 1 ? 'is-fav' : ''}" onclick="app.toggleAdminServiceFavorite(${s.id})" title="${Number(s.is_favorite) === 1 ? 'Favorilerden çıkar' : 'Favorilere ekle'}" aria-label="Favori">
+              <i class="fa-${Number(s.is_favorite) === 1 ? 'solid' : 'regular'} fa-star"></i>
+            </button>
             <button class="btn btn-cyan btn-sm" onclick="app.openEditServiceDetailsModal(${s.id})">
               <i class="fa-solid fa-pen-to-square"></i> Düzenle
             </button>
@@ -3999,6 +4452,12 @@ class SmmApp {
     document.getElementById('edit-service-price-usd').value = (Number(service.rate_per_1000_usd_cents || 0) / 100).toFixed(4);
     document.getElementById('edit-service-description-tr').value = service.description_tr || service.description || '';
     document.getElementById('edit-service-description-en').value = service.description_en || service.description || '';
+    document.getElementById('edit-service-start-time-tr').value = service.start_time_tr || '';
+    document.getElementById('edit-service-start-time-en').value = service.start_time_en || '';
+    document.getElementById('edit-service-speed-tr').value = service.speed_tr || '';
+    document.getElementById('edit-service-speed-en').value = service.speed_en || '';
+    document.getElementById('edit-service-features-tr').value = service.features_tr || '';
+    document.getElementById('edit-service-features-en').value = service.features_en || '';
     document.getElementById('edit-service-min').value = service.min_quantity;
     document.getElementById('edit-service-max').value = service.max_quantity;
     document.getElementById('edit-service-refill').value = service.refill ? "1" : "0";
@@ -4020,6 +4479,12 @@ class SmmApp {
       rate_per_1000_usd: document.getElementById('edit-service-price-usd').value,
       description_tr: document.getElementById('edit-service-description-tr').value,
       description_en: document.getElementById('edit-service-description-en').value,
+      start_time_tr: document.getElementById('edit-service-start-time-tr').value,
+      start_time_en: document.getElementById('edit-service-start-time-en').value,
+      speed_tr: document.getElementById('edit-service-speed-tr').value,
+      speed_en: document.getElementById('edit-service-speed-en').value,
+      features_tr: document.getElementById('edit-service-features-tr').value,
+      features_en: document.getElementById('edit-service-features-en').value,
       min_quantity: document.getElementById('edit-service-min').value,
       max_quantity: document.getElementById('edit-service-max').value,
       refill: document.getElementById('edit-service-refill').value,
@@ -4155,24 +4620,74 @@ class SmmApp {
   }
 
   // --- KULLANICIYA HIZMET ATAMA (Admin) ---
-  openAssignService(userId, username) {
+  async openAssignService(userId, username) {
     this.assignServiceTargetUser = { id: userId, username };
     document.getElementById('assign-service-username').textContent = username;
-    const select = document.getElementById('assign-service-select');
-    const activeServices = (this.allServices || []).filter(s => s.status === undefined || s.status == 1);
-    select.innerHTML = activeServices.map(s =>
-      `<option value="${s.id}">#${s.id} — ${this.escapeHtml(s.name)} (₺${Number(s.rate_per_1000).toFixed(2)}/1000)</option>`
-    ).join('');
     document.getElementById('assign-service-link').value = '';
     document.getElementById('assign-service-qty').value = '';
     document.getElementById('assign-service-charge').value = 'gift';
-    this.onAssignServiceChange();
+    const search = document.getElementById('assign-service-search');
+    if (search) search.value = '';
+
+    // Favori bilgisi yalnizca admin listesinde var; henuz yuklenmediyse cekilir.
+    if (!Array.isArray(this.currentAdminAddedServices) || !this.currentAdminAddedServices.length) {
+      try {
+        const res = await API.getAdminServices();
+        this.currentAdminAddedServices = (res.services || []).map(s => ({
+          ...s, _searchIndex: `${s.id} ${s.name || ''} ${s.category_name || ''} ${s.provider_name || ''}`.toLowerCase()
+        }));
+      } catch { this.currentAdminAddedServices = this.currentAdminAddedServices || []; }
+    }
+    this.assignServiceList = (this.currentAdminAddedServices || [])
+      .filter(s => Number(s.status) === 1)
+      .map(s => ({ ...s, name: s.name_tr || s.name, _searchIndex: `${s.id} ${s.name_tr || s.name || ''} ${s.name_en || ''} ${s.category_name || ''}`.toLowerCase() }));
+    const hasFavorites = this.assignServiceList.some(s => Number(s.is_favorite) === 1);
+    // Favori varsa dogrudan favorilerden baslanir; yoksa tum liste.
+    this.setAssignServiceMode(hasFavorites ? 'favorite' : 'all');
     document.getElementById('modal-assign-service').classList.add('active');
+  }
+
+  setAssignServiceMode(mode) {
+    this.assignServiceMode = mode === 'favorite' ? 'favorite' : 'all';
+    document.getElementById('assign-service-tab-all')?.classList.toggle('active', this.assignServiceMode === 'all');
+    document.getElementById('assign-service-tab-favorite')?.classList.toggle('active', this.assignServiceMode === 'favorite');
+    this.renderAssignServiceOptions();
+  }
+
+  renderAssignServiceOptions() {
+    const select = document.getElementById('assign-service-select');
+    if (!select) return;
+    const list = this.assignServiceList || [];
+    const search = (document.getElementById('assign-service-search')?.value || '').trim().toLowerCase();
+    const favorites = list.filter(s => Number(s.is_favorite) === 1);
+    const countAll = document.getElementById('assign-service-count-all');
+    const countFav = document.getElementById('assign-service-count-favorite');
+    if (countAll) countAll.textContent = list.length;
+    if (countFav) countFav.textContent = favorites.length;
+
+    let filtered = this.assignServiceMode === 'favorite' ? favorites : list;
+    if (search) filtered = filtered.filter(s => s._searchIndex.includes(search));
+
+    const previous = Number(select.value);
+    select.innerHTML = filtered.map(s =>
+      `<option value="${s.id}">${Number(s.is_favorite) === 1 ? '⭐ ' : ''}#${s.id} — ${this.escapeHtml(s.name)} (₺${Number(s.rate_per_1000).toFixed(2)}/1000)</option>`
+    ).join('');
+    if (filtered.some(s => s.id === previous)) select.value = String(previous);
+    else if (filtered.length) select.selectedIndex = 0;
+
+    const empty = document.getElementById('assign-service-empty');
+    if (empty) {
+      empty.style.display = filtered.length ? 'none' : 'block';
+      empty.textContent = this.assignServiceMode === 'favorite' && !favorites.length
+        ? 'Henüz favori servisiniz yok. Servisler sekmesinde satırdaki ⭐ ile ekleyin.'
+        : 'Aramayla eşleşen servis bulunamadı.';
+    }
+    this.onAssignServiceChange();
   }
 
   onAssignServiceChange() {
     const serviceId = Number(document.getElementById('assign-service-select')?.value);
-    const service = (this.allServices || []).find(s => s.id === serviceId);
+    const service = (this.assignServiceList || this.allServices || []).find(s => s.id === serviceId);
     const limitsEl = document.getElementById('assign-service-limits');
     const totalEl = document.getElementById('assign-service-total');
     const qtyInput = document.getElementById('assign-service-qty');
@@ -4310,10 +4825,17 @@ class SmmApp {
         // failed: islem hic yapilmadi, tutar iade edildi -> mudahale edilemez.
         // completed/canceled: is bitti -> buton gereksiz.
         const canAct = ['pending', 'processing', 'in_progress'].includes(o.status);
+        // Tamamlanan siparise yorum daveti maili: sablon E-Posta Pazarlama >
+        // Sablonlar'daki "Sipariş Tamamlandı — Yorum Daveti" kaydidir.
+        const reviewMailBtn = o.status === 'completed'
+          ? (o.review_mail_sent_at
+            ? `<button class="btn btn-outline btn-sm" title="Gönderildi: ${new Date(o.review_mail_sent_at).toLocaleString('tr-TR')} — tekrar göndermek için tıkla" onclick="app.sendOrderReviewMail(${o.id}, true)"><i class="fa-solid fa-envelope-circle-check"></i> Gönderildi</button>`
+            : `<button class="btn btn-primary btn-sm" title="Yorum daveti maili gönder" onclick="app.sendOrderReviewMail(${o.id}, false)"><i class="fa-solid fa-envelope"></i> Mail Gönder</button>`)
+          : '';
         const actions = canAct
           ? `<button class="btn btn-primary btn-sm" onclick="app.updateOrderStatus(${o.id}, 'completed')">Tamamla</button>
              <button class="btn btn-outline btn-sm" onclick="app.updateOrderStatus(${o.id}, 'canceled')">İptal & İade</button>`
-          : `<span style="color:var(--text-dim);font-size:.8rem;">${o.status === 'failed' ? 'İade edildi' : '—'}</span>`;
+          : (reviewMailBtn || `<span style="color:var(--text-dim);font-size:.8rem;">${o.status === 'failed' ? 'İade edildi' : '—'}</span>`);
         return `
         <tr>
           <td>#${o.id}</td>
@@ -4327,6 +4849,17 @@ class SmmApp {
       }).join('');
     } catch (err) {
       tbody.innerHTML = `<tr><td colspan="7" class="text-center">Siparişler yüklenemedi.</td></tr>`;
+    }
+  }
+
+  async sendOrderReviewMail(orderId, tekrar) {
+    if (tekrar && !window.confirm('Bu siparişe daha önce yorum daveti gönderilmiş. Tekrar gönderilsin mi?')) return;
+    try {
+      const res = await API.sendOrderReviewMail(orderId);
+      showToast(res.message, 'success');
+      await this.loadAdminOrders();
+    } catch (err) {
+      showToast(err.message, 'error');
     }
   }
 
@@ -5299,7 +5832,7 @@ class SmmApp {
         tr: 'Satıştaki tüm servisleri listeler. Kendi sitenizde fiyat listesi göstermek için kullanılır.',
         en: 'Lists every service on sale. Use it to show a price list on your own site.',
         istek: `{\n  "key": "${key}",\n  "action": "services"\n}`,
-        yanit: `[\n  {\n    "service": 101,\n    "name": "Instagram Takipçi",\n    "rate": "12.50",\n    "min": 100,\n    "max": 50000,\n    "category": 3\n  }\n]`,
+        yanit: `[\n  {\n    "service": 101,\n    "name": "Instagram Takipçi",\n    "rate": "12.50",\n    "min": 100,\n    "max": 50000,\n    "category": 3,\n    "refill": true,\n    "description": "High quality followers.",\n    "start_time": "0-15 minutes",\n    "speed": "5,000 / day",\n    "features": ["Real-looking profiles", "No password required"]\n  }\n]`,
         notTr: '<b>rate</b> = 1000 adet için ücret (TL). 250 adet için ücret: rate ÷ 1000 × 250.',
         notEn: '<b>rate</b> = price per 1000 units (TRY). Price for 250 units: rate ÷ 1000 × 250.'
       },
@@ -5547,10 +6080,16 @@ print(sonuc.get("error") or sonuc.get("order"))`;
   }
 
   reviewCardHtml(review) {
+    // Gercek yorum paneli gorunumu: alinti isareti, yildiz rozeti, maskeli
+    // ad + bas harfli avatar ve "dogrulanmis musteri" etiketi.
+    const basHarf = String(review.name || 'M').slice(0, 2).toLocaleUpperCase('tr-TR');
     return `<div class="review-card">
-      <div class="review-stars" aria-label="${review.rating}/5">${this.reviewStars(review.rating)}</div>
+      <div class="review-top"><span class="review-quote" aria-hidden="true">“</span><span class="review-stars" aria-label="${review.rating}/5 yıldız">${this.reviewStars(review.rating)}</span></div>
       <p>${this.escapeHtml(review.comment)}</p>
-      <strong>${this.escapeHtml(review.name)}</strong>
+      <div class="review-who">
+        <span class="review-avatar" aria-hidden="true">${this.escapeHtml(basHarf)}</span>
+        <span class="review-id"><strong>${this.escapeHtml(review.name)}</strong><em><i class="fa-solid fa-circle-check" aria-hidden="true"></i> ${this.ui('Doğrulanmış müşteri', 'Verified customer')}</em></span>
+      </div>
     </div>`;
   }
 
@@ -5568,12 +6107,49 @@ print(sonuc.get("error") or sonuc.get("order"))`;
 
   renderServicesReviews() {
     const kutu = document.getElementById('services-reviews');
-    const izgara = document.getElementById('services-reviews-grid');
-    if (!kutu || !izgara) return;
-    const yorumlar = (this.reviews || []).slice(0, 9);
+    const serit = document.getElementById('services-reviews-grid');
+    if (!kutu || !serit) return;
+    // Karusel oldugu icin ust sinir genis: yorum artsa da sayfa dikeyde uzamaz.
+    const yorumlar = (this.reviews || []).slice(0, 24);
     if (!yorumlar.length) { kutu.style.display = 'none'; return; }
-    izgara.innerHTML = yorumlar.map(r => this.reviewCardHtml(r)).join('');
+    serit.innerHTML = yorumlar.map(r => this.reviewCardHtml(r)).join('');
     kutu.style.display = '';
+    this.initServicesReviewsCarousel();
+  }
+
+  // Karusel: 4,5 sn'de bir sonraki karta akar; uzerine gelinince/dokununca
+  // durur, sona gelince basa sarar. Mobilde parmakla kaydirma dogal calisir.
+  initServicesReviewsCarousel() {
+    const serit = document.getElementById('services-reviews-grid');
+    if (!serit) return;
+    if (!serit.dataset.carousel) {
+      serit.dataset.carousel = '1';
+      const dur = () => { this.srPaused = true; };
+      const devam = () => { this.srPaused = false; };
+      serit.addEventListener('pointerenter', dur);
+      serit.addEventListener('pointerleave', devam);
+      serit.addEventListener('touchstart', dur, { passive: true });
+      serit.addEventListener('touchend', () => setTimeout(devam, 3000), { passive: true });
+      serit.addEventListener('focusin', dur);
+      serit.addEventListener('focusout', devam);
+    }
+    if (this.srInterval) clearInterval(this.srInterval);
+    this.srInterval = setInterval(() => {
+      // Gorunum kapali ya da kullanici etkilesimdeyken akmaz.
+      if (this.srPaused || !serit.offsetParent) return;
+      const kart = serit.querySelector('.review-card');
+      if (!kart) return;
+      const adim = kart.offsetWidth + 20;
+      const sondaMi = serit.scrollLeft + serit.clientWidth >= serit.scrollWidth - 10;
+      serit.scrollTo({ left: sondaMi ? 0 : serit.scrollLeft + adim, behavior: 'smooth' });
+    }, 4500);
+  }
+
+  scrollServicesReviews(yon) {
+    const serit = document.getElementById('services-reviews-grid');
+    if (!serit) return;
+    const kart = serit.querySelector('.review-card');
+    serit.scrollBy({ left: yon * ((kart?.offsetWidth || 320) + 20), behavior: 'smooth' });
   }
 
   async submitReview() {
@@ -5753,6 +6329,11 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       if (document.getElementById('setting-paytr-salt')) document.getElementById('setting-paytr-salt').value = s.paytr_merchant_salt || '';
       if (document.getElementById('setting-bank-accounts')) document.getElementById('setting-bank-accounts').value = s.bank_accounts || '';
       if (document.getElementById('setting-provider-threshold')) document.getElementById('setting-provider-threshold').value = s.provider_balance_threshold || '';
+      if (document.getElementById('setting-shopier-key')) document.getElementById('setting-shopier-key').value = s.shopier_api_key || '';
+      if (document.getElementById('setting-shopier-secret')) document.getElementById('setting-shopier-secret').value = s.shopier_api_secret || '';
+      // Shopier panelindeki "geri donus adresi" alanina yazilacak tam adres.
+      const shopierCallbackEl = document.getElementById('shopier-callback-url');
+      if (shopierCallbackEl) shopierCallbackEl.value = `${window.location.origin}/api/payments/shopier/callback`;
       if (document.getElementById('setting-nowpayments-key')) document.getElementById('setting-nowpayments-key').value = s.nowpayments_api_key || '';
       if (document.getElementById('setting-nowpayments-ipn')) document.getElementById('setting-nowpayments-ipn').value = s.nowpayments_ipn_secret || '';
       if (document.getElementById('setting-telegram-notify-ticket')) document.getElementById('setting-telegram-notify-ticket').checked = s.telegram_notify_ticket !== '0';
@@ -5814,6 +6395,8 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       paytr_merchant_salt: document.getElementById('setting-paytr-salt').value,
       bank_accounts: document.getElementById('setting-bank-accounts').value,
       provider_balance_threshold: document.getElementById('setting-provider-threshold').value.trim(),
+      shopier_api_key: document.getElementById('setting-shopier-key')?.value.trim() || '',
+      shopier_api_secret: document.getElementById('setting-shopier-secret')?.value.trim() || '',
       nowpayments_api_key: document.getElementById('setting-nowpayments-key').value.trim(),
       nowpayments_ipn_secret: document.getElementById('setting-nowpayments-ipn').value.trim(),
       telegram_notify_ticket: document.getElementById('setting-telegram-notify-ticket').checked ? '1' : '0',
@@ -5854,6 +6437,21 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       showToast(res.message, 'success');
     } catch (err) {
       showToast(`Hata: ${err.message}`, 'error');
+    }
+  }
+
+  // Shopier panelindeki "Geri Donus Adresi" alanina yapistirilacak adres.
+  async copyShopierCallbackUrl(button) {
+    const field = document.getElementById('shopier-callback-url');
+    if (!field) return;
+    try {
+      await navigator.clipboard.writeText(field.value);
+      const original = button.innerHTML;
+      button.innerHTML = '<i class="fa-solid fa-check"></i>';
+      setTimeout(() => { button.innerHTML = original; }, 1800);
+    } catch {
+      field.select();
+      showToast('Kopyalanamadı; adresi elle seçip kopyalayabilirsin.', 'warning');
     }
   }
 
@@ -6107,7 +6705,9 @@ print(sonuc.get("error") or sonuc.get("order"))`;
         this.loadBlogPostDetail(slug);
       });
     });
-    container.querySelectorAll('a[href^="#services"]').forEach(link => {
+    // Blog icindeki hizmet linkleri temiz yolla (/services?service=ID) yazilir;
+    // eski #services biçimi de yakalanir ki iki bicim de SPA icinde acilsin.
+    container.querySelectorAll('a[href^="#services"], a[href^="/services"]').forEach(link => {
       link.addEventListener('click', event => {
         event.preventDefault();
         const raw = link.getAttribute('href');
@@ -6434,6 +7034,458 @@ print(sonuc.get("error") or sonuc.get("order"))`;
     try {
       await API.deleteAdminBlogPost(id);
       this.loadAdminBlogList();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  // =====================================================================
+  // SATIS SAYFALARI (platform bazli landing page'ler) — ziyaretci tarafi
+  // Isaretleme sunucudan gelir (utils/landingPages.js); burada yalnizca
+  // siparis makinesi ve tablo canli katalog verisiyle (indirim, USD fiyat,
+  // bilgi penceresi) yeniden cizilir.
+  // =====================================================================
+  async openLandingPage(slug, push = true) {
+    const root = document.getElementById('landing-page-root');
+    const section = document.getElementById('view-landing-page');
+    if (!root || !section) return false;
+    try {
+      const res = await API.getLandingPage(slug, this.locale);
+      this.currentLandingSlug = slug;
+      this.currentLandingPage = res.page;
+      root.innerHTML = res.html;
+      section.dataset.lpSlug = slug;
+      this.navigate('landing-page', false);
+      if (push) history.pushState({ view: 'landing-page', slug }, '', `/${encodeURIComponent(slug)}`);
+      this.hydrateLandingPage();
+      document.title = `${res.page.seo_title || res.page.title} | ${this.siteName || 'Jet SMM Panel'}`;
+      return true;
+    } catch (err) {
+      if (err.status === 404) { this.navigate('not-found', false); return false; }
+      showToast(err.message, 'error');
+      return false;
+    }
+  }
+
+  hydrateLandingPage() {
+    const page = this.currentLandingPage;
+    if (!page) return;
+    const ids = new Set((page.category_ids || []).map(Number));
+    this.lpServices = (this.allServices || []).filter(s => ids.has(Number(s.category_id)));
+    this.lpCategories = (this.allCategories || []).filter(c => ids.has(Number(c.id)) && this.lpServices.some(s => s.category_id === c.id));
+
+    const tbody = document.getElementById('lp-services-tbody');
+    if (tbody && this.lpServices.length) tbody.innerHTML = this.lpServices.map(s => this.lpServiceRowHtml(s)).join('');
+    this.populateLpMachine();
+
+    const content = document.getElementById('lp-content');
+    if (content) this.bindBlogInternalLinks(content);
+    this.updateLpCta();
+    // Ilgili rehber kartlari SPA icinde acilir (tam sayfa yuklemesi yerine).
+    document.querySelectorAll('#landing-page-root a[href^="/blog/"]').forEach(link => {
+      link.addEventListener('click', event => {
+        event.preventDefault();
+        this.loadBlogPostDetail(decodeURIComponent(link.getAttribute('href').slice('/blog/'.length)));
+      });
+    });
+  }
+
+  // "Nasil satin alinir" dugmesi: oturum varsa siparis sayfasina, yoksa kayda.
+  // SSR metni "hesap olustur" der; giris yapmis ziyaretcide metin de degisir.
+  updateLpCta() {
+    const cta = document.getElementById('lp-cta');
+    if (!cta) return;
+    if (this.currentUser) {
+      cta.setAttribute('href', '/new-order');
+      cta.innerHTML = `${this.ui('Hemen Sipariş Ver', 'Order Now')} <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>`;
+    }
+  }
+
+  async lpCta() {
+    if (!this.currentUser) { try { await this.ready; } catch {} }
+    if (this.currentUser) {
+      // Makinede secili servis varsa formu onunla acar.
+      const service = this.lpSelectedService();
+      if (service) {
+        const qty = this.clampMachineQty(document.getElementById('lp-machine-qty')?.value, service);
+        this.navigate('new-order');
+        setTimeout(() => this.applyMachineSelection(service.id, qty), 120);
+      } else this.navigate('new-order');
+      return;
+    }
+    this.showAuthPage('register');
+  }
+
+  lpServiceRowHtml(s) {
+    const isRefill = s.refill == 1 || /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün|yenileme|days refill/i.test(`${s.name} ${s.category_name}`);
+    return `<tr>
+      <td class="cell-nowrap">#${s.id}</td>
+      <td class="cell-service-title" title="${this.escapeHtml(s.name)}"><span class="service-name-clamp">${this.escapeHtml(s.name)}</span></td>
+      <td class="cell-nowrap price-cell">${s.discount_percent ? this.renderPriceHtml(s) : this.formatServicePrice(s)}</td>
+      <td class="cell-nowrap">${s.min_quantity} - ${s.max_quantity}</td>
+      <td class="cell-nowrap">${isRefill ? `<span class="badge badge-completed"><i class="fa-solid fa-shield-check"></i> ${this.t('guaranteed')}</span>` : `<span class="badge badge-pending">${this.t('standard')}</span>`}</td>
+      <td class="cell-nowrap" style="text-align: right;">
+        <div class="service-row-actions">
+          <button type="button" class="btn btn-outline btn-sm service-info-btn" onclick="app.openServiceInfoModal(${s.id})" title="${this.t('info.button')}" aria-label="${this.t('info.button')}"><i class="fa-solid fa-circle-info"></i></button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="app.selectServiceForOrder(${s.id})">${this.t('order_now')}</button>
+        </div>
+      </td>
+    </tr>`;
+  }
+
+  // --- Satis sayfasi siparis makinesi -----------------------------------
+  populateLpMachine() {
+    const catSelect = document.getElementById('lp-machine-category');
+    if (!catSelect) return;
+    catSelect.innerHTML = (this.lpCategories || []).map(c => `<option value="${c.id}">${this.escapeHtml(this.localizedName(c))}</option>`).join('')
+      || `<option value="">${this.ui('Servis yok', 'No services')}</option>`;
+    this.onLpCategoryChange();
+  }
+
+  lpSelectedService() {
+    const select = document.getElementById('lp-machine-service');
+    if (!select) return null;
+    return (this.lpServices || []).find(s => s.id === parseInt(select.value, 10)) || null;
+  }
+
+  onLpCategoryChange() {
+    const catSelect = document.getElementById('lp-machine-category');
+    const serviceSelect = document.getElementById('lp-machine-service');
+    if (!catSelect || !serviceSelect) return;
+    const categoryId = parseInt(catSelect.value, 10);
+    const services = (this.lpServices || []).filter(s => s.category_id === categoryId);
+    serviceSelect.innerHTML = services.map(s => `<option value="${s.id}">${this.escapeHtml(this.localizedName(s))} (${this.formatServicePrice(s)})</option>`).join('')
+      || `<option value="">${this.ui('Servis yok', 'No services')}</option>`;
+    this.onLpServiceChange();
+  }
+
+  onLpServiceChange() {
+    const service = this.lpSelectedService();
+    const qtyInput = document.getElementById('lp-machine-qty');
+    if (service && qtyInput) {
+      qtyInput.min = service.min_quantity;
+      qtyInput.max = service.max_quantity;
+      qtyInput.value = this.clampMachineQty(Number(qtyInput.value) || service.min_quantity, service);
+    }
+    this.updateLpPrice();
+  }
+
+  stepLpQty(direction) {
+    const qtyInput = document.getElementById('lp-machine-qty');
+    const service = this.lpSelectedService();
+    if (!qtyInput || !service) return;
+    const step = Math.max(1, Number(service.min_quantity) || 100);
+    qtyInput.value = this.clampMachineQty((Number(qtyInput.value) || 0) + direction * step, service);
+    this.updateLpPrice();
+  }
+
+  commitLpQty() {
+    const qtyInput = document.getElementById('lp-machine-qty');
+    const service = this.lpSelectedService();
+    if (!qtyInput || !service) return;
+    qtyInput.value = this.clampMachineQty(qtyInput.value, service);
+    this.updateLpPrice();
+  }
+
+  updateLpPrice() {
+    const priceEl = document.getElementById('lp-machine-price');
+    const limitsEl = document.getElementById('lp-machine-limits');
+    const qtyInput = document.getElementById('lp-machine-qty');
+    const service = this.lpSelectedService();
+    if (!priceEl) return;
+    if (!service) {
+      priceEl.textContent = this.locale === 'en' ? '$0.00' : '₺0,00';
+      if (limitsEl) limitsEl.textContent = '';
+      return;
+    }
+    const qty = Number(qtyInput?.value) || 0;
+    const charge = (this.effectiveRate(service) / 1000) * qty;
+    const usdCharge = (Number(service.rate_per_1000_usd_cents || 0) / 100000) * qty;
+    priceEl.textContent = this.locale === 'en' && usdCharge > 0 && !service.discount_percent ? `$${usdCharge.toFixed(2)}` : `₺${charge.toFixed(2)}`;
+    if (limitsEl) {
+      const min = Number(service.min_quantity) || 1;
+      const max = Number(service.max_quantity) || min;
+      limitsEl.classList.toggle('is-invalid', qty < min || qty > max);
+      limitsEl.textContent = `Limit: ${min} - ${max}`;
+    }
+  }
+
+  // Giris yapmis ziyaretci dogrudan siparis formuna, digerleri giris ekranina
+  // gider; secim oturum sonrasi forma tasinir (bekleyenMakineSecimi).
+  async submitLpOrder() {
+    const service = this.lpSelectedService();
+    if (!service) return showToast(this.ui('Önce bir hizmet seçin.', 'Please choose a service first.'), 'warning');
+    const qty = this.clampMachineQty(document.getElementById('lp-machine-qty')?.value, service);
+    if (!this.currentUser) {
+      try { await this.ready; } catch {}
+    }
+    if (!this.currentUser) {
+      this.pendingMachineOrder = { serviceId: service.id, quantity: qty };
+      showToast(this.ui('Siparişi tamamlamak için giriş yapın veya ücretsiz hesap oluşturun.', 'Sign in or create a free account to complete your order.'), 'info');
+      return this.showAuthPage('login');
+    }
+    this.navigate('new-order');
+    setTimeout(() => this.applyMachineSelection(service.id, qty), 120);
+  }
+
+  // =====================================================================
+  // SATIS SAYFALARI — yonetim paneli
+  // =====================================================================
+  async loadAdminLandingPages() {
+    const tbody = document.getElementById('admin-landing-pages-tbody');
+    if (!tbody) return;
+    try {
+      const res = await API.getAdminLandingPages();
+      this.adminLandingPages = res.pages || [];
+      this.lpPlatforms = res.platforms || {};
+      if (!this.adminLandingPages.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center" style="padding: 28px; color: var(--text-dim);">Henüz satış sayfası yok. "Yeni Satış Sayfası" ile ilkini oluştur.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = this.adminLandingPages.map(p => {
+        const platform = this.lpPlatforms[p.platform_key] || { label: p.platform_key, icon: 'fa-solid fa-layer-group' };
+        const catNames = (p.category_ids || []).map(id => this.localizedName((this.allCategories || []).find(c => c.id === id)) || `#${id}`);
+        return `<tr>
+          <td>#${p.id}</td>
+          <td style="font-weight: 600;">${this.escapeHtml(p.title_tr)}<small style="display: block; color: var(--text-dim);">${this.escapeHtml(p.title_en || '')}</small></td>
+          <td><code style="font-size: .8rem;">/${this.escapeHtml(p.slug)}</code></td>
+          <td><i class="${this.escapeHtml(platform.icon)}"></i> ${this.escapeHtml(platform.label)}</td>
+          <td style="font-size: .8rem; max-width: 220px;" title="${this.escapeHtml(catNames.join(', '))}">${this.escapeHtml(catNames.slice(0, 2).join(', '))}${catNames.length > 2 ? ` +${catNames.length - 2}` : ''}</td>
+          <td><span class="badge ${p.status === 'published' ? 'badge-completed' : 'badge-pending'}">${p.status === 'published' ? 'Yayında' : 'Taslak'}</span></td>
+          <td>${Number(p.views || 0).toLocaleString('tr-TR')}</td>
+          <td style="text-align: right; white-space: nowrap;">
+            ${p.status === 'published' ? `<a class="btn btn-outline btn-sm" href="/${this.escapeHtml(p.slug)}" target="_blank" rel="noopener" title="Sayfayı aç"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>` : ''}
+            <button class="btn btn-cyan btn-sm" onclick="app.showEditLandingPageModal(${p.id})"><i class="fa-solid fa-pen"></i> Düzenle</button>
+            <button class="btn btn-outline btn-sm" style="color: var(--danger);" onclick="app.deleteAdminLandingPage(${p.id})"><i class="fa-solid fa-trash"></i></button>
+          </td>
+        </tr>`;
+      }).join('');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  lpPlatformOptionsHtml(selected = 'social-media') {
+    const platforms = Object.keys(this.lpPlatforms || {}).length ? this.lpPlatforms : {
+      instagram: { label: 'Instagram' }, tiktok: { label: 'TikTok' }, youtube: { label: 'YouTube' }, telegram: { label: 'Telegram' },
+      facebook: { label: 'Facebook' }, 'x-twitter': { label: 'X (Twitter)' }, spotify: { label: 'Spotify' }, linkedin: { label: 'LinkedIn' },
+      twitch: { label: 'Twitch' }, kick: { label: 'Kick' }, threads: { label: 'Threads' }, 'social-media': { label: 'Sosyal Medya' }
+    };
+    return Object.entries(platforms).map(([key, p]) => `<option value="${key}" ${key === selected ? 'selected' : ''}>${this.escapeHtml(p.label)}</option>`).join('');
+  }
+
+  // Kategori adindan platform grubu: secici listesi platforma gore katlanir.
+  lpPlatformGroupOf(name) {
+    const n = String(name || '').toLowerCase();
+    const groups = [
+      ['instagram', 'Instagram', 'fa-brands fa-instagram'], ['tiktok', 'TikTok', 'fa-brands fa-tiktok'], ['youtube', 'YouTube', 'fa-brands fa-youtube'],
+      ['telegram', 'Telegram', 'fa-brands fa-telegram'], ['twitter', 'Twitter / X', 'fa-brands fa-x-twitter'], ['facebook', 'Facebook', 'fa-brands fa-facebook'],
+      ['spotify', 'Spotify', 'fa-brands fa-spotify'], ['twitch', 'Twitch', 'fa-brands fa-twitch'], ['kick', 'Kick', 'fa-solid fa-bolt'],
+      ['threads', 'Threads', 'fa-brands fa-threads'], ['linkedin', 'LinkedIn', 'fa-brands fa-linkedin'], ['pinterest', 'Pinterest', 'fa-brands fa-pinterest'],
+      ['soundcloud', 'SoundCloud', 'fa-brands fa-soundcloud'], ['whatsapp', 'WhatsApp', 'fa-brands fa-whatsapp']
+    ];
+    const hit = groups.find(g => n.includes(g[0]));
+    return hit ? { key: hit[0], label: hit[1], icon: hit[2] } : { key: 'other', label: 'Diğer', icon: 'fa-solid fa-layer-group' };
+  }
+
+  // Secili ogelerin cip listesi (kategori ve blog secicileri ortak kullanir).
+  renderLpSelectedChips(boxId, items, onRemove) {
+    const box = document.getElementById(boxId);
+    if (!box) return;
+    box.innerHTML = items.map(item => `<span class="lp-chip-sel" title="${this.escapeHtml(item.label)}"><span>${this.escapeHtml(item.label)}</span><button type="button" aria-label="Kaldır" onclick="${onRemove(item)}">×</button></span>`).join('');
+  }
+
+  renderLpCategoryPicker() {
+    const box = document.getElementById('lp-category-picker');
+    const summary = document.getElementById('lp-category-summary');
+    if (!box) return;
+    const q = (document.getElementById('lp-category-search')?.value || '').trim().toLowerCase();
+    const selected = this.lpSelectedCategoryIds || (this.lpSelectedCategoryIds = new Set());
+    const categories = (this.allCategories || []).map(c => {
+      const services = (this.allServices || []).filter(s => s.category_id === c.id);
+      const minRate = services.reduce((m, s) => (Number(s.rate_per_1000) > 0 && (m === null || Number(s.rate_per_1000) < m) ? Number(s.rate_per_1000) : m), null);
+      return { ...c, count: services.length, minRate, label: c.name_tr || c.name, group: this.lpPlatformGroupOf(`${c.name_tr || ''} ${c.name_en || ''} ${c.name || ''}`) };
+    }).filter(c => c.count > 0 && (!q || `${c.name_tr || ''} ${c.name_en || ''} ${c.name || ''}`.toLowerCase().includes(q)));
+
+    // Platform gruplari; secili oge iceren veya aramada eslesen gruplar acik gelir.
+    const groups = new Map();
+    for (const c of categories) {
+      if (!groups.has(c.group.key)) groups.set(c.group.key, { ...c.group, items: [] });
+      groups.get(c.group.key).items.push(c);
+    }
+    box.innerHTML = [...groups.values()].map(g => {
+      const open = q || g.items.some(c => selected.has(c.id));
+      return `<details class="lp-picker-group" ${open ? 'open' : ''}>
+        <summary><i class="${g.icon}"></i> ${this.escapeHtml(g.label)} <small>${g.items.length} kategori</small></summary>
+        ${g.items.map(c => `<label class="lp-picker-item"><input type="checkbox" ${selected.has(c.id) ? 'checked' : ''} onchange="app.toggleLpCategory(${c.id}, this.checked)"><span>${this.escapeHtml(c.label)}</span><small>${c.count} servis${c.minRate !== null ? ` · ₺${c.minRate.toFixed(2)}'den` : ''}</small></label>`).join('')}
+      </details>`;
+    }).join('') || '<div class="lp-picker-empty">Eşleşen kategori yok.</div>';
+
+    const secili = (this.allCategories || []).filter(c => selected.has(c.id)).map(c => ({ id: c.id, label: c.name_tr || c.name }));
+    this.renderLpSelectedChips('lp-category-selected', secili, item => `app.toggleLpCategory(${item.id}, false)`);
+    if (summary) {
+      const count = (this.allServices || []).filter(s => selected.has(s.category_id)).length;
+      summary.textContent = selected.size ? `${selected.size} kategori seçildi → sayfada ${count} servis listelenecek.` : 'Henüz kategori seçilmedi.';
+    }
+  }
+
+  toggleLpCategory(id, checked) {
+    const selected = this.lpSelectedCategoryIds || (this.lpSelectedCategoryIds = new Set());
+    if (checked) selected.add(id); else selected.delete(id);
+    this.renderLpCategoryPicker();
+  }
+
+  async renderLpBlogPicker() {
+    const box = document.getElementById('lp-blog-picker');
+    const summary = document.getElementById('lp-blog-summary');
+    if (!box) return;
+    if (!this.currentAdminBlogPosts) {
+      try { this.currentAdminBlogPosts = (await API.getAdminBlogPosts()).posts || []; } catch { this.currentAdminBlogPosts = []; }
+    }
+    const q = (document.getElementById('lp-blog-search')?.value || '').trim().toLowerCase();
+    const selected = this.lpSelectedBlogSlugs || (this.lpSelectedBlogSlugs = new Set());
+    const posts = this.currentAdminBlogPosts
+      .filter(p => p.status === 'published' && (!q || `${p.title_tr || ''} ${p.title_en || ''} ${p.slug}`.toLowerCase().includes(q)))
+      .sort((a, b) => String(b.published_at || b.created_at || '').localeCompare(String(a.published_at || a.created_at || '')));
+    box.innerHTML = posts.map(p => `<label class="lp-picker-item"><input type="checkbox" ${selected.has(p.slug) ? 'checked' : ''} onchange="app.toggleLpBlog('${this.escapeHtml(p.slug)}', this.checked)"><span>${this.escapeHtml(p.title_tr || p.title)}</span><small>${new Date(p.published_at || p.created_at).toLocaleDateString('tr-TR')}</small></label>`).join('')
+      || '<div class="lp-picker-empty">Yayında eşleşen yazı yok.</div>';
+    const secili = this.currentAdminBlogPosts.filter(p => selected.has(p.slug)).map(p => ({ slug: p.slug, label: p.title_tr || p.title }));
+    this.renderLpSelectedChips('lp-blog-selected', secili, item => `app.toggleLpBlog('${this.escapeHtml(item.slug)}', false)`);
+    if (summary) summary.textContent = selected.size ? `${selected.size} yazı seçildi (en fazla 8).` : 'Yazı seçilmedi; bu bölüm sayfada görünmez.';
+  }
+
+  toggleLpBlog(slug, checked) {
+    const selected = this.lpSelectedBlogSlugs || (this.lpSelectedBlogSlugs = new Set());
+    if (checked) {
+      if (selected.size >= 8) return showToast('En fazla 8 ilgili yazı seçebilirsin.', 'warning');
+      selected.add(slug);
+    } else selected.delete(slug);
+    this.renderLpBlogPicker();
+  }
+
+  updateLpSlugPreview() {
+    const preview = document.getElementById('lp-slug-preview');
+    if (!preview) return;
+    const raw = document.getElementById('lp-input-slug')?.value.trim() || document.getElementById('lp-input-title-tr')?.value || '';
+    const slug = raw.toLocaleLowerCase('tr-TR').replace(/ı/g, 'i').replace(/ğ/g, 'g').replace(/ş/g, 's').replace(/ç/g, 'c').replace(/ö/g, 'o').replace(/ü/g, 'u')
+      .normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    preview.textContent = slug || '…';
+  }
+
+  // Editor her acilista katalogu ve blog listesini tazeler: yeni eklenen
+  // kategori/yazi sayfa yenilemeden secicide gorunur.
+  async refreshLpPickerSources() {
+    try { await this.loadServicesData(); } catch {}
+    try { this.currentAdminBlogPosts = (await API.getAdminBlogPosts()).posts || []; } catch {}
+  }
+
+  async showAddLandingPageModal() {
+    await this.refreshLpPickerSources();
+    document.querySelector('#modal-landing-page form')?.reset();
+    document.getElementById('lp-input-id').value = '';
+    document.getElementById('lp-input-platform').innerHTML = this.lpPlatformOptionsHtml('instagram');
+    document.getElementById('lp-input-status').value = 'draft';
+    document.getElementById('lp-editor-title').innerHTML = '<i class="fa-solid fa-store"></i> Yeni Satış Sayfası';
+    this.lpSelectedCategoryIds = new Set();
+    this.lpSelectedBlogSlugs = new Set();
+    this.renderLpCategoryPicker();
+    await this.renderLpBlogPicker();
+    this.updateLpSlugPreview();
+    document.getElementById('modal-landing-page')?.classList.add('active');
+    this.initMetaCounters();
+  }
+
+  async showEditLandingPageModal(id) {
+    const page = (this.adminLandingPages || []).find(p => p.id === id);
+    if (!page) return;
+    await this.refreshLpPickerSources();
+    const faqText = list => (list || []).map(f => `${f.q}\n${f.a}`).join('\n\n');
+    const fields = {
+      'lp-input-id': page.id, 'lp-input-slug': page.slug, 'lp-input-status': page.status || 'draft', 'lp-input-sort': page.sort_order || 0,
+      'lp-input-image': page.image_url || '',
+      'lp-input-title-tr': page.title_tr || '', 'lp-input-title-en': page.title_en || '',
+      'lp-input-subtitle-tr': page.subtitle_tr || '', 'lp-input-subtitle-en': page.subtitle_en || '',
+      'lp-input-seo-title-tr': page.seo_title_tr || '', 'lp-input-seo-title-en': page.seo_title_en || '',
+      'lp-input-seo-description-tr': page.seo_description_tr || '', 'lp-input-seo-description-en': page.seo_description_en || '',
+      'lp-input-content-tr': page.content_tr || '', 'lp-input-content-en': page.content_en || '',
+      'lp-input-steps-tr': (page.steps_tr || []).join('\n'), 'lp-input-steps-en': (page.steps_en || []).join('\n'),
+      'lp-input-faq-tr': faqText(page.faq_tr), 'lp-input-faq-en': faqText(page.faq_en),
+      'lp-input-cta-tr': page.cta_text_tr || '', 'lp-input-cta-en': page.cta_text_en || ''
+    };
+    document.getElementById('lp-input-platform').innerHTML = this.lpPlatformOptionsHtml(page.platform_key || 'social-media');
+    Object.entries(fields).forEach(([fieldId, value]) => { const field = document.getElementById(fieldId); if (field) field.value = value; });
+    this.lpSelectedCategoryIds = new Set(page.category_ids || []);
+    this.lpSelectedBlogSlugs = new Set(page.related_blog_slugs || []);
+    document.getElementById('lp-category-search').value = '';
+    document.getElementById('lp-blog-search').value = '';
+    this.renderLpCategoryPicker();
+    await this.renderLpBlogPicker();
+    document.getElementById('lp-editor-title').innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Satış Sayfasını Düzenle';
+    this.updateLpSlugPreview();
+    document.getElementById('modal-landing-page')?.classList.add('active');
+    this.initMetaCounters();
+  }
+
+  lpFormData() {
+    const v = id => (document.getElementById(id)?.value ?? '').trim();
+    return {
+      slug: v('lp-input-slug'),
+      platform_key: v('lp-input-platform'),
+      status: v('lp-input-status'),
+      sort_order: v('lp-input-sort'),
+      image_url: v('lp-input-image'),
+      category_ids: [...(this.lpSelectedCategoryIds || [])],
+      related_blog_slugs: [...(this.lpSelectedBlogSlugs || [])],
+      title_tr: v('lp-input-title-tr'), title_en: v('lp-input-title-en'),
+      subtitle_tr: v('lp-input-subtitle-tr'), subtitle_en: v('lp-input-subtitle-en'),
+      seo_title_tr: v('lp-input-seo-title-tr'), seo_title_en: v('lp-input-seo-title-en'),
+      seo_description_tr: v('lp-input-seo-description-tr'), seo_description_en: v('lp-input-seo-description-en'),
+      content_tr: v('lp-input-content-tr'), content_en: v('lp-input-content-en'),
+      steps_tr: v('lp-input-steps-tr'), steps_en: v('lp-input-steps-en'),
+      faq_tr: v('lp-input-faq-tr'), faq_en: v('lp-input-faq-en'),
+      cta_text_tr: v('lp-input-cta-tr'), cta_text_en: v('lp-input-cta-en')
+    };
+  }
+
+  async handleSaveLandingPage(e) {
+    e.preventDefault();
+    const data = this.lpFormData();
+    if (!data.category_ids.length) return showToast('En az bir servis kategorisi seç.', 'warning');
+    try {
+      const id = document.getElementById('lp-input-id').value;
+      const res = id ? await API.updateAdminLandingPage(id, data) : await API.addAdminLandingPage(data);
+      showToast(res.message, 'success');
+      this.closeModal('modal-landing-page');
+      this.loadAdminLandingPages();
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
+    }
+  }
+
+  // Kayitli sayfayi (taslak dahil) sunucunun urettigi isaretlemeyle yeni sekmede gosterir.
+  async previewLandingPage() {
+    const id = document.getElementById('lp-input-id').value;
+    if (!id) return showToast('Önizleme için önce sayfayı (taslak olarak) kaydet.', 'info');
+    try {
+      const res = await API.previewAdminLandingPage(id, this.locale);
+      const popup = window.open('', '_blank', 'width=1180,height=820');
+      if (!popup) return showToast('Önizleme için açılır pencereye izin verin.', 'info');
+      popup.opener = null;
+      popup.document.write(`<!doctype html><html lang="${this.locale}"><head><meta charset="utf-8"><title>Önizleme</title><link rel="stylesheet" href="/css/style.css"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></head><body class="neo-app-active" style="padding: 24px;"><section id="view-landing-page" class="app-view"><div class="main-content lp-page">${res.html}</div></section></body></html>`);
+      popup.document.close();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async deleteAdminLandingPage(id) {
+    if (!await confirmDialog('Bu satış sayfası kalıcı olarak silinecek. Yayındaysa adresi 404 dönmeye başlar.', {
+      title: 'Satış sayfasını sil', danger: true, confirmText: 'Sil'
+    })) return;
+    try {
+      const res = await API.deleteAdminLandingPage(id);
+      showToast(res.message, 'success');
+      this.loadAdminLandingPages();
     } catch (err) {
       showToast(err.message, 'error');
     }

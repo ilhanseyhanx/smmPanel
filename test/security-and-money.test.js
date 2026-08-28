@@ -61,10 +61,23 @@ test('demo bakiye yükleme kapalıdır', async () => {
   assert.equal(response.status, 403);
 });
 
+test('kupon doğrulanmamış e-posta ile kullanılamaz', async () => {
+  const agent = request.agent(app);
+  const login = await agent.post('/api/auth/login').send({ username: 'demo_user', password: 'user12345' });
+  await dbAsync.run('UPDATE users SET email_verified = 0 WHERE id = ?', [login.body.user.id]);
+  await dbAsync.run("INSERT INTO coupons (code, amount, amount_kurus, max_uses) VALUES ('VERIFY10', 10, 1000, 10)");
+  const response = await agent.post('/api/payments/coupon/redeem').send({ code: 'VERIFY10' });
+  assert.equal(response.status, 403);
+  assert.equal(response.body.code, 'email_verification_required');
+});
+
 test('kupon eşzamanlı isteklerde yalnızca bir kez bakiye ekler', async () => {
   const agent = request.agent(app);
   const login = await agent.post('/api/auth/login').send({ username: 'demo_user', password: 'user12345' });
   const userId = login.body.user.id;
+  // Kupon kullanimi dogrulanmis e-posta ister; bu test es zamanlilik kilidini
+  // olctugu icin kullanici dogrulanmis kabul edilir.
+  await dbAsync.run('UPDATE users SET email_verified = 1 WHERE id = ?', [userId]);
   await dbAsync.run("INSERT INTO coupons (code, amount, amount_kurus, max_uses) VALUES ('ONCE100', 100, 10000, 10)");
   const results = await Promise.all([
     agent.post('/api/payments/coupon/redeem').send({ code: 'ONCE100' }),

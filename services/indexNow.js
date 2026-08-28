@@ -56,4 +56,11 @@ function notifyBlogPublished(slug) {
   submitToIndexNow(urls.slice(0, 2)).catch(() => {});
 }
 
-module.exports = { indexNowKey, submitToIndexNow, notifyBlogPublished };
+/** Satis sayfasi (landing page) yayinlandiginda/guncellendiginde cagrilir. */
+function notifyLandingPagePublished(slug) {
+  const base = String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+  if (!base) return;
+  submitToIndexNow([`${base}/${encodeURIComponent(slug)}`, `${base}/services`]).catch(() => {});
+}
+
+module.exports = { indexNowKey, submitToIndexNow, notifyBlogPublished, notifyLandingPagePublished };

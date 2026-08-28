@@ -81,6 +81,8 @@ const ALLOWED_SETTING_KEYS = ['site_name', 'currency', 'telegram_link', 'support
   'social_proof_enabled', 'reminder_email_enabled',
   // NOWPayments kripto odeme anahtarlari
   'nowpayments_api_key', 'nowpayments_ipn_secret',
+  // Shopier kart odeme anahtarlari
+  'shopier_api_key', 'shopier_api_secret',
   // SMTP (e-posta) ayarlari
   'smtp_host', 'smtp_port', 'smtp_secure', 'smtp_user', 'smtp_pass', 'mail_from',
   // SEO & analitik: GA olcum kimligi, Search Console ve Bing Webmaster dogrulama kodlari
@@ -115,8 +117,23 @@ const serviceCreateSchema = z.object({
   description: z.string().max(5000).optional(),
   description_tr: z.string().max(5000).optional(),
   description_en: z.string().max(5000).optional(),
+  // Bilgi penceresi alanlari: baslama suresi, hiz, satir satir ozellikler.
+  start_time_tr: z.string().max(200).optional(),
+  start_time_en: z.string().max(200).optional(),
+  speed_tr: z.string().max(200).optional(),
+  speed_en: z.string().max(200).optional(),
+  features_tr: z.string().max(3000).optional(),
+  features_en: z.string().max(3000).optional(),
   refill: z.union([z.boolean(), z.string(), z.number()]).optional()
 });
+
+// Ozellik listesi satir satir saklanir; bos satirlar ve HTML atilir.
+function normalizeFeatureList(value, fallback = '') {
+  if (value === undefined || value === null) return fallback;
+  return String(value).split(/\r?\n/)
+    .map(line => normalizePlainText(line.replace(/^\s*[-•*]\s*/, ''), 200))
+    .filter(Boolean).slice(0, 20).join('\n');
+}
 
 const serviceUpdateSchema = serviceCreateSchema.partial().extend({
   status: z.coerce.number().int().min(0).max(1).optional()
@@ -469,12 +486,20 @@ router.get('/providers/:id/raw-services', requireIdParam, async (req, res) => {
     } catch { /* okunamazsa USD varsayilir */ }
     const rateSetting = await dbAsync.get("SELECT value FROM site_settings WHERE key = 'usd_try_rate'");
 
+    // Bu saglayicidan sitemize daha once eklenmis servislerin ID'leri: explorer
+    // bunlari "Sitene Eklendi" diye isaretler, ayni servis ikinci kez eklenmez.
+    const addedRows = await dbAsync.all(
+      `SELECT DISTINCT provider_service_id FROM services WHERE provider_id = ? AND provider_service_id IS NOT NULL`,
+      [providerId]
+    );
+
     res.json({
       services: safeServices,
       total: safeServices.length,
       provider_name: normalizePlainText(provider.name, 100),
       currency: providerCurrency,
-      usd_try_rate: Number(rateSetting?.value) > 0 ? Number(rateSetting.value) : 35
+      usd_try_rate: Number(rateSetting?.value) > 0 ? Number(rateSetting.value) : 35,
+      added_service_ids: addedRows.map(row => String(row.provider_service_id))
     });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Sağlayıcı servisleri alınamadı.' });
@@ -496,7 +521,10 @@ const SERVICE_EXPORT_LABELS = {
   rate_per_1000_usd_cents: 'Satış Fiyatı (cent/1000)',
   provider_cost_rate: 'Sağlayıcı Maliyeti', provider_cost_currency: 'Maliyet Para Birimi',
   provider_cost_updated_at: 'Maliyet Güncelleme', min_quantity: 'Min. Adet',
-  max_quantity: 'Maks. Adet', refill: 'Telafi (Refill)', status: 'Durum'
+  max_quantity: 'Maks. Adet', refill: 'Telafi (Refill)', status: 'Durum',
+  start_time_tr: 'Başlama Süresi (TR)', start_time_en: 'Başlama Süresi (EN)',
+  speed_tr: 'Hız (TR)', speed_en: 'Hız (EN)',
+  features_tr: 'Özellikler (TR)', features_en: 'Özellikler (EN)'
 };
 
 const PROVIDER_EXPORT_LABELS = {
@@ -556,7 +584,8 @@ router.get('/services/export', async (req, res) => {
     const passive = services.filter(s => Number(s.status) !== 1).map(s => prepareExportRow(s, { statusAsText: true }));
 
     const preferredOrder = ['id', 'name', 'name_tr', 'name_en', 'category_name', 'provider_name',
-      'provider_service_id', 'rate_per_1000', 'provider_cost_rate', 'min_quantity', 'max_quantity', 'status'];
+      'provider_service_id', 'rate_per_1000', 'provider_cost_rate', 'min_quantity', 'max_quantity', 'status',
+      'start_time_tr', 'start_time_en', 'speed_tr', 'speed_en', 'features_tr', 'features_en', 'description_tr', 'description_en'];
     // Sutunlar iki listenin birlesiminden cikarilir ki iki sayfa da ayni basliklara sahip olsun.
     const columns = columnsFromRows([...active, ...passive], { labels: SERVICE_EXPORT_LABELS, preferredOrder });
 
@@ -753,12 +782,29 @@ router.post('/services', validate(serviceCreateSchema), async (req, res) => {
   try {
     const { category_name, category_name_en, provider_id, provider_service_id, name, name_tr, name_en,
       rate_per_1000, rate_per_1000_usd, provider_cost_rate, provider_cost_currency,
-      min_quantity, max_quantity, description, description_tr, description_en, refill } = req.body;
+      min_quantity, max_quantity, description, description_tr, description_en, refill,
+      start_time_tr, start_time_en, speed_tr, speed_en, features_tr, features_en } = req.body;
     const safeNameTr = normalizePlainText(name_tr || name, 220);
     const safeNameEn = normalizePlainText(name_en || name_tr || name, 220);
 
     if (!safeNameTr) {
       return res.status(400).json({ error: 'Servis adı zorunludur.' });
+    }
+
+    // Ayni saglayicinin ayni servisi ikinci kez eklenemez: arayuz dugmeyi
+    // zaten kilitler, burasi asil koruma (toplu aktarim ve API cagrilari dahil).
+    if (provider_id && provider_service_id !== undefined && provider_service_id !== null && provider_service_id !== '') {
+      const existing = await dbAsync.get(
+        `SELECT s.id, s.name_tr, s.name, s.status FROM services s WHERE s.provider_id = ? AND s.provider_service_id = ?`,
+        [provider_id, String(provider_service_id)]
+      );
+      if (existing) {
+        return res.status(409).json({
+          error: `Bu servis zaten sitenizde ekli: #${existing.id} — ${existing.name_tr || existing.name}${existing.status ? '' : ' (pasif)'}`,
+          code: 'service_already_added',
+          service_id: existing.id
+        });
+      }
     }
 
     // Get or create category
@@ -776,8 +822,9 @@ router.post('/services', validate(serviceCreateSchema), async (req, res) => {
     const result = await dbAsync.run(
       `INSERT INTO services (category_id, provider_id, provider_service_id, name, name_tr, name_en, rate_per_1000,
        rate_per_1000_kurus, rate_per_1000_usd_cents, provider_cost_rate, provider_cost_currency, provider_cost_updated_at,
-       min_quantity, max_quantity, description, description_tr, description_en, status, refill)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${Number(provider_cost_rate) > 0 ? 'CURRENT_TIMESTAMP' : 'NULL'}, ?, ?, ?, ?, ?, 1, ?)`,
+       min_quantity, max_quantity, description, description_tr, description_en, status, refill,
+       start_time_tr, start_time_en, speed_tr, speed_en, features_tr, features_en)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${Number(provider_cost_rate) > 0 ? 'CURRENT_TIMESTAMP' : 'NULL'}, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`,
       [
         category.id,
         provider_id || null,
@@ -795,7 +842,13 @@ router.post('/services', validate(serviceCreateSchema), async (req, res) => {
         normalizePlainText(description_tr || description || 'Kaliteli sosyal medya hizmeti.', 1000),
         normalizePlainText(description_tr || description || 'Kaliteli sosyal medya hizmeti.', 1000),
         normalizePlainText(description_en || description || 'Quality social media service.', 1000),
-        isRefill
+        isRefill,
+        normalizePlainText(start_time_tr || '', 200),
+        normalizePlainText(start_time_en || '', 200),
+        normalizePlainText(speed_tr || '', 200),
+        normalizePlainText(speed_en || '', 200),
+        normalizeFeatureList(features_tr),
+        normalizeFeatureList(features_en)
       ]
     );
 
@@ -811,7 +864,8 @@ router.put('/services/:id', requireIdParam, validate(serviceUpdateSchema), async
     const current = await dbAsync.get(`SELECT s.*, c.name category_name FROM services s JOIN categories c ON c.id = s.category_id WHERE s.id = ?`, [serviceId]);
     if (!current) return res.status(404).json({ error: 'Servis bulunamadı.' });
     const { category_name, category_name_en, name, name_tr, name_en, rate_per_1000, rate_per_1000_usd,
-      min_quantity, max_quantity, status, refill, description_tr, description_en } = req.body;
+      min_quantity, max_quantity, status, refill, description_tr, description_en,
+      start_time_tr, start_time_en, speed_tr, speed_en, features_tr, features_en } = req.body;
     let categoryId = current.category_id;
     if (category_name && category_name !== current.category_name) {
       let category = await dbAsync.get('SELECT id FROM categories WHERE name = ? OR name_tr = ? LIMIT 1', [category_name, category_name]);
@@ -826,14 +880,23 @@ router.put('/services/:id', requireIdParam, validate(serviceUpdateSchema), async
     const tlRate = Number(rate_per_1000 ?? current.rate_per_1000);
     await dbAsync.run(`UPDATE services SET category_id = ?, name = ?, name_tr = ?, name_en = ?, description = ?,
       description_tr = ?, description_en = ?, rate_per_1000 = ?, rate_per_1000_kurus = ?, rate_per_1000_usd_cents = ?,
-      min_quantity = ?, max_quantity = ?, status = ?, refill = ? WHERE id = ?`, [
+      min_quantity = ?, max_quantity = ?, status = ?, refill = ?,
+      start_time_tr = ?, start_time_en = ?, speed_tr = ?, speed_en = ?, features_tr = ?, features_en = ? WHERE id = ?`, [
       categoryId, safeNameTr, safeNameTr, safeNameEn,
       normalizePlainText(description_tr ?? current.description_tr ?? current.description ?? '', 1000),
       normalizePlainText(description_tr ?? current.description_tr ?? current.description ?? '', 1000),
       normalizePlainText(description_en ?? current.description_en ?? current.description ?? '', 1000),
       tlRate, toKurus(tlRate), Math.round(Number(rate_per_1000_usd ?? (current.rate_per_1000_usd_cents / 100)) * 100),
       parseInt(min_quantity ?? current.min_quantity), parseInt(max_quantity ?? current.max_quantity),
-      status === undefined ? current.status : parseInt(status), refill === undefined ? current.refill : parseInt(refill), serviceId
+      status === undefined ? current.status : parseInt(status), refill === undefined ? current.refill : parseInt(refill),
+      // Alan gonderilmediyse (orn. durum degistirme) mevcut deger korunur.
+      normalizePlainText(start_time_tr ?? current.start_time_tr ?? '', 200),
+      normalizePlainText(start_time_en ?? current.start_time_en ?? '', 200),
+      normalizePlainText(speed_tr ?? current.speed_tr ?? '', 200),
+      normalizePlainText(speed_en ?? current.speed_en ?? '', 200),
+      normalizeFeatureList(features_tr, current.features_tr ?? ''),
+      normalizeFeatureList(features_en, current.features_en ?? ''),
+      serviceId
     ]);
 
     res.json({ message: 'Servis bilgileri güncellendi!' });
@@ -919,6 +982,18 @@ router.post('/services/bulk-delete', validate(bulkDeleteSchema), async (req, res
 });
 
 // BULK STATUS UPDATE (ACTIVE/INACTIVE)
+// Favori isaretle / kaldir (admin "Favori Servislerim" sekmesi).
+const favoriteSchema = z.object({ favorite: z.coerce.number().int().min(0).max(1) });
+router.post('/services/:id/favorite', requireIdParam, validate(favoriteSchema), async (req, res) => {
+  try {
+    const result = await dbAsync.run('UPDATE services SET is_favorite = ? WHERE id = ?', [req.body.favorite, req.recordId]);
+    if (!result.changes) return res.status(404).json({ error: 'Servis bulunamadı.' });
+    res.json({ message: req.body.favorite ? 'Servis favorilere eklendi.' : 'Servis favorilerden çıkarıldı.', is_favorite: req.body.favorite });
+  } catch (err) {
+    res.status(500).json({ error: 'Favori durumu güncellenemedi.' });
+  }
+});
+
 router.post('/services/bulk-status', validate(bulkStatusSchema), async (req, res) => {
   try {
     const { service_ids, status } = req.body;
@@ -1231,6 +1306,49 @@ router.get('/orders', async (req, res) => {
     res.json({ orders });
   } catch (err) {
     res.status(500).json({ error: 'Siparişler alınamadı.' });
+  }
+});
+
+// Tamamlanan siparis icin yorum daveti maili. Sablon (metin + Trustpilot
+// baglantisi) email_templates tablosundadir; admin E-Posta Pazarlama >
+// Sablonlar ekranindan diledigi gibi duzenler. Gonderen adres mailer'daki
+// mail_from ayaridir (info@...).
+router.post('/orders/:id/review-mail', requireIdParam, async (req, res) => {
+  try {
+    const order = await dbAsync.get(`
+      SELECT o.id, o.status, o.review_mail_sent_at, u.id AS user_id, u.username, u.email, u.email_opt_out,
+             COALESCE(s.name_tr, s.name) AS service_name
+      FROM orders o JOIN users u ON o.user_id = u.id JOIN services s ON o.service_id = s.id
+      WHERE o.id = ?`, [req.recordId]);
+    if (!order) return res.status(404).json({ error: 'Sipariş bulunamadı.' });
+    if (order.status !== 'completed') return res.status(400).json({ error: 'Yorum daveti yalnızca tamamlanmış siparişler için gönderilebilir.' });
+    if (!order.email) return res.status(400).json({ error: 'Kullanıcının kayıtlı e-posta adresi yok.' });
+    if (order.email_opt_out) return res.status(400).json({ error: 'Kullanıcı e-posta listesinden çıkmış; davet gönderilemez.' });
+
+    const { REVIEW_TEMPLATE_NAME } = require('../services/emailTemplates');
+    const template = await dbAsync.get('SELECT subject, body FROM email_templates WHERE name = ?', [REVIEW_TEMPLATE_NAME]);
+    if (!template) return res.status(500).json({ error: `"${REVIEW_TEMPLATE_NAME}" şablonu bulunamadı. E-Posta Pazarlama > Şablonlar bölümünden aynı adla oluşturun.` });
+
+    const siteRow = await dbAsync.get("SELECT value FROM site_settings WHERE key = 'site_name'").catch(() => null);
+    const siteName = String(siteRow?.value || 'Jet SMM Panel').trim();
+    const baseUrl = String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+
+    // Siparise ozel yer tutucular once doldurulur; kalanlari (kullanici adi,
+    // site adi/linki) ve abonelikten cikma altligini ortak yardimci ekler.
+    const oncesi = {
+      subject: String(template.subject).replaceAll('{siparis_no}', String(order.id)).replaceAll('{servis_adi}', order.service_name || ''),
+      body: String(template.body).replaceAll('{siparis_no}', String(order.id)).replaceAll('{servis_adi}', order.service_name || '')
+    };
+    const mail = renderMarketingEmail(oncesi, { id: order.user_id, username: order.username }, siteName, baseUrl);
+
+    const { sendMail } = require('../services/mailer');
+    const sent = await sendMail({ to: order.email, subject: mail.subject, html: mail.html });
+    if (!sent) return res.status(500).json({ error: 'SMTP yapılandırılmamış. Ayarlar > E-Posta bölümünü doldurun.' });
+
+    await dbAsync.run('UPDATE orders SET review_mail_sent_at = CURRENT_TIMESTAMP WHERE id = ?', [order.id]);
+    res.json({ message: `Yorum daveti ${order.email} adresine gönderildi.` });
+  } catch (err) {
+    res.status(500).json({ error: 'Mail gönderilemedi: ' + (err.message || 'bilinmeyen hata') });
   }
 });
 
@@ -1812,8 +1930,18 @@ router.get('/blog', async (req, res) => {
   }
 });
 
+// Yazi icindeki servis ID'li linkler kaydedilirken satis sayfasina (yoksa
+// /services'e) cevrilir: servisler silinip yeniden eklenince link kirilmasin.
+async function blogLinkleriniDuzelt(body) {
+  const { rewriteServiceLinks } = require('../utils/landingPages');
+  for (const key of ['content', 'content_tr', 'content_en']) {
+    if (body[key]) body[key] = await rewriteServiceLinks(body[key], dbAsync);
+  }
+}
+
 router.post('/blog', async (req, res) => {
   try {
+    await blogLinkleriniDuzelt(req.body);
     const { title, title_tr, title_en, category, category_tr, category_en, summary, summary_tr, summary_en,
       content, content_tr, content_en, image_url, seo_title_tr, seo_title_en, seo_description_tr,
       seo_description_en, status, reading_minutes } = req.body;
@@ -1855,6 +1983,7 @@ router.post('/blog', async (req, res) => {
 
 router.put('/blog/:id', requireIdParam, async (req, res) => {
   try {
+    await blogLinkleriniDuzelt(req.body);
     const current = await dbAsync.get('SELECT * FROM blog_posts WHERE id = ?', [req.recordId]);
     if (!current) return res.status(404).json({ error: 'Blog yazısı bulunamadı.' });
     const titleTr = normalizePlainText(req.body.title_tr || current.title_tr || current.title, 180);
@@ -1892,6 +2021,101 @@ router.delete('/blog/:id', requireIdParam, async (req, res) => {
     res.json({ message: 'Blog yazısı silindi.' });
   } catch (err) {
     res.status(500).json({ error: 'Blog silinemedi.' });
+  }
+});
+
+// SATIS SAYFALARI (platform bazli landing page'ler) — bkz. utils/landingPages.js
+const landingPages = require('../utils/landingPages');
+
+function landingRowForEditor(row) {
+  return {
+    ...row,
+    category_ids: landingPages.parseIds(landingPages.parseJsonArray(row.category_ids)),
+    steps_tr: landingPages.parseJsonArray(row.steps_tr),
+    steps_en: landingPages.parseJsonArray(row.steps_en),
+    faq_tr: landingPages.parseJsonArray(row.faq_tr),
+    faq_en: landingPages.parseJsonArray(row.faq_en),
+    related_blog_slugs: landingPages.parseJsonArray(row.related_blog_slugs)
+  };
+}
+
+router.get('/landing-pages', async (req, res) => {
+  try {
+    const rows = await dbAsync.all('SELECT * FROM landing_pages ORDER BY sort_order ASC, id DESC');
+    res.json({ pages: rows.map(landingRowForEditor), platforms: landingPages.PLATFORMS });
+  } catch {
+    res.status(500).json({ error: 'Satış sayfaları alınamadı.' });
+  }
+});
+
+// Taslaklar dahil onizleme: editordeki "Onizle" dugmesi bu ucu kullanir.
+router.get('/landing-pages/:id/preview', requireIdParam, async (req, res) => {
+  try {
+    const row = await dbAsync.get('SELECT slug FROM landing_pages WHERE id = ?', [req.recordId]);
+    if (!row) return res.status(404).json({ error: 'Sayfa bulunamadı.' });
+    const lang = req.query.lang === 'en' ? 'en' : 'tr';
+    const data = await landingPages.fetchPage(dbAsync, row.slug, { lang, includeDraft: true });
+    res.json({ ...data, html: landingPages.renderLandingPageHtml({ ...data, lang }) });
+  } catch {
+    res.status(500).json({ error: 'Önizleme üretilemedi.' });
+  }
+});
+
+const LANDING_COLUMNS = ['slug', 'status', 'platform_key', 'category_ids', 'image_url', 'title_tr', 'title_en', 'subtitle_tr', 'subtitle_en',
+  'seo_title_tr', 'seo_title_en', 'seo_description_tr', 'seo_description_en', 'content_tr', 'content_en', 'steps_tr', 'steps_en',
+  'faq_tr', 'faq_en', 'cta_text_tr', 'cta_text_en', 'related_blog_slugs', 'sort_order'];
+
+router.post('/landing-pages', async (req, res) => {
+  try {
+    const result = landingPages.normalizePagePayload(req.body);
+    if (result.error) return res.status(400).json({ error: result.error });
+    const f = result.fields;
+    if (await dbAsync.get('SELECT id FROM landing_pages WHERE slug = ?', [f.slug])) {
+      return res.status(409).json({ error: `"${f.slug}" adresi zaten kullanılıyor; başka bir slug seçin.` });
+    }
+    const ins = await dbAsync.run(
+      `INSERT INTO landing_pages (${LANDING_COLUMNS.join(', ')}, author_id, updated_at, published_at)
+       VALUES (${LANDING_COLUMNS.map(() => '?').join(', ')}, ?, CURRENT_TIMESTAMP, CASE WHEN ? = 'published' THEN CURRENT_TIMESTAMP ELSE NULL END)`,
+      [...LANDING_COLUMNS.map(c => f[c]), req.user.id, f.status]
+    );
+    req.app.get('invalidateLandingCache')?.();
+    if (f.status === 'published') require('../services/indexNow').notifyLandingPagePublished(f.slug);
+    res.json({ message: f.status === 'published' ? 'Satış sayfası yayınlandı!' : 'Satış sayfası taslak olarak kaydedildi.', id: ins.id, slug: f.slug });
+  } catch (err) {
+    res.status(500).json({ error: 'Satış sayfası kaydedilemedi.' });
+  }
+});
+
+router.put('/landing-pages/:id', requireIdParam, async (req, res) => {
+  try {
+    const current = await dbAsync.get('SELECT * FROM landing_pages WHERE id = ?', [req.recordId]);
+    if (!current) return res.status(404).json({ error: 'Sayfa bulunamadı.' });
+    const result = landingPages.normalizePagePayload(req.body, current);
+    if (result.error) return res.status(400).json({ error: result.error });
+    const f = result.fields;
+    if (f.slug !== current.slug && await dbAsync.get('SELECT id FROM landing_pages WHERE slug = ? AND id != ?', [f.slug, req.recordId])) {
+      return res.status(409).json({ error: `"${f.slug}" adresi zaten kullanılıyor; başka bir slug seçin.` });
+    }
+    await dbAsync.run(
+      `UPDATE landing_pages SET ${LANDING_COLUMNS.map(c => `${c} = ?`).join(', ')}, updated_at = CURRENT_TIMESTAMP,
+       published_at = CASE WHEN ? = 'published' THEN COALESCE(published_at, CURRENT_TIMESTAMP) ELSE NULL END WHERE id = ?`,
+      [...LANDING_COLUMNS.map(c => f[c]), f.status, req.recordId]
+    );
+    req.app.get('invalidateLandingCache')?.();
+    if (f.status === 'published') require('../services/indexNow').notifyLandingPagePublished(f.slug);
+    res.json({ message: 'Satış sayfası güncellendi.', slug: f.slug });
+  } catch {
+    res.status(500).json({ error: 'Satış sayfası güncellenemedi.' });
+  }
+});
+
+router.delete('/landing-pages/:id', requireIdParam, async (req, res) => {
+  try {
+    await dbAsync.run('DELETE FROM landing_pages WHERE id = ?', [req.recordId]);
+    req.app.get('invalidateLandingCache')?.();
+    res.json({ message: 'Satış sayfası silindi.' });
+  } catch {
+    res.status(500).json({ error: 'Satış sayfası silinemedi.' });
   }
 });
 

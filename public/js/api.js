@@ -119,6 +119,8 @@ const API = {
   // Payments & Coupons
   addFunds: (amount, method) => API.request('/payments/add-funds', { method: 'POST', body: JSON.stringify({ amount, method }) }),
   createPaytrPayment: (amount) => API.request('/payments/paytr/token', { method: 'POST', body: JSON.stringify({ amount }) }),
+  createShopierPayment: (amount) => API.request('/payments/shopier/create', { method: 'POST', body: JSON.stringify({ amount }) }),
+  getShopierPaymentStatus: (oid) => API.request(`/payments/shopier/status/${encodeURIComponent(oid)}`),
   getCryptoCurrencies: () => API.request('/payments/nowpayments/currencies'),
   getCryptoMin: (coin) => API.request(`/payments/nowpayments/min/${encodeURIComponent(coin)}`),
   createCryptoPayment: (amount, pay_currency) => API.request('/payments/nowpayments/create', { method: 'POST', body: JSON.stringify({ amount, pay_currency }) }),
@@ -148,6 +150,7 @@ const API = {
   addAdminService: (data) => API.request('/admin/services', { method: 'POST', body: JSON.stringify(data) }),
   updateAdminService: (id, data) => API.request(`/admin/services/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteAdminService: (id) => API.request(`/admin/services/${id}`, { method: 'DELETE' }),
+  setAdminServiceFavorite: (id, favorite) => API.request(`/admin/services/${id}/favorite`, { method: 'POST', body: JSON.stringify({ favorite }) }),
   bulkDeleteAdminServices: (data) => API.request('/admin/services/bulk-delete', { method: 'POST', body: JSON.stringify(data) }),
   bulkStatusAdminServices: (data) => API.request('/admin/services/bulk-status', { method: 'POST', body: JSON.stringify(data) }),
   getAdminUsers: (q = '') => API.request(`/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
@@ -158,6 +161,9 @@ const API = {
   assignUserOrder: (userId, data) => API.request(`/admin/users/${userId}/assign-order`, { method: 'POST', body: JSON.stringify(data) }),
   getAdminOrders: (q = '') => API.request(`/admin/orders${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   updateOrderStatus: (orderId, status) => API.request(`/admin/orders/${orderId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  sendOrderReviewMail: (orderId) => API.request(`/admin/orders/${orderId}/review-mail`, { method: 'POST' }),
+  requestVerifyCode: () => API.request('/auth/verify-email/request-code', { method: 'POST' }),
+  confirmVerifyCode: (code) => API.request('/auth/verify-email/confirm-code', { method: 'POST', body: JSON.stringify({ code }) }),
   getAdminPaymentNotifications: () => API.request('/admin/payment-notifications'),
   approveAdminPaymentNotification: (id) => API.request(`/admin/payment-notifications/${id}/approve`, { method: 'POST' }),
   rejectAdminPaymentNotification: (id) => API.request(`/admin/payment-notifications/${id}/reject`, { method: 'POST' }),
@@ -206,6 +212,15 @@ const API = {
   // Public Blog
   getBlogPosts: (lang = 'tr') => API.request(`/blog?lang=${encodeURIComponent(lang)}`),
   getBlogPostDetail: (slug, lang = 'tr') => API.request(`/blog/${slug}?lang=${encodeURIComponent(lang)}`),
+
+  // Satış sayfaları (platform bazlı landing page'ler)
+  getLandingPages: (lang = 'tr') => API.request(`/landing-pages?lang=${encodeURIComponent(lang)}`),
+  getLandingPage: (slug, lang = 'tr') => API.request(`/landing-pages/${encodeURIComponent(slug)}?lang=${encodeURIComponent(lang)}`),
+  getAdminLandingPages: () => API.request('/admin/landing-pages'),
+  previewAdminLandingPage: (id, lang = 'tr') => API.request(`/admin/landing-pages/${id}/preview?lang=${encodeURIComponent(lang)}`),
+  addAdminLandingPage: (data) => API.request('/admin/landing-pages', { method: 'POST', body: JSON.stringify(data) }),
+  updateAdminLandingPage: (id, data) => API.request(`/admin/landing-pages/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteAdminLandingPage: (id) => API.request(`/admin/landing-pages/${id}`, { method: 'DELETE' }),
 
   // Admin Blog, Landing Platforms & Featured Cards
   getAdminBlogPosts: () => API.request('/admin/blog'),

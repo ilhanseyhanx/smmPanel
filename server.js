@@ -41,6 +41,9 @@ app.use(helmet({
       imgSrc: ["'self'", 'data:', 'https:'],
       connectSrc: ["'self'", 'https://*.google-analytics.com', 'https://*.analytics.google.com', 'https://www.googletagmanager.com'],
       objectSrc: ["'none'"],
+      // Shopier odeme formu tarayicidan dogrudan shopier.com'a POST edilir;
+      // helmet'in varsayilan "form-action 'self'" kurali bunu sessizce engeller.
+      formAction: ["'self'", 'https://www.shopier.com'],
       frameAncestors: ["'none'"]
     }
   },
@@ -129,6 +132,12 @@ app.get('/sitemap.xml', async (req, res) => {
     for (const post of posts) {
       urls.push({ loc: `${base}/blog/${encodeURIComponent(post.slug)}`, priority: '0.7', changefreq: 'monthly', lastmod: (post.updated_at || post.created_at || '').slice(0, 10) });
     }
+    // Satis sayfalari (kok adresli landing page'ler): donusum sayfalari,
+    // blogdan daha yuksek oncelikle sunulur.
+    const satisSayfalari = await require('./utils/landingPages').listPublished(dbAsync).catch(() => []);
+    for (const sayfa of satisSayfalari) {
+      urls.push({ loc: `${base}/${encodeURIComponent(sayfa.slug)}`, priority: '0.9', changefreq: 'weekly', lastmod: sayfa.lastmod || undefined });
+    }
     // Sik degisen sayfalara lastmod: en guncel yazinin tarihi makul bir
     // vekildir (katalog ve blog listesi en gec o gun degismistir).
     const sonYazi = posts.reduce((max, p) => {
@@ -187,10 +196,7 @@ app.get('/robots.txt', (req, res) => {
     'User-agent: ClaudeBot', 'Allow: /', '',
     'User-agent: PerplexityBot', 'Allow: /', '',
     'User-agent: Google-Extended', 'Allow: /', '',
-    `Sitemap: ${base}/sitemap.xml`,
-    // llms.txt'i burada da duyuruyoruz: denetim araclari ve bazi AI botlari
-    // dosyayi once robots.txt uzerinden arar.
-    `LLM-Content: ${base}/llms.txt`, ''
+    `Sitemap: ${base}/sitemap.xml`, ''
   ].join('\n'));
 });
 
@@ -221,6 +227,15 @@ app.get('/llms.txt', async (req, res) => {
       `- [İade Politikası](${base}/refund): İade, düşüş telafisi (refill) ve garanti koşulları`,
       ''
     ];
+    const satisSayfalari = await require('./utils/landingPages').listPublished(dbAsync).catch(() => []);
+    if (satisSayfalari.length) {
+      lines.push('## Hizmet Sayfaları');
+      for (const sayfa of satisSayfalari) {
+        const ozet = String(sayfa.subtitle || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+        lines.push(`- [${String(sayfa.title).replace(/[\[\]]/g, '')}](${base}/${encodeURIComponent(sayfa.slug)})${ozet ? `: ${ozet}` : ''}`);
+      }
+      lines.push('');
+    }
     if (posts.length) {
       lines.push('## Blog Yazıları');
       for (const post of posts) {
@@ -414,6 +429,7 @@ app.get('/blog/:slug', async (req, res) => {
     let html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
     html = stripGatedMarkup(html, sessionState(req));
     html = await applyTelegramLink(html);
+    html = await applyLandingLinks(html);
     // API dokumanindaki localhost ornekleri botlar icin gercek adrese cevrilir.
     html = html.split('http://localhost:3000').join(base);
     html = html.replace(ANNOUNCEMENT_BLOCK, await announcementHtml());
@@ -547,6 +563,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/campaigns', require('./routes/campaigns'));
+app.use('/api/landing-pages', require('./routes/landingPages'));
 
 // ----------------------------------------------------
 // RESELLER API V2 (Standard SMM API Endpoint)
@@ -567,8 +584,22 @@ app.post('/api/v2', async (req, res) => {
   }
 
   if (action === 'services') {
-    const list = await dbAsync.all(`SELECT id as service, name, rate_per_1000_kurus, min_quantity as min, max_quantity as max, category_id as category FROM services WHERE status = 1`);
-    return res.json(list.map(item => ({ ...item, rate: fromKurus(item.rate_per_1000_kurus).toFixed(2), rate_per_1000_kurus: undefined })));
+    // Bayi API'si Ingilizce oncelikli: EN alani bossa TR'ye duser.
+    const list = await dbAsync.all(`SELECT id as service, COALESCE(NULLIF(name_en, ''), name) as name, rate_per_1000_kurus,
+      min_quantity as min, max_quantity as max, category_id as category, refill,
+      COALESCE(NULLIF(description_en, ''), description, '') as description,
+      COALESCE(NULLIF(start_time_en, ''), start_time_tr, '') as start_time,
+      COALESCE(NULLIF(speed_en, ''), speed_tr, '') as speed,
+      COALESCE(NULLIF(features_en, ''), features_tr, '') as features
+      FROM services WHERE status = 1`);
+    return res.json(list.map(item => ({
+      ...item,
+      rate: fromKurus(item.rate_per_1000_kurus).toFixed(2),
+      refill: Number(item.refill) === 1,
+      // Ozellikler satir satir saklanir; API'de dizi olarak verilir.
+      features: String(item.features || '').split(/\r?\n/).filter(Boolean),
+      rate_per_1000_kurus: undefined
+    })));
   }
 
   if (action === 'balance') {
@@ -969,12 +1000,18 @@ async function buildServicesSsr(base) {
     const yorumlar = await dbAsync.all(`
       SELECT r.rating, r.comment, r.display_name, u.username
       FROM reviews r LEFT JOIN users u ON r.user_id = u.id
-      WHERE r.status = 'approved' ORDER BY r.id DESC LIMIT 9`).catch(() => []);
+      WHERE r.status = 'approved' ORDER BY r.id DESC LIMIT 24`).catch(() => []);
+    // Kart yapisi app.js reviewCardHtml ile birebir ayni tutulur; JS acilinca
+    // ayni gorunumun uzerine yazar, gorsel sicrama olmaz.
     reviewsHtml = yorumlar.map(y => {
       const puan = Math.max(1, Math.min(5, Number(y.rating) || 5));
       const ad = String(y.display_name || y.username || 'Müşteri').slice(0, 2) + '***';
-      return `<div class="review-card"><div class="review-stars" aria-label="${puan}/5">${'★'.repeat(puan)}${'☆'.repeat(5 - puan)}</div>`
-        + `<p>${escapeHtmlText(y.comment)}</p><strong>${escapeHtmlText(ad)}</strong></div>`;
+      const basHarf = ad.slice(0, 2).toLocaleUpperCase('tr-TR');
+      return `<div class="review-card">`
+        + `<div class="review-top"><span class="review-quote" aria-hidden="true">“</span><span class="review-stars" aria-label="${puan}/5 yıldız">${'★'.repeat(puan)}${'☆'.repeat(5 - puan)}</span></div>`
+        + `<p>${escapeHtmlText(y.comment)}</p>`
+        + `<div class="review-who"><span class="review-avatar" aria-hidden="true">${escapeHtmlText(basHarf)}</span>`
+        + `<span class="review-id"><strong>${escapeHtmlText(ad)}</strong><em>✓ Doğrulanmış müşteri</em></span></div></div>`;
     }).join('');
   } catch { /* DB hazir degilse tablo bos kalir, sayfa yine calisir */ }
   servicesSsrCache = { at: Date.now(), rows, jsonLd, reviewsHtml };
@@ -1019,6 +1056,111 @@ async function buildBlogSsr(base) {
   return blogSsrCache;
 }
 app.set('invalidateBlogSsrCache', () => { blogSsrCache = { at: 0, cards: '', jsonLd: '' }; });
+
+// SATIS SAYFALARI: alt bilgi ve hizmet listesindeki baglanti seridi her
+// sayfaya sunucu tarafinda basilir (ic baglanti agi — botlar JS beklemeden
+// gorur). 60 sn onbellek; admin kaydedince aninda tazelenir.
+let landingLinksCache = { at: 0, footer: '', aside: '' };
+async function landingLinksParts() {
+  if (Date.now() - landingLinksCache.at < 60000) return landingLinksCache;
+  let footer = '';
+  let aside = '';
+  try {
+    const { dbAsync } = require('./config/database');
+    const { listPublished, landingLinksHtml } = require('./utils/landingPages');
+    const pages = await listPublished(dbAsync);
+    footer = landingLinksHtml(pages, { variant: 'footer' });
+    aside = landingLinksHtml(pages, { variant: 'aside' });
+  } catch { /* DB hazir degilse serit bos kalir */ }
+  landingLinksCache = { at: Date.now(), footer, aside };
+  return landingLinksCache;
+}
+async function applyLandingLinks(html) {
+  const parts = await landingLinksParts();
+  return html
+    .replace('<nav class="footer-links footer-links-pages" id="footer-landing-pages"></nav>',
+      parts.footer ? `<nav class="footer-links footer-links-pages" id="footer-landing-pages" aria-label="Hizmet sayfaları">${parts.footer}</nav>` : '')
+    // Blog listesinin sag sutunu: satis sayfalari dugme listesi.
+    .replace('<aside class="blog-aside" id="blog-landing-aside"></aside>',
+      parts.aside ? `<aside class="blog-aside" id="blog-landing-aside" aria-label="Hizmet sayfaları">${parts.aside}</aside>` : '');
+}
+app.set('invalidateLandingCache', () => { landingLinksCache = { at: 0, footer: '', aside: '' }; });
+
+// Satis sayfasi SSR: /instagram-takipci-satin-al gibi kok adresler. Bilinen
+// SPA rotalari ve sistem dosyalari yukaridaki tabloda oldugu icin buraya
+// dusmez; veritabaninda yayinda bir sayfa yoksa akis 404'e (catch-all) gecer.
+app.use(async (req, res, next) => {
+  try {
+    if (req.method !== 'GET') return next();
+    const route = req.path.replace(/^\/+/, '');
+    const landing = require('./utils/landingPages');
+    if (!route || route.includes('/') || !landing.SLUG_RE.test(route) || landing.RESERVED_SLUGS.has(route)) return next();
+    if (pageForPath(req.path).status === 200) return next();
+    const { dbAsync } = require('./config/database');
+    const data = await landing.fetchPage(dbAsync, route, { lang: 'tr' });
+    if (!data) {
+      // Taslak sayfa: blog yazilari yayindan once link vermis olabilir; 404
+      // yerine gecici olarak hizmet listesine yonlendir (kirik ic link olmasin).
+      const taslak = await dbAsync.get("SELECT id FROM landing_pages WHERE slug = ? AND status != 'published'", [route]).catch(() => null);
+      if (taslak) return res.redirect(302, '/services');
+      return next();
+    }
+    const { page } = data;
+
+    dbAsync.run('UPDATE landing_pages SET views = COALESCE(views, 0) + 1 WHERE id = ?', [page.id]).catch(() => {});
+    require('./services/visitorTracker').recordVisit(req).catch(() => {});
+
+    const base = String(process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const siteRow = await dbAsync.get("SELECT value FROM site_settings WHERE key = 'site_name'").catch(() => null);
+    const siteName = String(siteRow?.value || 'Jet SMM Panel').trim() || 'Jet SMM Panel';
+    const pageUrl = `${base}/${encodeURIComponent(page.slug)}`;
+    const aciklama = buildMetaDescription([page.seo_description, page.subtitle, page.content], `${page.title} | ${siteName}`);
+    const baslik = `${page.seo_title || page.title} | ${siteName}`;
+    const gorsel = page.image_url && !page.image_url.toLowerCase().endsWith('.svg')
+      ? (page.image_url.startsWith('http') ? page.image_url : `${base}${page.image_url}`)
+      : `${base}/og-image.png`;
+
+    let html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+    html = stripGatedMarkup(html, sessionState(req));
+    html = await applyTelegramLink(html);
+    html = await applyLandingLinks(html);
+    html = html.split('http://localhost:3000').join(base);
+    html = html.replace(ANNOUNCEMENT_BLOCK, await announcementHtml());
+    const { renderFaqHtml } = require('./utils/faqContent');
+    html = html.replace('<div id="landing-faq"></div>', `<div id="landing-faq">${renderFaqHtml()}</div>`);
+
+    html = html
+      .replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeAttr(baslik)}</title>`)
+      .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${escapeAttr(aciklama)}">`)
+      .replace(/<link rel="canonical"[^>]*>/, `<link rel="canonical" href="${pageUrl}">`)
+      .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escapeAttr(baslik)}">`)
+      .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escapeAttr(aciklama)}">`)
+      .replace(/<meta property="og:url"[^>]*>/, `<meta property="og:url" content="${pageUrl}">`)
+      .replace(/<meta property="og:image" content="[^"]*">/, `<meta property="og:image" content="${escapeAttr(gorsel)}">`)
+      .replace(/<meta name="twitter:title"[^>]*>/, `<meta name="twitter:title" content="${escapeAttr(baslik)}">`)
+      .replace(/<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${escapeAttr(aciklama)}">`)
+      .replace(/<meta name="twitter:image"[^>]*>/, `<meta name="twitter:image" content="${escapeAttr(gorsel)}">`);
+
+    const semalar = landing.buildLandingJsonLd({ ...data, base, siteName, lang: 'tr' })
+      .map(obj => `  <script type="application/ld+json">${JSON.stringify(obj)}</script>\n`).join('');
+    html = html.replace('</head>', `${await buildSeoSnippet(false)}${semalar}</head>`);
+
+    // Gorunum: ana sayfa gizlenir, satis sayfasi gorunur ve icerigi basilir.
+    // data-lp-slug: app.js acilista bu sayfayi tanir ve makineyi canli veriyle hidrate eder.
+    html = html
+      .replace('<section id="view-landing" class="app-view neo-landing">', '<section id="view-landing" class="app-view neo-landing" style="display: none;">')
+      .replace('<section id="view-landing-page" class="app-view" style="display: none;">',
+        `<section id="view-landing-page" class="app-view" data-lp-slug="${escapeAttr(page.slug)}" style="display: block;">`)
+      .replace('<div class="main-content lp-page" id="landing-page-root"></div>',
+        `<div class="main-content lp-page" id="landing-page-root">${landing.renderLandingPageHtml({ ...data, lang: 'tr' })}</div>`);
+    html = enforceSingleH1(html, 'view-landing-page');
+
+    res.setHeader('Cache-Control', 'no-cache');
+    res.type('html').send(useMinifiedAssets(html));
+  } catch (err) {
+    next(err);
+  }
+});
 
 // Fallback SPA Route
 app.use(async (req, res) => {
@@ -1079,6 +1221,7 @@ app.use(async (req, res) => {
     if (seo.common) html = html.replace('</head>', `${seo.common}</head>`);
 
     html = await applyTelegramLink(html);
+    html = await applyLandingLinks(html);
 
     // API dokumani gelistirme kolayligi icin localhost ornekleriyle yazilir;
     // botlar JS beklemeden dogru adresi gorsun diye sunucu tarafinda cevrilir
@@ -1099,7 +1242,7 @@ app.use(async (req, res) => {
       if (ssr.reviewsHtml) {
         html = html
           .replace('<div class="services-reviews" id="services-reviews" style="display: none;">', '<div class="services-reviews" id="services-reviews">')
-          .replace('<div class="services-reviews-grid" id="services-reviews-grid"></div>', `<div class="services-reviews-grid" id="services-reviews-grid">${ssr.reviewsHtml}</div>`);
+          .replace(/(<div class="services-reviews-track" id="services-reviews-grid"[^>]*>)<\/div>/, `$1${ssr.reviewsHtml}</div>`);
       }
     } else if (sayfa.view === 'view-blog') {
       const ssr = await buildBlogSsr(base || '');

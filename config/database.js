@@ -169,11 +169,33 @@ async function runMigrations() {
       );
     }
   }
+  // Yorum daveti sablonu mevcut kurulumlara da eklenir (name UNIQUE oldugu
+  // icin varsa dokunulmaz — adminin duzenledigi metin asla ezilmez).
+  {
+    const { DEFAULT_TEMPLATES, REVIEW_TEMPLATE_NAME } = require('../services/emailTemplates');
+    const reviewTemplate = DEFAULT_TEMPLATES.find(t => t.name === REVIEW_TEMPLATE_NAME);
+    if (reviewTemplate) {
+      await dbAsync.run(
+        'INSERT OR IGNORE INTO email_templates (name, subject, body) VALUES (?, ?, ?)',
+        [reviewTemplate.name, reviewTemplate.subject, reviewTemplate.body]
+      );
+    }
+  }
   await addColumnIfMissing('services', 'rate_per_1000_kurus', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing('services', 'name_tr', 'TEXT');
   await addColumnIfMissing('services', 'name_en', 'TEXT');
   await addColumnIfMissing('services', 'description_tr', 'TEXT');
   await addColumnIfMissing('services', 'description_en', 'TEXT');
+  // Servis bilgi penceresi (musteri tarafindaki "i" butonu ve siparis
+  // sayfasindaki kart): baslama suresi, hiz ve satir satir ozellik listesi.
+  await addColumnIfMissing('services', 'start_time_tr', 'TEXT');
+  await addColumnIfMissing('services', 'start_time_en', 'TEXT');
+  await addColumnIfMissing('services', 'speed_tr', 'TEXT');
+  await addColumnIfMissing('services', 'speed_en', 'TEXT');
+  await addColumnIfMissing('services', 'features_tr', 'TEXT');
+  await addColumnIfMissing('services', 'features_en', 'TEXT');
+  // Admin panel "Favori Servislerim" sekmesi: sik kullanilan servislere hizli erisim.
+  await addColumnIfMissing('services', 'is_favorite', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing('services', 'rate_per_1000_usd_cents', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing('services', 'provider_cost_rate', 'REAL');
   await addColumnIfMissing('services', 'provider_cost_currency', "TEXT DEFAULT 'USD'");
@@ -202,6 +224,8 @@ async function runMigrations() {
   await addColumnIfMissing('orders', 'drip_runs', 'INTEGER NOT NULL DEFAULT 1');
   await addColumnIfMissing('orders', 'drip_interval_minutes', 'INTEGER');
   await addColumnIfMissing('orders', 'failure_reason', 'TEXT');
+  // Yorum daveti maili gonderildiyse zamani tutulur (cift gonderimi onlemek icin).
+  await addColumnIfMissing('orders', 'review_mail_sent_at', 'DATETIME');
   await addColumnIfMissing('payments', 'amount_kurus', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing('coupons', 'amount_kurus', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing('payment_notifications', 'amount_kurus', 'INTEGER NOT NULL DEFAULT 0');
@@ -596,6 +620,43 @@ async function initDatabase() {
         sort_order INTEGER DEFAULT 0
       )
     `);
+
+    // 14b. Satis sayfalari (platform bazli landing page'ler, iki dilli).
+    // Kategorilerdeki servisler sayfada otomatik listelenir (utils/landingPages.js).
+    await dbAsync.run(`
+      CREATE TABLE IF NOT EXISTS landing_pages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        slug TEXT UNIQUE NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        platform_key TEXT DEFAULT 'social-media',
+        category_ids TEXT DEFAULT '[]',
+        image_url TEXT,
+        title_tr TEXT NOT NULL,
+        title_en TEXT,
+        subtitle_tr TEXT,
+        subtitle_en TEXT,
+        seo_title_tr TEXT,
+        seo_title_en TEXT,
+        seo_description_tr TEXT,
+        seo_description_en TEXT,
+        content_tr TEXT,
+        content_en TEXT,
+        steps_tr TEXT DEFAULT '[]',
+        steps_en TEXT DEFAULT '[]',
+        faq_tr TEXT DEFAULT '[]',
+        faq_en TEXT DEFAULT '[]',
+        cta_text_tr TEXT,
+        cta_text_en TEXT,
+        related_blog_slugs TEXT DEFAULT '[]',
+        sort_order INTEGER DEFAULT 0,
+        views INTEGER NOT NULL DEFAULT 0,
+        author_id INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME,
+        published_at DATETIME
+      )
+    `);
+    await dbAsync.run('CREATE INDEX IF NOT EXISTS idx_landing_pages_status ON landing_pages(status, sort_order)');
 
     // 15. Landing Featured Cards Table
     await dbAsync.run(`

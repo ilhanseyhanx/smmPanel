@@ -52,7 +52,20 @@ function sanitizeRichText(value) {
     },
     allowedSchemes: ['http', 'https', 'mailto'],
     transformTags: {
-      a: sanitizeHtml.simpleTransform('a', { rel: 'noopener noreferrer nofollow' }, true),
+      // Ic baglantilar (site ici, "/" ile baslayan) nofollow ALMAZ: aksi halde
+      // blog yazilari arasindaki baglanti degeri arama motorlarina hic akmaz
+      // ve konu kumesi/pillar yapisi islevsiz kalir. Dis baglantilar ise
+      // nofollow + yeni sekme ile acilir (spam ve guvenlik).
+      a(tagName, attribs) {
+        const href = String(attribs.href || '');
+        const icBaglanti = href.startsWith('/') || href.startsWith('#');
+        return {
+          tagName: 'a',
+          attribs: icBaglanti
+            ? { ...attribs, rel: 'noopener noreferrer' }
+            : { ...attribs, rel: 'noopener noreferrer nofollow', target: '_blank' }
+        };
+      },
       img: sanitizeHtml.simpleTransform('img', { loading: 'lazy' }, true)
     }
   });

@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260818g">
+  <link rel="stylesheet" href="/css/style.css?v=20260828b">
 </head>
 <body>
 
@@ -253,7 +253,7 @@
                   <th scope="col" style="width: 150px;">1000 Adet Fiyatı</th>
                   <th scope="col" style="width: 140px;">Min / Max</th>
                   <th scope="col" style="width: 120px;">Garantili</th>
-                  <th scope="col" style="width: 120px; text-align: right;">İşlem</th>
+                  <th scope="col" style="width: 236px; text-align: right;">İşlem</th>
                 </tr>
               </thead>
               <tbody>
@@ -281,7 +281,7 @@
         <!-- Müşteri yorumları şeridi: onaylı yorumlar kayan bant halinde
              döner; hiç onaylı yorum yoksa bölüm tamamen gizli kalır. -->
         <div class="neo-reviews" id="reviews-ticker" style="display: none;" aria-label="Müşteri yorumları">
-          <div class="neo-section-heading"><span class="neo-label">4.5 / MÜŞTERİLER NE DİYOR?</span></div>
+          <div class="neo-section-heading"><span class="neo-label">4.5 / MÜŞTERİLER NE DİYOR?</span><h2>ONLAR<br>ANLATSIN.</h2></div>
           <div class="reviews-ticker-viewport">
             <div class="reviews-ticker-track" id="reviews-ticker-track"></div>
           </div>
@@ -334,12 +334,14 @@
               </div>
 
               <!-- Service Details Banner -->
-              <div id="service-info-box" style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.25); padding: 14px; border-radius: var(--radius-md); margin-bottom: 20px; font-size: 0.88rem;">
-                <div id="service-desc" style="color: var(--text-muted);">Servis açıklaması burada görünecektir.</div>
-                <div style="display: flex; gap: 16px; margin-top: 8px; font-weight: 600; color: #fff;">
-                  <span><i class="fa-solid fa-tag"></i> 1000 Adet: <span id="service-rate" style="color: var(--accent-cyan);">₺0.00</span></span>
-                  <span><i class="fa-solid fa-arrows-left-right"></i> Limit: <span id="service-limits">0 - 0</span></span>
+              <div id="service-info-box" class="service-info-card">
+                <div id="service-desc" class="service-info-desc">Servis açıklaması burada görünecektir.</div>
+                <div class="service-info-stats">
+                  <span><i class="fa-solid fa-tag"></i> <span data-i18n="info.price_1000">1000 Adet</span>: <span id="service-rate" style="color: var(--accent-cyan);">₺0.00</span></span>
+                  <span><i class="fa-solid fa-arrows-left-right"></i> <span data-i18n="info.limits">Limit</span>: <span id="service-limits">0 - 0</span></span>
                 </div>
+                <!-- Baslama suresi / hiz / ozellikler: admin doldurduysa JS burada kartlari basar. -->
+                <div id="service-info-extra"></div>
               </div>
 
               <div class="form-group">
@@ -569,7 +571,7 @@
                   <th scope="col" style="width: 150px;">1000 Adet Fiyatı</th>
                   <th scope="col" style="width: 140px;">Min / Max Limit</th>
                   <th scope="col" style="width: 120px;">Garantili</th>
-                  <th scope="col" style="width: 178px; text-align: right;">İşlem</th>
+                  <th scope="col" style="width: 236px; text-align: right;">İşlem</th>
                 </tr>
               </thead>
               <tbody id="full-services-tbody">
@@ -580,11 +582,18 @@
           <div id="services-pagination" class="table-pagination" aria-live="polite"></div>
         </div>
 
-        <!-- Müşteri yorumları: onaylı yorumlar kart düzeninde. Sunucu tarafında
-             da basılır (buildServicesSsr) — botlar JS beklemeden görür. -->
+        <!-- Müşteri yorumları: yatay kaydırmalı karusel — yorum sayısı artsa
+             da sayfayı dikeyde uzatmaz; mobilde parmakla kaydırılır, masaüstünde
+             oklar + otomatik akış. Sunucu tarafında da basılır (buildServicesSsr). -->
         <div class="services-reviews" id="services-reviews" style="display: none;">
-          <h2 style="margin: 40px 0 20px;">Müşterilerimiz Ne Diyor?</h2>
-          <div class="services-reviews-grid" id="services-reviews-grid"></div>
+          <div class="services-reviews-head">
+            <h2 style="margin: 0;">Müşterilerimiz Ne Diyor?</h2>
+            <div class="services-reviews-nav" aria-hidden="false">
+              <button type="button" class="btn btn-outline btn-sm" onclick="app.scrollServicesReviews(-1)" aria-label="Önceki yorumlar">‹</button>
+              <button type="button" class="btn btn-outline btn-sm" onclick="app.scrollServicesReviews(1)" aria-label="Sonraki yorumlar">›</button>
+            </div>
+          </div>
+          <div class="services-reviews-track" id="services-reviews-grid" tabindex="0" aria-label="Yorumlar (yatay kaydırılabilir)"></div>
         </div>
       </div>
     </section>
@@ -670,6 +679,11 @@
               <i class="fa-solid fa-credit-card"></i>
               <strong>Kredi / Banka Kartı</strong>
               <small>PayTR güvenli ödeme</small>
+            </button>
+            <button type="button" class="pay-tile" data-method="shopier" onclick="app.selectPayMethod('shopier')">
+              <i class="fa-solid fa-bag-shopping"></i>
+              <strong>Kredi / Banka Kartı</strong>
+              <small>Shopier güvenli ödeme</small>
             </button>
             <button type="button" class="pay-tile" data-method="crypto" onclick="app.selectPayMethod('crypto')">
               <i class="fa-brands fa-bitcoin"></i>
@@ -977,17 +991,23 @@ Content-Type: application/json
 
     <!-- 6.6. PUBLIC BLOG LIST VIEW -->
     <section id="view-blog" class="app-view" style="display: none;">
-      <div class="main-content" style="max-width: 1100px;">
+      <div class="main-content" style="max-width: 1320px;">
         <div class="text-center mb-30">
           <h1 style="font-size: 2.2rem; margin-bottom: 10px;" data-i18n="blog.title">📰 SMM & Sosyal Medya Rehberi</h1>
           <p style="color: var(--text-muted); max-width: 600px; margin: 0 auto;" data-i18n="blog.subtitle">Google sıralamanızı yükseltecek, hesabınızı organik ve hızlı büyütecek en güncel tüyo ve makaleler.</p>
         </div>
 
-        <div class="blog-cards-grid" id="public-blog-cards">
-          <!-- Dynamic Blog Cards -->
+        <div class="blog-layout">
+          <div class="blog-main">
+            <div class="blog-cards-grid" id="public-blog-cards">
+              <!-- Dynamic Blog Cards -->
+            </div>
+            <!-- Sayfa basina 15 yazi; kalani numarali sayfalarla gezilir. -->
+            <div id="blog-pagination" class="table-pagination" aria-live="polite" style="margin-top: 24px;"></div>
+          </div>
+          <!-- Satış sayfaları listesi: sunucu tarafında doldurulur (server.js applyLandingLinks). -->
+          <aside class="blog-aside" id="blog-landing-aside"></aside>
         </div>
-        <!-- Sayfa basina 15 yazi; kalani numarali sayfalarla gezilir. -->
-        <div id="blog-pagination" class="table-pagination" aria-live="polite" style="margin-top: 24px;"></div>
       </div>
     </section>
 
@@ -1021,6 +1041,13 @@ Content-Type: application/json
           </div>
         </article>
       </div>
+    </section>
+
+    <!-- 6.7b. SATIŞ SAYFASI (platform bazlı landing page)
+         İçerik sunucuda basılır (server.js satış sayfası SSR'ı) ve SPA içinde
+         /api/landing-pages/:slug ile aynı isaretleme yeniden çizilir. -->
+    <section id="view-landing-page" class="app-view" style="display: none;">
+      <div class="main-content lp-page" id="landing-page-root"></div>
     </section>
 
     <!-- 6.8. SPLIT-SCREEN AUTH VIEW (MATCHING IMAGE DESIGN) -->
@@ -1174,6 +1201,7 @@ Content-Type: application/json
             <option value="tickets">Destek</option>
             <option value="reviews">Yorumlar</option>
             <option value="landing-design">İçerik</option>
+            <option value="landing-pages">Satış Sayfaları</option>
             <option value="ai-studio">AI Asistan</option>
             <option value="site-settings">Ayarlar</option>
             <option value="reset">Tehlike Alanı</option>
@@ -1202,6 +1230,7 @@ Content-Type: application/json
 
             <div class="admin-nav-label">Yayın & Sistem</div>
             <button type="button" class="sidebar-item" data-admin-tab="landing-design" onclick="app.switchAdminTab('landing-design', event)"><i class="fa-solid fa-pen-ruler"></i><span>Ana Sayfa & Blog</span></button>
+            <button type="button" class="sidebar-item" data-admin-tab="landing-pages" onclick="app.switchAdminTab('landing-pages', event)"><i class="fa-solid fa-store"></i><span>Satış Sayfaları</span></button>
             <button type="button" class="sidebar-item" data-admin-tab="ai-studio" onclick="app.switchAdminTab('ai-studio', event)"><i class="fa-solid fa-wand-magic-sparkles"></i><span>AI İçerik & Operasyon</span></button>
             <button type="button" class="sidebar-item" data-admin-tab="site-settings" onclick="app.toggleSettingsMenu()"><i class="fa-solid fa-sliders"></i><span>Site Ayarları</span><i class="fa-solid fa-chevron-down settings-caret" aria-hidden="true"></i></button>
             <!-- Site Ayarları alt kategorileri: ana butona basınca açılır/kapanır -->
@@ -1474,7 +1503,7 @@ Content-Type: application/json
                 <button id="open-price-audit-btn" class="btn btn-cyan btn-sm" onclick="app.openProviderPriceAudit()">
                   <i class="fa-solid fa-scale-balanced"></i> Fiyat Kontrol Merkezi
                 </button>
-                <input aria-label="Servis ara" type="text" id="admin-added-services-search" class="form-control" placeholder="🔍 Servis ara..." oninput="app.debouncedFilterAdminAddedServices()" style="width: 250px;">
+                <input aria-label="Servis ara" type="text" id="admin-added-services-search" class="form-control" placeholder="🔍 Ad, kategori veya sağlayıcı servis ID..." oninput="app.debouncedFilterAdminAddedServices()" style="width: 300px;">
               </div>
             </div>
 
@@ -1486,6 +1515,9 @@ Content-Type: application/json
                 </button>
                 <button type="button" class="tab-btn" id="admin-services-tab-passive" onclick="app.switchAdminServicesStatus(0)">
                   <i class="fa-solid fa-ban"></i> Pasif Servisler <span class="badge badge-pending" id="admin-services-passive-count">0</span>
+                </button>
+                <button type="button" class="tab-btn" id="admin-services-tab-favorite" onclick="app.switchAdminServicesStatus('favorite')" title="Satırdaki ⭐ ile eklediğiniz servisler">
+                  <i class="fa-solid fa-star" style="color: #f5b301;"></i> Favori Servislerim <span class="badge badge-processing" id="admin-services-favorite-count">0</span>
                 </button>
               </div>
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
@@ -2271,7 +2303,7 @@ Content-Type: application/json
                   </div>
                 </div>
 
-                <!-- BÖLÜM 3: ÖDEME (PAYTR + KRİPTO) -->
+                <!-- BÖLÜM 3: ÖDEME (PAYTR + SHOPIER + KRİPTO) -->
                 <div class="settings-section" data-section="payment" style="display: none;">
                   <div class="glass-card mb-20">
                     <h3 style="margin-bottom: 8px; color: #fff;"><i class="fa-solid fa-credit-card" style="color: var(--accent-cyan);"></i> PayTR Ödeme Entegrasyonu</h3>
@@ -2312,6 +2344,40 @@ Content-Type: application/json
                     <div class="form-group" style="max-width: 280px;">
                       <label for="setting-provider-threshold" class="form-label">Uyarı Eşiği (sağlayıcının para biriminde, örn. $)</label>
                       <input type="number" id="setting-provider-threshold" class="form-control" min="0" step="1" placeholder="Örn: 20">
+                    </div>
+                  </div>
+
+                  <div class="glass-card mb-20">
+                    <h3 style="margin-bottom: 8px; color: #fff;"><i class="fa-solid fa-bag-shopping" style="color: #7c3aed;"></i> Shopier Kart Ödemeleri</h3>
+                    <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 16px;">
+                      Shopier panelinden <b>Ayarlar → Kişisel Erişim Anahtarları</b> bölümünde ürettiğiniz
+                      <b>API Anahtarı</b> ve <b>API Şifresi</b> değerlerini girin. İkisi de doluysa Bakiye Yükle
+                      sayfasında "Shopier ile Öde" seçeneği otomatik açılır.
+                      <br><b>Önemli:</b> Shopier panelinde <b>Geri Dönüş (Callback) Adresi</b> alanına aşağıdaki adresi yazın —
+                      ödeme sonucu bu adrese gelir, yoksa bakiye otomatik yüklenmez:
+                    </p>
+                    <div class="form-group">
+                      <label for="shopier-callback-url" class="form-label">Shopier Geri Dönüş Adresi</label>
+                      <div style="display: flex; gap: 8px;">
+                        <input type="text" id="shopier-callback-url" class="form-control" readonly value="https://siteniz.com/api/payments/shopier/callback">
+                        <button type="button" class="btn btn-outline btn-sm" onclick="app.copyShopierCallbackUrl(this)" title="Kopyala"><i class="fa-solid fa-copy"></i></button>
+                      </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                      <div class="form-group">
+                        <label for="setting-shopier-key" class="form-label">Shopier API Anahtarı</label>
+                        <div style="display: flex; gap: 8px;">
+                          <input type="password" id="setting-shopier-key" class="form-control" autocomplete="off" placeholder="a1b2c3...">
+                          <button type="button" class="btn btn-outline btn-sm" onclick="app.toggleSecretField('setting-shopier-key', this)" title="Göster / Gizle"><i class="fa-solid fa-eye"></i></button>
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label for="setting-shopier-secret" class="form-label">Shopier API Şifresi</label>
+                        <div style="display: flex; gap: 8px;">
+                          <input type="password" id="setting-shopier-secret" class="form-control" autocomplete="off" placeholder="d4e5f6...">
+                          <button type="button" class="btn btn-outline btn-sm" onclick="app.toggleSecretField('setting-shopier-secret', this)" title="Göster / Gizle"><i class="fa-solid fa-eye"></i></button>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -2510,6 +2576,38 @@ Content-Type: application/json
               </div>
             </div>
 
+          </div>
+
+          <!-- SATIŞ SAYFALARI (platform bazlı landing page yönetimi) -->
+          <div id="admin-tab-landing-pages" style="display: none;">
+            <div class="flex-between mb-20" style="gap: 16px; flex-wrap: wrap;">
+              <div>
+                <h2 style="margin-bottom: 6px;">🛒 Satış Sayfaları</h2>
+                <p style="color: var(--text-muted); font-size: .9rem; max-width: 720px;">Platform bazlı, iki dilli satış sayfaları (ör. <b>/instagram-takipci-satin-al</b>). Seçtiğin kategorilerdeki aktif servisler sayfada otomatik listelenir; ziyaretçi giriş yapmışsa doğrudan siparişe, yapmamışsa giriş ekranına yönlendirilir. Taslak olarak kaydedip istediğin gün yayınlayabilirsin.</p>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="app.showAddLandingPageModal()"><i class="fa-solid fa-plus"></i> Yeni Satış Sayfası</button>
+            </div>
+            <div class="glass-card">
+              <div class="table-responsive">
+                <table class="custom-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">ID</th>
+                      <th scope="col">Başlık</th>
+                      <th scope="col">Adres</th>
+                      <th scope="col">Platform</th>
+                      <th scope="col">Kategori</th>
+                      <th scope="col">Durum</th>
+                      <th scope="col">Görüntülenme</th>
+                      <th scope="col" style="text-align: right;">İşlem</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-landing-pages-tbody">
+                    <!-- Dynamic landing page rows -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
           <!-- ADMIN AI STUDIO -->
@@ -2789,6 +2887,8 @@ Content-Type: application/json
     <div class="brand-wordmark">SMM<span>JET</span></div>
     <p>Hızlı. Güvenli. Ölçülebilir.<br>Sosyal büyümede yeni standart.</p>
     <nav class="footer-links" aria-label="Alt bilgi menüsü"><a href="/about" onclick="app.navigate('about');return false;">Hakkımızda</a><a href="/services" onclick="app.navigate('services');return false;">Hizmetler</a><a href="/blog" onclick="app.navigate('blog');return false;">Blog</a><a href="/api-docs" onclick="app.navigate('api-docs');return false;">API</a><a href="/tickets" onclick="app.navigate('tickets');return false;">Destek</a><a href="/terms" onclick="app.navigate('terms');return false;">Kullanım Şartları</a><a href="/privacy" onclick="app.navigate('privacy');return false;">Gizlilik &amp; KVKK</a><a href="/refund" onclick="app.navigate('refund');return false;">İade Politikası</a></nav>
+    <!-- Satış sayfaları bağlantıları: sunucu tarafında doldurulur (server.js applyLandingLinks). -->
+    <nav class="footer-links footer-links-pages" id="footer-landing-pages"></nav>
     <!-- Sosyal profiller: admin panelde adres girilen kanallar app.js
          tarafindan eklenir; Telegram varsayilan olarak burada durur ki
          JavaScript calismadan da (arama motoru botlari) gorunsun. -->
@@ -2797,6 +2897,53 @@ Content-Type: application/json
     </ul>
     <small>© 2026 SMMJET. Tüm hakları saklıdır.</small>
   </footer>
+
+  <!-- E-POSTA DOĞRULAMA MODALI: 6 haneli kod akışı (ör. kupon kullanımı
+       doğrulanmış e-posta ister). Üç adım: davet -> kod girişi -> başarı.
+       Yalnızca oturumlu kullanıcıya gönderilir (misafir DOM'u şişmesin). -->
+  <!--AUTH-ONLY-START-->
+  <div class="modal-backdrop" id="modal-email-verify">
+    <div class="modal-body glass-card email-verify-modal" role="dialog" aria-modal="true" aria-labelledby="ev-title">
+      <button type="button" class="ev-close" aria-label="Kapat" onclick="app.closeEmailVerifyModal()">×</button>
+
+      <!-- ADIM 1: davet -->
+      <div id="ev-step-intro">
+        <div class="ev-icon ev-icon-pulse" aria-hidden="true"><i class="fa-solid fa-envelope-open-text"></i></div>
+        <h2 id="ev-title">E-postanı Doğrula</h2>
+        <p id="ev-intro-text">Kupon kullanabilmen için e-posta adresini doğrulaman gerekiyor. Sana 6 haneli bir kod gönderelim:</p>
+        <p class="ev-email" id="ev-email"></p>
+        <button type="button" class="btn btn-primary" id="ev-send-btn" onclick="app.sendVerifyCode()"><i class="fa-solid fa-paper-plane"></i> Doğrulama Kodu Gönder</button>
+      </div>
+
+      <!-- ADIM 2: kod girişi -->
+      <div id="ev-step-code" style="display: none;">
+        <div class="ev-icon" aria-hidden="true"><i class="fa-solid fa-shield-halved"></i></div>
+        <h2>Doğrulama Kodunu Gir</h2>
+        <p>E-postana gelen <b>6 haneli</b> kodu gir. Gelen kutunda yoksa spam klasörüne de bak.</p>
+        <div class="ev-code-row" id="ev-code-row">
+          <input type="text" class="ev-code-box" maxlength="1" inputmode="numeric" autocomplete="one-time-code" aria-label="1. hane">
+          <input type="text" class="ev-code-box" maxlength="1" inputmode="numeric" aria-label="2. hane">
+          <input type="text" class="ev-code-box" maxlength="1" inputmode="numeric" aria-label="3. hane">
+          <input type="text" class="ev-code-box" maxlength="1" inputmode="numeric" aria-label="4. hane">
+          <input type="text" class="ev-code-box" maxlength="1" inputmode="numeric" aria-label="5. hane">
+          <input type="text" class="ev-code-box" maxlength="1" inputmode="numeric" aria-label="6. hane">
+        </div>
+        <p class="ev-error" id="ev-error" role="alert"></p>
+        <button type="button" class="btn btn-primary" id="ev-confirm-btn" onclick="app.confirmVerifyCode()"><i class="fa-solid fa-check"></i> Doğrula</button>
+        <p class="ev-resend">Kod gelmedi mi? <button type="button" id="ev-resend-btn" onclick="app.sendVerifyCode(true)">Tekrar gönder</button><span id="ev-resend-timer"></span></p>
+      </div>
+
+      <!-- ADIM 3: başarı -->
+      <div id="ev-step-success" style="display: none;">
+        <div class="ev-success-circle" aria-hidden="true">
+          <svg viewBox="0 0 52 52"><circle class="ev-success-ring" cx="26" cy="26" r="24" fill="none"/><path class="ev-success-check" fill="none" d="M14 27l8 8 16-16"/></svg>
+        </div>
+        <h2>Doğrulandı! 🎉</h2>
+        <p id="ev-success-text">E-posta adresin doğrulandı. Şimdi kuponunu kullanabilirsin.</p>
+      </div>
+    </div>
+  </div>
+  <!--AUTH-ONLY-END-->
 
   <!-- API KULLANIM KILAVUZU MODALI -->
   <div class="modal-backdrop" id="modal-api-guide">
@@ -2808,6 +2955,24 @@ Content-Type: application/json
         </button>
       </div>
       <div id="api-guide-body" class="api-guide"></div>
+    </div>
+  </div>
+
+  <!-- SERVICE INFO MODAL: hizmet tablosundaki "i" butonu bunu acar -->
+  <div class="modal-backdrop" id="modal-service-info">
+    <div class="modal-body glass-card service-info-modal" role="dialog" aria-modal="true" aria-labelledby="service-info-title">
+      <div class="service-info-modal-head">
+        <div style="min-width:0;">
+          <span id="service-info-category" class="badge badge-processing"></span>
+          <h3 id="service-info-title" class="service-info-modal-title"></h3>
+        </div>
+        <button aria-label="Kapat" onclick="app.closeModal('modal-service-info')" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.3rem; flex-shrink:0;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div id="service-info-modal-body" class="service-info-modal-body"></div>
+      <div class="service-info-modal-foot">
+        <div class="service-info-modal-price"><small id="service-info-price-label">1000 Adet</small><strong id="service-info-price">₺0.00</strong></div>
+        <button type="button" class="btn btn-primary" id="service-info-buy-btn" onclick="app.buyFromServiceInfo()"><i class="fa-solid fa-cart-shopping"></i> <span>Satın Al</span></button>
+      </div>
     </div>
   </div>
 
@@ -3000,58 +3165,106 @@ Content-Type: application/json
 
   <!-- ADD / CUSTOMIZE SINGLE SERVICE MODAL (ADMIN) -->
   <div class="modal-backdrop" id="modal-add-single-service">
-    <div class="modal-body glass-card">
-      <div class="flex-between mb-20">
-        <h3><i class="fa-solid fa-plus-circle"></i> Servisi Özelleştir ve Sitemize Ekle</h3>
-        <button aria-label="Kapat" onclick="app.closeModal('modal-add-single-service')" style="background: none; border: none; color: var(--text-muted); cursor: pointer;"><i class="fa-solid fa-xmark"></i></button>
+    <div class="modal-body glass-card service-editor-modal">
+      <div class="flex-between mb-20 service-editor-head">
+        <div>
+          <h3><i class="fa-solid fa-plus-circle"></i> Servisi Özelleştir ve Sitemize Ekle</h3>
+          <small style="color: var(--text-muted);">Sağlayıcı: <strong id="single-provider-label">—</strong> · Sağlayıcı Servis #<strong id="single-provider-service-label">—</strong></small>
+        </div>
+        <button aria-label="Kapat" onclick="app.closeModal('modal-add-single-service')" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.2rem;"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <form onsubmit="app.handleSaveSingleService(event)">
         <input type="hidden" id="single-provider-id">
         <input type="hidden" id="single-provider-service-id">
 
-        <div class="form-group">
-          <label for="single-category-name" class="form-label">Kategori Adı</label>
-          <input type="text" id="single-category-name" class="form-control" placeholder="Örn: Instagram Takipçi" required>
-        </div>
-        <div class="form-group"><label for="single-category-name-en" class="form-label">Category Name (English)</label><input type="text" id="single-category-name-en" class="form-control" placeholder="Instagram Followers"></div>
-
-        <div class="form-group">
-          <label for="single-service-name" class="form-label">Servis Adı (Türkçe)</label>
-          <input type="text" id="single-service-name" class="form-control" required>
-        </div>
-        <div class="form-group"><label for="single-service-name-en" class="form-label">Service Name (English)</label><input type="text" id="single-service-name-en" class="form-control" required></div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-          <div class="form-group">
-            <label for="single-cost-price" class="form-label">Geliş Fiyatı (1000 Adet)</label>
-            <input type="text" id="single-cost-price" class="form-control" readonly style="opacity: 0.7;">
-          </div>
-          <div class="form-group">
-            <label for="single-sell-price" class="form-label">Sitedeki Satış Fiyatı (₺ / 1000 Adet)</label>
-            <input type="number" id="single-sell-price" class="form-control" step="0.01" required>
-          </div>
-        </div>
-        <div class="form-group"><label for="single-sell-price-usd" class="form-label">USD Satış Fiyatı ($ / 1000)</label><input type="number" id="single-sell-price-usd" class="form-control" step="0.0001" min="0" value="0"></div>
-        <div class="form-group"><label for="single-description-tr" class="form-label">Türkçe Açıklama</label><textarea id="single-description-tr" class="form-control" rows="2"></textarea></div>
-        <div class="form-group"><label for="single-description-en" class="form-label">English Description</label><textarea id="single-description-en" class="form-control" rows="2"></textarea></div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-          <div class="form-group">
-            <label for="single-min-qty" class="form-label">Minimum Miktar</label>
-            <input type="number" id="single-min-qty" class="form-control" required>
-          </div>
-          <div class="form-group">
-            <label for="single-max-qty" class="form-label">Maksimum Miktar</label>
-            <input type="number" id="single-max-qty" class="form-control" required>
+        <!-- 1. Kategori & İsim -->
+        <div class="service-editor-section">
+          <div class="service-editor-section-title"><span class="service-editor-step">1</span> Kategori & Servis Adı</div>
+          <div class="bilingual-editor-grid compact-grid">
+            <div class="language-editor-card">
+              <div class="language-editor-title">🇹🇷 Türkçe</div>
+              <div class="form-group">
+                <label for="single-category-name" class="form-label">Kategori Adı</label>
+                <input type="text" id="single-category-name" class="form-control" placeholder="Örn: Instagram Takipçi" required>
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="single-service-name" class="form-label">Servis Adı</label>
+                <input type="text" id="single-service-name" class="form-control" placeholder="Örn: Instagram Türk Takipçi [Garantili]" required>
+              </div>
+            </div>
+            <div class="language-editor-card">
+              <div class="language-editor-title">🇬🇧 English</div>
+              <div class="form-group">
+                <label for="single-category-name-en" class="form-label">Category Name</label>
+                <input type="text" id="single-category-name-en" class="form-control" placeholder="Instagram Followers">
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label for="single-service-name-en" class="form-label">Service Name</label>
+                <input type="text" id="single-service-name-en" class="form-control" placeholder="Instagram Turkish Followers [Guaranteed]" required>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div class="form-group">
-          <label for="single-refill-select" class="form-label">Garanti & Telafi Durumu</label>
-          <select id="single-refill-select" aria-label="Telafi türü" class="form-control">
-            <option value="1">🛡️ Garantili (Telafili Servis)</option>
-            <option value="0">⚡ Standart (Telafisiz Servis)</option>
-          </select>
+        <!-- 2. Fiyat & Miktar -->
+        <div class="service-editor-section">
+          <div class="service-editor-section-title"><span class="service-editor-step">2</span> Fiyat & Miktar</div>
+          <div class="service-editor-grid-3">
+            <div class="form-group">
+              <label for="single-cost-price" class="form-label">Geliş Fiyatı (1000 Adet)</label>
+              <input type="text" id="single-cost-price" class="form-control" readonly style="opacity: 0.7;">
+            </div>
+            <div class="form-group">
+              <label for="single-sell-price" class="form-label">Satış Fiyatı (₺ / 1000)</label>
+              <input type="number" id="single-sell-price" class="form-control" step="0.01" required>
+            </div>
+            <div class="form-group">
+              <label for="single-sell-price-usd" class="form-label">USD Satış Fiyatı ($ / 1000)</label>
+              <input type="number" id="single-sell-price-usd" class="form-control" step="0.0001" min="0" value="0">
+            </div>
+          </div>
+          <div class="service-editor-grid-3">
+            <div class="form-group">
+              <label for="single-min-qty" class="form-label">Minimum Miktar</label>
+              <input type="number" id="single-min-qty" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="single-max-qty" class="form-label">Maksimum Miktar</label>
+              <input type="number" id="single-max-qty" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="single-refill-select" class="form-label">Garanti & Telafi</label>
+              <select id="single-refill-select" aria-label="Telafi türü" class="form-control">
+                <option value="1">🛡️ Garantili (Telafili)</option>
+                <option value="0">⚡ Standart (Telafisiz)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Bilgi penceresi -->
+        <div class="service-editor-section">
+          <div class="service-editor-section-title"><span class="service-editor-step">3</span> Bilgi Penceresi <small style="font-weight:500;color:var(--text-muted);">— müşteri, servis satırındaki <i class="fa-solid fa-circle-info"></i> butonuna basınca ve sipariş sayfasında görür</small></div>
+          <div class="bilingual-editor-grid compact-grid">
+            <div class="language-editor-card">
+              <div class="language-editor-title">🇹🇷 Türkçe</div>
+              <div class="service-editor-grid-2">
+                <div class="form-group"><label for="single-start-time-tr" class="form-label">Başlama Süresi</label><input type="text" id="single-start-time-tr" class="form-control" placeholder="Örn: 0-15 dakika" maxlength="200"></div>
+                <div class="form-group"><label for="single-speed-tr" class="form-label">Hız</label><input type="text" id="single-speed-tr" class="form-control" placeholder="Örn: Günde 5.000-10.000" maxlength="200"></div>
+              </div>
+              <div class="form-group"><label for="single-features-tr" class="form-label">Özellikler <small style="color:var(--text-muted);">(her satıra bir özellik)</small></label><textarea id="single-features-tr" class="form-control" rows="4" placeholder="Gerçek görünümlü profiller&#10;30 gün düşüş telafisi&#10;Şifre gerekmez"></textarea></div>
+              <div class="form-group" style="margin-bottom:0;"><label for="single-description-tr" class="form-label">Açıklama</label><textarea id="single-description-tr" class="form-control" rows="3"></textarea></div>
+            </div>
+            <div class="language-editor-card">
+              <div class="language-editor-title">🇬🇧 English</div>
+              <div class="service-editor-grid-2">
+                <div class="form-group"><label for="single-start-time-en" class="form-label">Start Time</label><input type="text" id="single-start-time-en" class="form-control" placeholder="e.g. 0-15 minutes" maxlength="200"></div>
+                <div class="form-group"><label for="single-speed-en" class="form-label">Speed</label><input type="text" id="single-speed-en" class="form-control" placeholder="e.g. 5,000-10,000 / day" maxlength="200"></div>
+              </div>
+              <div class="form-group"><label for="single-features-en" class="form-label">Features <small style="color:var(--text-muted);">(one per line)</small></label><textarea id="single-features-en" class="form-control" rows="4" placeholder="Real-looking profiles&#10;30-day refill guarantee&#10;No password required"></textarea></div>
+              <div class="form-group" style="margin-bottom:0;"><label for="single-description-en" class="form-label">Description</label><textarea id="single-description-en" class="form-control" rows="3"></textarea></div>
+            </div>
+          </div>
         </div>
 
         <button type="submit" class="btn btn-cyan" style="width: 100%;">
@@ -3063,8 +3276,8 @@ Content-Type: application/json
 
   <!-- EDIT ADDED SERVICE DETAILS MODAL (ADMIN) -->
   <div class="modal-backdrop" id="modal-edit-service-details">
-    <div class="modal-body glass-card">
-      <div class="flex-between mb-20">
+    <div class="modal-body glass-card service-editor-modal">
+      <div class="flex-between mb-20 service-editor-head">
         <h3><i class="fa-solid fa-pen-to-square"></i> Servis İsmi & Detaylarını Düzenle</h3>
         <button aria-label="Kapat" onclick="app.closeModal('modal-edit-service-details')" style="background: none; border: none; color: var(--text-muted); cursor: pointer;"><i class="fa-solid fa-xmark"></i></button>
       </div>
@@ -3098,9 +3311,28 @@ Content-Type: application/json
           </div>
         </div>
         <div class="form-group"><label for="edit-service-price-usd" class="form-label">USD Satış Fiyatı ($ / 1000)</label><input type="number" id="edit-service-price-usd" class="form-control" step="0.0001" min="0"></div>
-        <div class="bilingual-editor-grid compact-grid">
-          <div class="form-group"><label for="edit-service-description-tr" class="form-label">Türkçe Açıklama</label><textarea id="edit-service-description-tr" class="form-control" rows="3"></textarea></div>
-          <div class="form-group"><label for="edit-service-description-en" class="form-label">English Description</label><textarea id="edit-service-description-en" class="form-control" rows="3"></textarea></div>
+        <div class="service-editor-section">
+          <div class="service-editor-section-title"><i class="fa-solid fa-circle-info"></i> Bilgi Penceresi <small style="font-weight:500;color:var(--text-muted);">— müşteri, servis satırındaki bilgi butonunda ve sipariş sayfasında görür</small></div>
+          <div class="bilingual-editor-grid compact-grid">
+            <div class="language-editor-card">
+              <div class="language-editor-title">🇹🇷 Türkçe</div>
+              <div class="service-editor-grid-2">
+                <div class="form-group"><label for="edit-service-start-time-tr" class="form-label">Başlama Süresi</label><input type="text" id="edit-service-start-time-tr" class="form-control" placeholder="Örn: 0-15 dakika" maxlength="200"></div>
+                <div class="form-group"><label for="edit-service-speed-tr" class="form-label">Hız</label><input type="text" id="edit-service-speed-tr" class="form-control" placeholder="Örn: Günde 5.000-10.000" maxlength="200"></div>
+              </div>
+              <div class="form-group"><label for="edit-service-features-tr" class="form-label">Özellikler <small style="color:var(--text-muted);">(her satıra bir özellik)</small></label><textarea id="edit-service-features-tr" class="form-control" rows="4" placeholder="Gerçek görünümlü profiller&#10;30 gün düşüş telafisi&#10;Şifre gerekmez"></textarea></div>
+              <div class="form-group" style="margin-bottom:0;"><label for="edit-service-description-tr" class="form-label">Açıklama</label><textarea id="edit-service-description-tr" class="form-control" rows="3"></textarea></div>
+            </div>
+            <div class="language-editor-card">
+              <div class="language-editor-title">🇬🇧 English</div>
+              <div class="service-editor-grid-2">
+                <div class="form-group"><label for="edit-service-start-time-en" class="form-label">Start Time</label><input type="text" id="edit-service-start-time-en" class="form-control" placeholder="e.g. 0-15 minutes" maxlength="200"></div>
+                <div class="form-group"><label for="edit-service-speed-en" class="form-label">Speed</label><input type="text" id="edit-service-speed-en" class="form-control" placeholder="e.g. 5,000-10,000 / day" maxlength="200"></div>
+              </div>
+              <div class="form-group"><label for="edit-service-features-en" class="form-label">Features <small style="color:var(--text-muted);">(one per line)</small></label><textarea id="edit-service-features-en" class="form-control" rows="4" placeholder="Real-looking profiles&#10;30-day refill guarantee&#10;No password required"></textarea></div>
+              <div class="form-group" style="margin-bottom:0;"><label for="edit-service-description-en" class="form-label">Description</label><textarea id="edit-service-description-en" class="form-control" rows="3"></textarea></div>
+            </div>
+          </div>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
@@ -3199,7 +3431,7 @@ Content-Type: application/json
   <!-- ADD PROMO COUPON MODAL (ADMIN) -->
   <!-- KULLANICIYA HIZMET ATAMA (Admin) -->
   <div class="modal-backdrop" id="modal-assign-service">
-    <div class="modal-body glass-card">
+    <div class="modal-body glass-card assign-service-modal">
       <div class="flex-between mb-20">
         <h3><i class="fa-solid fa-gift"></i> Hizmet Ata: <span id="assign-service-username" style="color:var(--accent-cyan);"></span></h3>
         <button aria-label="Kapat" onclick="app.closeModal('modal-assign-service')" style="background: none; border: none; color: var(--text-muted); cursor: pointer;"><i class="fa-solid fa-xmark"></i></button>
@@ -3207,7 +3439,16 @@ Content-Type: application/json
       <form id="assign-service-form" onsubmit="app.handleAssignServiceSubmit(event)">
         <div class="form-group">
           <label class="form-label" for="assign-service-select">Hizmet</label>
-          <select id="assign-service-select" class="form-control" required onchange="app.onAssignServiceChange()"></select>
+          <!-- Tum servisler / favoriler sekmesi + arama: uzun listede hizli secim -->
+          <div class="assign-service-toolbar">
+            <div class="platform-tabs assign-service-tabs">
+              <button type="button" class="tab-btn active" id="assign-service-tab-all" onclick="app.setAssignServiceMode('all')"><i class="fa-solid fa-list"></i> Tüm Servisler <span class="badge badge-completed" id="assign-service-count-all">0</span></button>
+              <button type="button" class="tab-btn" id="assign-service-tab-favorite" onclick="app.setAssignServiceMode('favorite')"><i class="fa-solid fa-star" style="color:#f5b301;"></i> Favorilerim <span class="badge badge-processing" id="assign-service-count-favorite">0</span></button>
+            </div>
+            <input type="text" id="assign-service-search" class="form-control" placeholder="🔍 Servis ara (ad, ID, kategori)..." autocomplete="off" oninput="app.renderAssignServiceOptions()">
+          </div>
+          <select id="assign-service-select" class="form-control" required size="5" onchange="app.onAssignServiceChange()"></select>
+          <small id="assign-service-empty" style="display:none; color: var(--text-dim);"></small>
         </div>
         <div class="form-group">
           <label class="form-label" for="assign-service-link">Bağlantı / Kullanıcı Adı</label>
@@ -3378,6 +3619,84 @@ Content-Type: application/json
     </div>
   </div>
 
+  <!-- SATIŞ SAYFASI EDİTÖRÜ (iki dilli) -->
+  <div id="modal-landing-page" class="modal-backdrop">
+    <div class="glass-card modal-content blog-editor-modal">
+      <div class="flex-between mb-20">
+        <h2 id="lp-editor-title" style="font-size: 1.4rem;"><i class="fa-solid fa-store"></i> Yeni Satış Sayfası</h2>
+        <button class="btn-icon" aria-label="Kapat" onclick="app.closeModal('modal-landing-page')"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form onsubmit="app.handleSaveLandingPage(event)">
+        <input type="hidden" id="lp-input-id">
+        <div class="blog-editor-meta-grid">
+          <div class="form-group">
+            <label for="lp-input-slug" class="form-label">Sayfa Adresi (slug)</label>
+            <input type="text" id="lp-input-slug" class="form-control" placeholder="instagram-takipci-satin-al" oninput="app.updateLpSlugPreview()">
+            <small style="color: var(--text-dim); font-size: .76rem;">Boş bırakırsan Türkçe başlıktan üretilir. Adres: jetsmmpanel.com/<b id="lp-slug-preview">…</b></small>
+          </div>
+          <div class="form-group"><label for="lp-input-platform" class="form-label">Platform (ikon)</label><select id="lp-input-platform" aria-label="Platform" class="form-control"></select></div>
+          <div class="form-group"><label for="lp-input-status" class="form-label">Yayın Durumu</label><select id="lp-input-status" aria-label="Sayfa durumu" class="form-control"><option value="draft">Taslak</option><option value="published">Yayınla</option></select></div>
+          <div class="form-group"><label for="lp-input-sort" class="form-label">Sıra (menüde)</label><input type="number" id="lp-input-sort" class="form-control" value="0" min="0" max="999"></div>
+          <div class="form-group"><label for="lp-input-image" class="form-label">Paylaşım Görseli (opsiyonel)</label><input type="text" id="lp-input-image" class="form-control" placeholder="https://... (boşsa site görseli kullanılır)"></div>
+        </div>
+
+        <div class="lp-pickers-grid">
+          <div class="form-group">
+            <label class="form-label">Servis Kategorileri <small style="color: var(--text-dim); font-weight: 400;">— seçilenlerin tüm aktif servisleri sayfada listelenir; yeni eklediğin kategoriler burada otomatik görünür</small></label>
+            <div id="lp-category-selected" class="lp-picker-selected"></div>
+            <input type="text" id="lp-category-search" aria-label="Kategori ara" class="form-control" placeholder="🔍 Kategori ara (ör. takipçi, Instagram)" oninput="app.renderLpCategoryPicker()" style="margin-bottom: 8px;">
+            <div id="lp-category-picker" class="lp-picker"></div>
+            <small id="lp-category-summary" style="color: var(--text-dim); font-size: .78rem;"></small>
+          </div>
+          <div class="form-group">
+            <label class="form-label">İlgili Blog Yazıları <small style="color: var(--text-dim); font-weight: 400;">— sayfanın altında kart olarak çıkar (en fazla 8)</small></label>
+            <div id="lp-blog-selected" class="lp-picker-selected"></div>
+            <input type="text" id="lp-blog-search" aria-label="Blog yazısı ara" class="form-control" placeholder="🔍 Yazı ara" oninput="app.renderLpBlogPicker()" style="margin-bottom: 8px;">
+            <div id="lp-blog-picker" class="lp-picker"></div>
+            <small id="lp-blog-summary" style="color: var(--text-dim); font-size: .78rem;"></small>
+          </div>
+        </div>
+
+        <div class="bilingual-editor-grid">
+          <section class="language-editor-card">
+            <div class="language-editor-title"><span>🇹🇷</span><strong>Türkçe İçerik</strong></div>
+            <div class="form-group"><label for="lp-input-title-tr" class="form-label">Başlık (H1)</label><input type="text" id="lp-input-title-tr" class="form-control" maxlength="160" required oninput="app.updateLpSlugPreview()"></div>
+            <div class="form-group"><label for="lp-input-subtitle-tr" class="form-label">Alt Başlık</label><textarea id="lp-input-subtitle-tr" class="form-control" rows="2" maxlength="300"></textarea></div>
+            <div class="form-group"><label for="lp-input-seo-title-tr" class="form-label">SEO Başlığı</label><input type="text" id="lp-input-seo-title-tr" class="form-control" maxlength="160"></div>
+            <div class="form-group">
+              <label for="lp-input-seo-description-tr" class="form-label">SEO Açıklaması</label>
+              <textarea id="lp-input-seo-description-tr" class="form-control" rows="2" maxlength="160" data-meta-counter="lp-seo-count-tr"></textarea>
+              <small id="lp-seo-count-tr" class="meta-counter"></small>
+            </div>
+            <div class="form-group"><label for="lp-input-content-tr" class="form-label">Sayfa Metni (güvenli HTML)</label><textarea id="lp-input-content-tr" class="form-control blog-content-editor" rows="12" required></textarea></div>
+            <div class="form-group"><label for="lp-input-steps-tr" class="form-label">Nasıl Alınır? Adımları <small style="color: var(--text-dim); font-weight: 400;">(her satır bir adım)</small></label><textarea id="lp-input-steps-tr" class="form-control" rows="4"></textarea></div>
+            <div class="form-group"><label for="lp-input-faq-tr" class="form-label">SSS <small style="color: var(--text-dim); font-weight: 400;">(ilk satır soru, altı cevap; sorular arasında boş satır)</small></label><textarea id="lp-input-faq-tr" class="form-control" rows="8"></textarea></div>
+            <div class="form-group"><label for="lp-input-cta-tr" class="form-label">Buton Metni</label><input type="text" id="lp-input-cta-tr" class="form-control" maxlength="80" placeholder="Ücretsiz Hesap Oluştur"></div>
+          </section>
+          <section class="language-editor-card">
+            <div class="language-editor-title"><span>🇬🇧</span><strong>English Content</strong></div>
+            <div class="form-group"><label for="lp-input-title-en" class="form-label">Title (H1)</label><input type="text" id="lp-input-title-en" class="form-control" maxlength="160"></div>
+            <div class="form-group"><label for="lp-input-subtitle-en" class="form-label">Subtitle</label><textarea id="lp-input-subtitle-en" class="form-control" rows="2" maxlength="300"></textarea></div>
+            <div class="form-group"><label for="lp-input-seo-title-en" class="form-label">SEO Title</label><input type="text" id="lp-input-seo-title-en" class="form-control" maxlength="160"></div>
+            <div class="form-group">
+              <label for="lp-input-seo-description-en" class="form-label">SEO Description</label>
+              <textarea id="lp-input-seo-description-en" class="form-control" rows="2" maxlength="160" data-meta-counter="lp-seo-count-en"></textarea>
+              <small id="lp-seo-count-en" class="meta-counter"></small>
+            </div>
+            <div class="form-group"><label for="lp-input-content-en" class="form-label">Page Copy (safe HTML)</label><textarea id="lp-input-content-en" class="form-control blog-content-editor" rows="12"></textarea></div>
+            <div class="form-group"><label for="lp-input-steps-en" class="form-label">How to Buy steps <small style="color: var(--text-dim); font-weight: 400;">(one per line)</small></label><textarea id="lp-input-steps-en" class="form-control" rows="4"></textarea></div>
+            <div class="form-group"><label for="lp-input-faq-en" class="form-label">FAQ <small style="color: var(--text-dim); font-weight: 400;">(first line question, then answer; blank line between items)</small></label><textarea id="lp-input-faq-en" class="form-control" rows="8"></textarea></div>
+            <div class="form-group"><label for="lp-input-cta-en" class="form-label">Button Text</label><input type="text" id="lp-input-cta-en" class="form-control" maxlength="80" placeholder="Create a Free Account"></div>
+          </section>
+        </div>
+        <div class="editor-actions">
+          <button type="button" class="btn btn-outline" onclick="app.previewLandingPage()"><i class="fa-solid fa-eye"></i> Önizle</button>
+          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!--ADMIN-ONLY-END-->
 
   <!-- FLOATING TELEGRAM SUPPORT BUTTON -->
@@ -3415,7 +3734,7 @@ Content-Type: application/json
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260818g" defer></script>
-  <script src="/js/app.js?v=20260818g" defer></script>
+  <script src="/js/api.js?v=20260828b" defer></script>
+  <script src="/js/app.js?v=20260828b" defer></script>
 </body>
 </html>

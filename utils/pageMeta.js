@@ -77,6 +77,10 @@ const SAYFALAR = {
   'add-funds': { view: 'view-add-funds', title: 'Bakiye Yükle | Jet SMM Panel', noindex: true },
   profile: { view: 'view-profile', title: 'Profilim | Jet SMM Panel', noindex: true },
   admin: { view: 'view-admin', title: 'Yönetim Paneli | Jet SMM Panel', noindex: true },
+  // Odeme saglayicilarindan (Shopier, PayTR) donus adresleri. Sonuc kutusu
+  // Bakiye Yukle ekraninda gosterilir.
+  'payment-success': { view: 'view-add-funds', title: 'Ödeme Sonucu | Jet SMM Panel', noindex: true },
+  'payment-failed': { view: 'view-add-funds', title: 'Ödeme Sonucu | Jet SMM Panel', noindex: true },
   'reset-password': { view: 'view-auth', title: 'Şifre Sıfırlama | Jet SMM Panel', noindex: true },
   'verify-email': { view: 'view-auth', title: 'E-posta Doğrulama | Jet SMM Panel', noindex: true }
 };

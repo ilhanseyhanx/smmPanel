@@ -3,6 +3,8 @@
 //   {kullanici_adi}  -> uyenin kullanici adi
 //   {site_adi}       -> Site Ayarlari'ndaki site adi
 //   {site_link}      -> PUBLIC_BASE_URL
+//   {siparis_no}     -> siparis numarasi (yalnizca siparis mailinde)
+//   {servis_adi}     -> siparisteki servis adi (yalnizca siparis mailinde)
 
 const WRAP_TOP = `<div style="max-width:560px;margin:0 auto;font-family:Segoe UI,Arial,sans-serif;color:#1f2937;line-height:1.65;">
 <div style="padding:18px 22px;background:#0b0e14;border-radius:12px 12px 0 0;">
@@ -16,7 +18,24 @@ function button(text) {
   return `<p style="text-align:center;margin:26px 0;"><a href="{site_link}" style="display:inline-block;padding:13px 28px;background:#7c3aed;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:700;">${text}</a></p>`;
 }
 
+// Siparis tamamlaninca admin panelden tek tikla gonderilen yorum daveti.
+// Trustpilot baglantisi sablonun icindedir: admin, E-Posta Pazarlama >
+// Sablonlar ekranindan metni ve baglantiyi diledigi gibi degistirebilir.
+const REVIEW_TEMPLATE_NAME = 'Sipariş Tamamlandı — Yorum Daveti';
+
 const DEFAULT_TEMPLATES = [
+  {
+    name: REVIEW_TEMPLATE_NAME,
+    subject: '🎉 Siparişin tamamlandı {kullanici_adi} — görüşün bizim için değerli!',
+    body: `${WRAP_TOP}
+<h2 style="margin:0 0 12px;">Siparişin başarıyla tamamlandı! 🎉</h2>
+<p>Merhaba {kullanici_adi},</p>
+<p><b>#{siparis_no}</b> numaralı <b>{servis_adi}</b> siparişin teslim edildi. Bizi tercih ettiğin için teşekkürler!</p>
+<p>Deneyimin bizim için çok önemli. Kısa bir yorum bırakırsan hem hizmetimizi geliştirmemize yardım edersin hem de diğer kullanıcılara yol gösterirsin. 🙏</p>
+<p style="text-align:center;margin:26px 0;"><a href="https://www.trustpilot.com/review/jetsmmpanel.com" style="display:inline-block;padding:13px 28px;background:#00b67a;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:700;">⭐ Trustpilot'ta Değerlendir</a></p>
+<p style="font-size:13px;color:#6b7280;">Dilersen görüşünü panel içinden de paylaşabilirsin: Siparişlerim sayfasındaki "Deneyimini Paylaş" kutusunu kullanman yeterli.</p>
+${WRAP_BOTTOM}`
+  },
   {
     name: 'Hoş Geldin',
     subject: '{site_adi} ailesine hoş geldin, {kullanici_adi}! 🎉',
@@ -152,4 +171,25 @@ function transactionalEmail({ siteName, title, intro, buttonText, buttonUrl, not
 </div>`;
 }
 
-module.exports = { DEFAULT_TEMPLATES, transactionalEmail };
+// 6 haneli dogrulama kodu maili: site icindeki animasyonlu dogrulama
+// ekranina girilecek kodu buyuk puntoyla gosterir.
+function verificationCodeEmail({ siteName, username, code }) {
+  const safeSite = String(siteName || 'Jet SMM Panel');
+  const digits = String(code).split('').join('&nbsp;&nbsp;');
+  return `<div style="max-width:560px;margin:0 auto;font-family:Segoe UI,Arial,sans-serif;color:#1f2937;line-height:1.65;">
+<div style="padding:20px 24px;background:linear-gradient(135deg,#0b0e14,#1e1b4b);border-radius:12px 12px 0 0;text-align:center;">
+  <span style="color:#fff;font-size:22px;font-weight:800;font-style:italic;letter-spacing:.5px;">${safeSite}</span>
+</div>
+<div style="padding:30px 26px;background:#ffffff;border:1px solid #e5e7eb;border-top:0;text-align:center;">
+  <h2 style="margin:0 0 14px;font-size:20px;color:#111827;">E-posta doğrulama kodun 🔐</h2>
+  <p style="margin:0 0 8px;">Merhaba ${username}, aşağıdaki kodu sitedeki doğrulama ekranına gir:</p>
+  <p style="margin:26px 0;"><span style="display:inline-block;padding:16px 26px;background:#f3f4f6;border:2px dashed #7c3aed;border-radius:12px;font-size:30px;font-weight:800;letter-spacing:4px;color:#111827;font-family:Consolas,Menlo,monospace;">${digits}</span></p>
+  <p style="margin:0;font-size:13px;color:#6b7280;">Kod <b>15 dakika</b> geçerlidir. Bu talebi sen yapmadıysan bu maili görmezden gelebilirsin.</p>
+</div>
+<div style="padding:16px 24px;background:#f9fafb;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 12px 12px;font-size:12px;color:#9ca3af;text-align:center;">
+  <p style="margin:0;">Bu e-posta ${safeSite} tarafından otomatik gönderildi; yanıtlamana gerek yok.</p>
+</div>
+</div>`;
+}
+
+module.exports = { DEFAULT_TEMPLATES, REVIEW_TEMPLATE_NAME, transactionalEmail, verificationCodeEmail };

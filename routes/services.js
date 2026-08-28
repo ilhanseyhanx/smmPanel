@@ -22,6 +22,12 @@ router.get('/', async (req, res) => {
         s.description,
         s.description_tr,
         s.description_en,
+        s.start_time_tr,
+        s.start_time_en,
+        s.speed_tr,
+        s.speed_en,
+        s.features_tr,
+        s.features_en,
         s.refill,
         c.name as category_name,
         c.name_tr as category_name_tr,
@@ -53,7 +59,8 @@ router.get('/', async (req, res) => {
     // Bakiye yukleme ekrani yalnizca yapilandirilmis yontemleri gosterir.
     const paymentMethods = {
       paytr: Boolean(process.env.PAYTR_MERCHANT_ID && process.env.PAYTR_MERCHANT_KEY && process.env.PAYTR_MERCHANT_SALT),
-      crypto: await require('../services/nowpayments').isConfigured()
+      crypto: await require('../services/nowpayments').isConfigured(),
+      shopier: await require('../services/shopier').isConfigured()
     };
 
     // Live public stats from DB

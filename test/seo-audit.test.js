@@ -294,8 +294,19 @@ test('llms.txt hem sunulur hem de referans verilir', async () => {
   assert.match(html, /<link rel="alternate" type="text\/plain" href="\/llms\.txt"/, 'head içinde llms.txt referansı yok');
   const dosya = await sayfa('/llms.txt');
   assert.equal(dosya.status, 200);
+});
+
+// robots.txt yalnizca RFC 9309'daki alanlari tanir; uydurma bir direktif
+// (ornegin LLM-Content) Search Console'da "sozdizimi anlasilmadi" uyarisi uretir.
+test('robots.txt yalnızca standart direktifler içerir', async () => {
   const robots = await sayfa('/robots.txt');
-  assert.match(robots.text, /llms\.txt/, 'robots.txt llms.txt adresini duyurmuyor');
+  const izinli = /^(user-agent|allow|disallow|sitemap|crawl-delay|host)$/i;
+  for (const satir of robots.text.split(/\r?\n/)) {
+    const temiz = satir.trim();
+    if (!temiz || temiz.startsWith('#')) continue;
+    const alan = temiz.split(':')[0];
+    assert.match(alan, izinli, `robots.txt'te standart dışı direktif: ${temiz}`);
+  }
 });
 
 // ---------------------------------------------------------------
@@ -445,6 +456,10 @@ test('sitemap.xml içindeki her adres geçerlidir (404 vermez)', async () => {
   const adresler = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1].replace('https://jetsmmpanel.com', ''));
   assert.ok(adresler.length > 0, 'sitemap boş');
   for (const adres of adresler) {
-    assert.equal(pageForPath(adres).status, 200, `sitemap'teki ${adres} adresi 404 dönüyor`);
+    // Satis sayfalari (kok adresli landing page'ler) sabit tabloda degil
+    // veritabaninda durur; onlar icin gercek istek atilir.
+    if (pageForPath(adres).status !== 200) {
+      assert.equal((await sayfa(adres)).status, 200, `sitemap'teki ${adres} adresi 404 dönüyor`);
+    }
   }
 });

@@ -9,7 +9,7 @@ const { validate, bilingual } = require('../middleware/validate');
 const { createOpaqueToken, tokenHash, encryptSecret, decryptSecret, normalizePlainText } = require('../utils/security');
 const { fromKurus } = require('../utils/money');
 const { sendMail } = require('../services/mailer');
-const { transactionalEmail } = require('../services/emailTemplates');
+const { transactionalEmail, verificationCodeEmail } = require('../services/emailTemplates');
 const telegram = require('../services/telegramNotifier');
 
 async function getSiteName() {
@@ -262,6 +262,72 @@ router.post('/verify-email/confirm', validate(z.object({ token: z.string().min(3
       await tx.run('UPDATE users SET email_verified = 1 WHERE id = ?', [row.user_id]);
     });
     res.json({ message: 'E-posta adresiniz doğrulandı.' });
+  } catch (err) { next(err); }
+});
+
+// --- KODLU E-POSTA DOĞRULAMA -------------------------------------------------
+// Site icindeki animasyonlu dogrulama ekrani icin 6 haneli kod akisi.
+// (Baglantili /verify-email/request akisi da calismaya devam eder; bu akis
+// kullaniciyi sayfadan ayirmadan dogrulama yaptirir — ör. kupon kullanimi.)
+
+// Kaba kuvvet siniri: kullanici basina 10 dakikada en fazla 5 yanlis deneme.
+const dogrulamaDenemeleri = new Map();
+function denemeKontrol(userId) {
+  const simdi = Date.now();
+  const kayit = dogrulamaDenemeleri.get(userId);
+  if (!kayit || simdi > kayit.resetAt) {
+    dogrulamaDenemeleri.set(userId, { count: 0, resetAt: simdi + 10 * 60 * 1000 });
+    return true;
+  }
+  return kayit.count < 5;
+}
+
+router.post('/verify-email/request-code', authenticateToken, async (req, res, next) => {
+  try {
+    if (req.user.email_verified) return res.json({ message: 'E-posta adresiniz zaten doğrulanmış.', already_verified: true });
+    // Tekrar gonderim siniri: son 60 saniyede kod uretildiyse beklenir.
+    const son = await dbAsync.get(
+      "SELECT 1 FROM verification_tokens WHERE user_id = ? AND purpose = 'email_code' AND created_at > datetime('now', '-60 seconds')",
+      [req.user.id]
+    );
+    if (son) return res.status(429).json({ error: 'Yeni kod istemek için biraz bekle (60 saniye).' });
+
+    const code = String(require('crypto').randomInt(100000, 1000000));
+    await dbAsync.run("DELETE FROM verification_tokens WHERE user_id = ? AND purpose = 'email_code'", [req.user.id]);
+    await dbAsync.run(
+      "INSERT INTO verification_tokens (user_id, purpose, token_hash, expires_at) VALUES (?, 'email_code', ?, datetime('now', '+15 minutes'))",
+      [req.user.id, tokenHash(code)]
+    );
+    const siteName = await getSiteName();
+    await sendMail({
+      to: req.user.email,
+      subject: `🔐 ${siteName} doğrulama kodun: ${code}`,
+      text: `E-posta doğrulama kodun: ${code} (15 dakika geçerli)`,
+      html: verificationCodeEmail({ siteName, username: req.user.username, code })
+    });
+    res.json({ message: 'Doğrulama kodu e-posta adresine gönderildi.' });
+  } catch (err) { next(err); }
+});
+
+router.post('/verify-email/confirm-code', authenticateToken, validate(z.object({ code: z.string().regex(/^\d{6}$/) })), async (req, res, next) => {
+  try {
+    if (req.user.email_verified) return res.json({ message: 'E-posta adresiniz zaten doğrulanmış.' });
+    if (!denemeKontrol(req.user.id)) {
+      return res.status(429).json({ error: 'Çok fazla yanlış deneme. 10 dakika sonra tekrar dene.' });
+    }
+    const row = await dbAsync.get(
+      "SELECT * FROM verification_tokens WHERE user_id = ? AND purpose = 'email_code' AND token_hash = ? AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP",
+      [req.user.id, tokenHash(req.body.code)]
+    );
+    if (!row) {
+      const kayit = dogrulamaDenemeleri.get(req.user.id);
+      if (kayit) kayit.count++;
+      return res.status(400).json({ error: 'Kod hatalı veya süresi dolmuş. Kontrol edip tekrar dene.' });
+    }
+    await dbAsync.run('UPDATE verification_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?', [row.id]);
+    await dbAsync.run('UPDATE users SET email_verified = 1 WHERE id = ?', [req.user.id]);
+    dogrulamaDenemeleri.delete(req.user.id);
+    res.json({ message: 'E-posta adresin doğrulandı! 🎉' });
   } catch (err) { next(err); }
 });
 

@@ -23,7 +23,7 @@ function apiBase() {
 // PAT hesaba "suresiz ve sinirsiz" erisim verdigi icin (Shopier'in kendi
 // uyarisi) duz metin saklanmaz; site_settings'e sifreli yazilir.
 // ---------------------------------------------------------------------------
-const SETTING_KEYS = ['shopier_pat', 'shopier_webhook_token', 'shopier_webhook_id'];
+const SETTING_KEYS = ['shopier_pat', 'shopier_webhook_token', 'shopier_webhook_id', 'shopier_product_image_url'];
 
 async function readSettings() {
   const rows = await dbAsync.all(
@@ -52,6 +52,7 @@ async function getConfig() {
     pat: decryptOrEmpty(stored.shopier_pat) || String(process.env.SHOPIER_PAT || '').trim(),
     webhookToken: decryptOrEmpty(stored.shopier_webhook_token) || String(process.env.SHOPIER_WEBHOOK_TOKEN || '').trim(),
     webhookId: String(stored.shopier_webhook_id || '').trim(),
+    productImage: String(stored.shopier_product_image_url || '').trim(),
     baseUrl: String(process.env.PUBLIC_BASE_URL || '').trim()
   };
 }
@@ -85,6 +86,7 @@ async function getStatus() {
     webhook_registered: Boolean(config.webhookToken && config.webhookId),
     webhook_id: config.webhookId || null,
     base_url_set: Boolean(config.baseUrl),
+    product_image_url: config.productImage || null,
     ready: Boolean(config.pat && config.webhookToken && config.baseUrl)
   };
 }
@@ -213,8 +215,14 @@ async function verifyWebhook(rawBody, signatureHeader) {
 // GORSELI DEGISTIRIRKEN DOSYA ADINI DA DEGISTIR: Cloudflare bu adresi
 // onbellege aliyor ve ayni adla yuklenen yeni dosya disariya (dolayisiyla
 // Shopier'e) gunlerce eski haliyle gidiyor.
-function productImageUrl(baseUrl) {
-  return `${baseUrl.replace(/\/$/, '')}/shopier-urun-logo.png`;
+function productImageUrl(config) {
+  // Shopier, bizim sunucumuzdan URL ile cekilen gorseli isleyemiyor (CDN
+  // kopyasi 404 kaliyor). Admin, Shopier'in KENDI CDN'indeki (cdn.shopier.app)
+  // calisan bir gorselin adresini ayara girerse o kullanilir — Shopier kendi
+  // sunucusundan aldigi icin isleme sorunu olmaz. Ayar bossa kendi dosyamiza
+  // duseriz (en azindan gecerli bir gorsel gider).
+  if (config.productImage) return config.productImage;
+  return `${config.baseUrl.replace(/\/$/, '')}/shopier-urun-logo.png`;
 }
 
 /**
@@ -235,7 +243,7 @@ async function createTopUpProduct({ amountKurus, merchantOid }) {
       // Bu metin Shopier'de HERKESE ACIK urun sayfasinda gorunur; kullanici
       // adi buraya yazilmaz. Referans opak bir jetondur, destek icin kalir.
       description: `Jet SMM Panel bakiye yüklemesi. Ödeme onaylandığında bakiyeniz otomatik yüklenir. Referans: ${merchantOid}`,
-      media: [{ type: 'image', url: productImageUrl(config.baseUrl), placement: 1 }],
+      media: [{ type: 'image', url: productImageUrl(config), placement: 1 }],
       priceData: { currency: 'TRY', price: amount },
       // Dijital urun; kargo yok ama alan zorunlu.
       shippingPayer: 'sellerPays',
@@ -294,10 +302,17 @@ async function sweepAbandonedProducts(limit = 10) {
   return cleaned;
 }
 
+// Admin panelinden urun gorseli adresini (Shopier CDN veya baska bir URL)
+// kaydeder. Bos deger fallback'e (kendi dosyamiza) doner.
+async function setProductImage(url) {
+  await savePlain('shopier_product_image_url', String(url || '').trim());
+  return (await getConfig()).productImage;
+}
+
 module.exports = {
   apiBase,
   getConfig, isConfigured, getStatus, saveSecret, savePlain,
   registerWebhook, removeWebhook,
   verifyWebhookSignature, verifyWebhook,
-  createTopUpProduct, deleteProduct, sweepAbandonedProducts
+  createTopUpProduct, deleteProduct, sweepAbandonedProducts, setProductImage
 };

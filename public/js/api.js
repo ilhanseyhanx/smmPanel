@@ -124,6 +124,7 @@ const API = {
   saveShopierPat: (pat) => API.request('/admin/shopier/pat', { method: 'POST', body: JSON.stringify({ pat }) }),
   registerShopierWebhook: () => API.request('/admin/shopier/register-webhook', { method: 'POST' }),
   removeShopierConfig: () => API.request('/admin/shopier/config', { method: 'DELETE' }),
+  saveShopierImage: (image_url) => API.request('/admin/shopier/image', { method: 'POST', body: JSON.stringify({ image_url }) }),
   getShopierPaymentStatus: (oid) => API.request(`/payments/shopier/status/${encodeURIComponent(oid)}`),
   getCryptoCurrencies: () => API.request('/payments/nowpayments/currencies'),
   getCryptoMin: (coin) => API.request(`/payments/nowpayments/min/${encodeURIComponent(coin)}`),

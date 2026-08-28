@@ -6501,9 +6501,25 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       ${satir(status.pat_saved, status.pat_saved ? 'Kişisel erişim anahtarı kayıtlı' : 'Kişisel erişim anahtarı girilmedi')}
       ${satir(status.webhook_registered, status.webhook_registered ? `Ödeme bildirimi kurulu (abonelik #${this.escapeHtml(String(status.webhook_id || '-'))})` : 'Ödeme bildirimi kurulu değil — bakiye otomatik yüklenmez')}
       ${satir(status.base_url_set, status.base_url_set ? 'Site adresi (PUBLIC_BASE_URL) tanımlı' : 'PUBLIC_BASE_URL tanımsız — bildirim adresi üretilemez')}
+      ${satir(Boolean(status.product_image_url), status.product_image_url ? 'Ürün görseli adresi tanımlı' : 'Ürün görseli adresi yok — site logosu (Shopier kırık gösterebilir)')}
       <div class="badge ${status.ready ? 'badge-completed' : 'badge-pending'}" style="margin-top: 8px;">
         ${status.ready ? 'Shopier ödeme yöntemi AÇIK' : 'Shopier ödeme yöntemi kapalı'}
       </div>`;
+    // Kayitli gorsel adresi input alanina yansitilir (yazarken uzerine yazma).
+    const imgField = document.getElementById('setting-shopier-image');
+    if (imgField && document.activeElement !== imgField) imgField.value = status.product_image_url || '';
+  }
+
+  async saveShopierImage() {
+    const field = document.getElementById('setting-shopier-image');
+    const url = (field ? field.value : '').trim();
+    try {
+      const res = await API.saveShopierImage(url);
+      this.renderShopierStatus(res.status);
+      showToast(res.message, 'success');
+    } catch (err) {
+      showToast(`Görsel kaydedilemedi: ${err.message}`, 'error');
+    }
   }
 
   async saveShopierPat() {

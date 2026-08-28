@@ -1501,6 +1501,18 @@ router.post('/shopier/register-webhook', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Urun gorseli adresi (Shopier CDN URL'i onerilir; bkz. services/shopier.js).
+router.post('/shopier/image', validate(z.object({
+  image_url: z.string().trim().max(500)
+})), async (req, res, next) => {
+  try {
+    const url = req.body.image_url;
+    if (url && !isSafeHttpUrl(url)) return res.status(400).json({ error: 'Geçerli bir http(s) görsel adresi girin.' });
+    await Shopier.setProductImage(url);
+    res.json({ message: url ? 'Shopier ürün görseli kaydedildi.' : 'Görsel adresi temizlendi; site logosu kullanılacak.', status: await Shopier.getStatus() });
+  } catch (err) { next(err); }
+});
+
 router.delete('/shopier/config', async (req, res, next) => {
   try {
     await Shopier.removeWebhook().catch(() => {});

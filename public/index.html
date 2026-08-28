@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260828c">
+  <link rel="stylesheet" href="/css/style.css?v=20260829a">
 </head>
 <body>
 
@@ -2380,6 +2380,19 @@ Content-Type: application/json
                       </button>
                     </div>
 
+                    <div style="border-top: 1px solid rgba(255,255,255,.08); margin-top: 16px; padding-top: 16px;">
+                      <label for="setting-shopier-image" class="form-label">Ürün Görseli Adresi (opsiyonel)</label>
+                      <p style="font-size: 0.82rem; color: var(--text-dim); margin: 4px 0 8px; line-height: 1.6;">
+                        Shopier, kendi sunucumuzdan URL ile çekilen görseli işleyemiyor (ödeme sayfasında kırık çıkıyor).
+                        Çözüm: Shopier mağazana bir ürüne görsel yükle, o görselin <code>cdn.shopier.app/...</code> adresini kopyalayıp buraya yapıştır.
+                        Boş bırakırsan site logosu kullanılır (kırık görünebilir). Kozmetiktir; ödemeyi etkilemez.
+                      </p>
+                      <div style="display: flex; gap: 8px;">
+                        <input type="text" id="setting-shopier-image" class="form-control" autocomplete="off" placeholder="https://cdn.shopier.app/pictures_large/...png">
+                        <button type="button" class="btn btn-outline" onclick="app.saveShopierImage()"><i class="fa-solid fa-image"></i> Kaydet</button>
+                      </div>
+                    </div>
+
                     <p style="font-size: 0.82rem; color: var(--text-dim); margin-top: 14px; line-height: 1.6;">
                       <b>Nasıl çalışır:</b> Müşteri tutarı girip ödemeye bastığında Shopier mağazanda o tutarda geçici bir ürün oluşturulur
                       ve müşteri yeni sekmede o ürünün ödeme sayfasına gider. Ödeme onaylanınca Shopier bize bildirim yollar,
@@ -3740,7 +3753,7 @@ Content-Type: application/json
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260828c" defer></script>
-  <script src="/js/app.js?v=20260828c" defer></script>
+  <script src="/js/api.js?v=20260829a" defer></script>
+  <script src="/js/app.js?v=20260829a" defer></script>
 </body>
 </html>

@@ -197,13 +197,24 @@ async function verifyWebhook(rawBody, signatureHeader) {
 // ---------------------------------------------------------------------------
 // ÖDEME: GEÇİCİ ÜRÜN
 // ---------------------------------------------------------------------------
-// Urun gorseli zorunlu. Paylasim gorseli (og-image.png) KULLANILMAZ: Shopier
-// onu indirdi (nginx kaydinda 200) ama CDN kopyasi 404 kaldi. Iki supheli
-// vardi — 1200x630 genis oran ve alfa kanali. Bunun yerine kare (800x800) ve
-// saydamliksiz uretilen ozel urun ikonu verilir:
-// scripts/make-shopier-image.js
+// Urun gorseli zorunlu ve Shopier onu kendi CDN'ine kopyalar.
+//
+// DIKKAT — public/shopier-product.png ELLE HAZIRLANMIS bir dosyadir, betikle
+// URETILMEZ. Once paylasim gorseli (og-image.png), sonra kendi PNG yazicimizla
+// urettigimiz kare/saydamliksiz bir ikon denendi; Shopier ikisini de indirdi
+// (nginx kaydinda "Shopier" UA ile 200) ama CDN kopyalari 404 kaldi.
+// Calisan dosyayla karsilastirinca fark ortaya cikti: ikisi de 8 bit RGB ve
+// interlace edilmemisti, tek fark bizim yazicinin tek buyuk IDAT blogu
+// uretmesiydi (normal kutuphane ciktisi 64 KB'lik bloklara boler).
+// Yani sorun oran veya alfa degil, kendi PNG yazicimiz.
+// Bu dosyayi scripts/make-og-image.js benzeri bir uretecle YENIDEN URETME;
+// gorsel Shopier'de kirik cikar.
+//
+// GORSELI DEGISTIRIRKEN DOSYA ADINI DA DEGISTIR: Cloudflare bu adresi
+// onbellege aliyor ve ayni adla yuklenen yeni dosya disariya (dolayisiyla
+// Shopier'e) gunlerce eski haliyle gidiyor.
 function productImageUrl(baseUrl) {
-  return `${baseUrl.replace(/\/$/, '')}/shopier-product.png`;
+  return `${baseUrl.replace(/\/$/, '')}/shopier-urun-logo.png`;
 }
 
 /**

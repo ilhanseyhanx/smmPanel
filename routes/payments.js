@@ -107,11 +107,7 @@ router.post('/shopier/create', authenticateToken, validate(z.object({
       [req.user.id, merchantOid, amountKurus]
     );
     try {
-      const product = await Shopier.createTopUpProduct({
-        amountKurus,
-        merchantOid,
-        username: req.user.username
-      });
+      const product = await Shopier.createTopUpProduct({ amountKurus, merchantOid });
       // Webhook'ta kendi referansimiz gelmedigi icin eslestirme buradan yapilir.
       await dbAsync.run('UPDATE payment_intents SET provider_ref = ? WHERE id = ?', [product.productId, intent.id]);
 

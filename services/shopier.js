@@ -197,16 +197,20 @@ async function verifyWebhook(rawBody, signatureHeader) {
 // ---------------------------------------------------------------------------
 // ÖDEME: GEÇİCİ ÜRÜN
 // ---------------------------------------------------------------------------
-// Urun gorseli zorunlu; sitenin kendi paylasim gorseli kullanilir.
+// Urun gorseli zorunlu. Paylasim gorseli (og-image.png) KULLANILMAZ: Shopier
+// onu indirdi (nginx kaydinda 200) ama CDN kopyasi 404 kaldi. Iki supheli
+// vardi — 1200x630 genis oran ve alfa kanali. Bunun yerine kare (800x800) ve
+// saydamliksiz uretilen ozel urun ikonu verilir:
+// scripts/make-shopier-image.js
 function productImageUrl(baseUrl) {
-  return `${baseUrl.replace(/\/$/, '')}/og-image.png`;
+  return `${baseUrl.replace(/\/$/, '')}/shopier-product.png`;
 }
 
 /**
  * Bakiye yuklemesi icin gecici bir urun olusturur.
  * @returns {{productId: string, url: string}} musterinin yonlendirilecegi adres
  */
-async function createTopUpProduct({ amountKurus, merchantOid, username }) {
+async function createTopUpProduct({ amountKurus, merchantOid }) {
   const config = await getConfig();
   if (!config.pat) throw configError('Shopier ödemesi henüz yapılandırılmamış. Admin panelinden Kişisel Erişim Anahtarını ekleyin.');
   if (!config.webhookToken) throw configError('Shopier webhook kaydı yapılmadan ödeme alınamaz (ödeme onayı gelmez, bakiye yüklenmez).');
@@ -217,7 +221,9 @@ async function createTopUpProduct({ amountKurus, merchantOid, username }) {
     body: {
       title: `Bakiye Yükleme ₺${amount}`,
       type: 'digital',
-      description: `Jet SMM Panel bakiye yüklemesi. Sipariş referansı: ${merchantOid}${username ? ` · Kullanıcı: ${username}` : ''}. Ödeme onaylandığında bakiye otomatik yüklenir.`,
+      // Bu metin Shopier'de HERKESE ACIK urun sayfasinda gorunur; kullanici
+      // adi buraya yazilmaz. Referans opak bir jetondur, destek icin kalir.
+      description: `Jet SMM Panel bakiye yüklemesi. Ödeme onaylandığında bakiyeniz otomatik yüklenir. Referans: ${merchantOid}`,
       media: [{ type: 'image', url: productImageUrl(config.baseUrl), placement: 1 }],
       priceData: { currency: 'TRY', price: amount },
       // Dijital urun; kargo yok ama alan zorunlu.

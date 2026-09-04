@@ -588,8 +588,20 @@ body.neo-app-active .price-cell { color: #0e7490; }
   font-weight: 600;
 }
 
+/* Uzun servis adlari satiri patlatmasin: tek satira kisaltilir, ustune
+   gelince tamami baloncukta (title), tiklayinca hucre acilip tam metni gosterir. */
 .cell-truncate {
+  max-width: 240px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.cell-truncate.expanded {
+  white-space: normal;
+  overflow: visible;
+  word-break: break-word;
 }
 
 .cell-nowrap {

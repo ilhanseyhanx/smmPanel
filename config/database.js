@@ -226,6 +226,18 @@ async function runMigrations() {
   await addColumnIfMissing('orders', 'failure_reason', 'TEXT');
   // Yorum daveti maili gonderildiyse zamani tutulur (cift gonderimi onlemek icin).
   await addColumnIfMissing('orders', 'review_mail_sent_at', 'DATETIME');
+  // Siparisin bitis ani (tamamlandi/iptal/basarisiz/kismi). Kod yolu fark
+  // etmeksizin (admin dugmesi, worker senkronu...) asagidaki trigger doldurur.
+  await addColumnIfMissing('orders', 'completed_at', 'DATETIME');
+  await dbAsync.run(`
+    CREATE TRIGGER IF NOT EXISTS trg_orders_completed_at
+    AFTER UPDATE OF status ON orders
+    WHEN NEW.status IN ('completed', 'canceled', 'failed', 'partial')
+      AND OLD.status NOT IN ('completed', 'canceled', 'failed', 'partial')
+    BEGIN
+      UPDATE orders SET completed_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END
+  `);
   await addColumnIfMissing('payments', 'amount_kurus', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing('coupons', 'amount_kurus', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing('payment_notifications', 'amount_kurus', 'INTEGER NOT NULL DEFAULT 0');

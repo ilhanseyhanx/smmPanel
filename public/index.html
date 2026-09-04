@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260904a">
+  <link rel="stylesheet" href="/css/style.css?v=20260904b">
 </head>
 <body>
 
@@ -3786,6 +3786,9 @@ Content-Type: application/json
           <i class="fa-solid fa-magnifying-glass-dollar"></i> Tüm Aktif Servisleri Kontrol Et
         </button>
       </div>
+      <div id="price-audit-filters" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+        <!-- Filtre düğmeleri kontrol sonrası app.js tarafından doldurulur -->
+      </div>
       <div class="table-responsive price-audit-table-wrap">
         <table class="custom-table price-audit-table">
           <thead>
@@ -3804,6 +3807,53 @@ Content-Type: application/json
           </tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+  <!-- MODAL: SİPARİŞ DETAYI -->
+  <div id="modal-order-detail" class="modal-backdrop">
+    <div class="glass-card modal-content" style="max-width: 680px;">
+      <div class="flex-between mb-20">
+        <h2 id="order-detail-title" style="font-size: 1.3rem;"><i class="fa-solid fa-box-open"></i> Sipariş Detayı</h2>
+        <button class="btn-icon" aria-label="Kapat" onclick="app.closeModal('modal-order-detail')"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <!-- Genel bilgiler: app.js doldurur -->
+      <div id="order-detail-info" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 18px; margin-bottom: 8px;">
+      </div>
+      <div id="order-detail-error" style="display: none; margin-top: 6px; padding: 10px 12px; border: 1px solid rgba(239,68,68,.35); border-radius: 10px; background: rgba(239,68,68,.08); color: var(--danger); font-size: .85rem; line-height: 1.45;">
+      </div>
+
+      <hr style="border-color: rgba(255,255,255,.08); margin: 18px 0;">
+
+      <!-- Servisi tekrar kullan -->
+      <h3 style="margin-bottom: 6px;"><i class="fa-solid fa-rotate-right"></i> Servisi Tekrar Kullan</h3>
+      <p class="admin-help" style="margin-bottom: 14px;">Aynı servisle başka bir kullanıcıya (veya aynı kullanıcıya) yeni sipariş oluştur. "Bakiyeden düş" seçilirse tutar kullanıcının bakiyesinden tahsil edilir; "Hediye" seçilirse ücret alınmaz.</p>
+      <form onsubmit="app.handleOrderReuseSubmit(event)">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" for="order-reuse-username">Kullanıcı Adı</label>
+            <input type="text" id="order-reuse-username" class="form-control" placeholder="kullanici_adi" required autocomplete="off">
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" for="order-reuse-qty">Miktar</label>
+            <input type="number" id="order-reuse-qty" class="form-control" min="1" required>
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" for="order-reuse-charge">Ücretlendirme</label>
+            <select id="order-reuse-charge" class="form-control">
+              <option value="charge">Bakiyeden düş</option>
+              <option value="gift">Hediye (ücret alma)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top: 12px;">
+          <label class="form-label" for="order-reuse-link">Bağlantı (Link)</label>
+          <input type="text" id="order-reuse-link" class="form-control" placeholder="https://..." required>
+        </div>
+        <div id="order-reuse-summary" class="admin-help" style="margin-bottom: 10px;"></div>
+        <button type="submit" class="btn btn-primary" style="width: 100%;"><i class="fa-solid fa-paper-plane"></i> Siparişi Oluştur ve Sağlayıcıya Gönder</button>
+      </form>
     </div>
   </div>
 
@@ -3996,7 +4046,7 @@ Content-Type: application/json
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260904a" defer></script>
-  <script src="/js/app.js?v=20260904a" defer></script>
+  <script src="/js/api.js?v=20260904b" defer></script>
+  <script src="/js/app.js?v=20260904b" defer></script>
 </body>
 </html>

@@ -723,6 +723,15 @@ body.neo-app-active .price-cell { color: #0e7490; }
   margin: 20px;
 }
 
+/* Genel modal icerik kutusu: her ekranda sigar, tasan icerik kutu icinde
+   kayar. Uzun formlu modallarin (siparis detayi vb.) mobilde tasmasini onler. */
+.modal-content {
+  width: 100%;
+  max-height: 92vh;
+  overflow-y: auto;
+  margin: 14px;
+}
+
 /* Fullscreen Modal Override for Provider Explorer Workspace */
 .modal-backdrop.fullscreen {
   padding: 15px;

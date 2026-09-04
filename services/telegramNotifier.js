@@ -150,12 +150,25 @@ async function notifyNewOrder({ orderId, username, serviceName, quantity, charge
  * Siparisin olusturulmasi ile bitmesi arasindaki sureyi okunabilir yazar.
  * Ornek: "3 dk 12 sn", "2 sa 5 dk", "1 gun 4 sa".
  */
+// SQLite CURRENT_TIMESTAMP tarihleri UTC yazar ama "YYYY-MM-DD HH:MM:SS"
+// bicimi saat dilimi tasimaz; new Date() bunu sunucunun YEREL saati sanir.
+// Sunucu UTC disinda bir dilimdeyse (orn. Berlin +2) sure o kadar sapiyordu.
+// Dilim belirteci olmayan tarihler acikca UTC kabul edilir.
+function parseDbDate(value) {
+  if (value instanceof Date) return value.getTime();
+  const s = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(s)) {
+    return Date.parse(s.replace(' ', 'T') + 'Z');
+  }
+  return new Date(s).getTime();
+}
+
 function formatDuration(fromDate, toDate) {
   // new Date(null) 1970'e esittir; bos deger gecerli tarih sayilirsa bildirimde
   // "20680 gun" gibi sacma bir sure yazilir. Bu yuzden once bos kontrolu yapilir.
   if (fromDate === null || fromDate === undefined || fromDate === '') return null;
-  const start = new Date(fromDate).getTime();
-  const end = new Date(toDate || Date.now()).getTime();
+  const start = parseDbDate(fromDate);
+  const end = toDate ? parseDbDate(toDate) : Date.now();
   if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
 
   const totalSeconds = Math.round((end - start) / 1000);

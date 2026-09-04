@@ -536,13 +536,28 @@ router.get('/providers/:id/raw-services', requireIdParam, async (req, res) => {
       [providerId]
     );
 
+    // Kendi siparis gecmisimizden ortalama tamamlanma suresi (saglayici API'si
+    // bu veriyi vermiyor). Yalnizca daha once siparis verilmis servislerde dolar.
+    const completionRows = await dbAsync.all(
+      `SELECT s.provider_service_id psid, COUNT(*) n,
+              AVG((julianday(o.completed_at) - julianday(o.created_at)) * 1440.0) avg_minutes
+       FROM orders o JOIN services s ON s.id = o.service_id
+       WHERE s.provider_id = ? AND s.provider_service_id IS NOT NULL
+         AND o.status = 'completed' AND o.completed_at IS NOT NULL
+       GROUP BY s.provider_service_id`,
+      [providerId]
+    );
+    const completionStats = {};
+    completionRows.forEach(row => { completionStats[String(row.psid)] = { n: row.n, avg_minutes: row.avg_minutes }; });
+
     res.json({
       services: safeServices,
       total: safeServices.length,
       provider_name: normalizePlainText(provider.name, 100),
       currency: providerCurrency,
       usd_try_rate: Number(rateSetting?.value) > 0 ? Number(rateSetting.value) : 35,
-      added_service_ids: addedRows.map(row => String(row.provider_service_id))
+      added_service_ids: addedRows.map(row => String(row.provider_service_id)),
+      completion_stats: completionStats
     });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Sağlayıcı servisleri alınamadı.' });
@@ -679,11 +694,21 @@ router.get('/providers/:id/services/export', requireIdParam, async (req, res) =>
 // MANAGE ADDED SERVICES (CRUD)
 router.get('/services', async (req, res) => {
   try {
+    // Ortalama tamamlanma suresi saglayici API'sinde YOK; kendi siparis
+    // gecmisimizden hesaplanir (completed_at dolan tamamlanmis siparisler).
     const [services, exchangeSetting] = await Promise.all([dbAsync.all(`
-      SELECT s.*, c.name as category_name, c.name_en as category_name_en, p.name as provider_name
+      SELECT s.*, c.name as category_name, c.name_en as category_name_en, p.name as provider_name,
+             ot.avg_minutes AS avg_completion_minutes, ot.n AS completed_order_count
       FROM services s
       JOIN categories c ON s.category_id = c.id
       LEFT JOIN providers p ON s.provider_id = p.id
+      LEFT JOIN (
+        SELECT service_id, COUNT(*) n,
+               AVG((julianday(completed_at) - julianday(created_at)) * 1440.0) avg_minutes
+        FROM orders
+        WHERE status = 'completed' AND completed_at IS NOT NULL
+        GROUP BY service_id
+      ) ot ON ot.service_id = s.id
       ORDER BY s.id DESC
     `), dbAsync.get("SELECT value FROM site_settings WHERE key = 'usd_try_rate'")]);
     res.json({ services, usd_try_rate: Number(exchangeSetting?.value) > 0 ? Number(exchangeSetting.value) : 35 });

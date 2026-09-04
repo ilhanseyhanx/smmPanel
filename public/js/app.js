@@ -2963,6 +2963,7 @@ class SmmApp {
     if (tabName === 'ai-studio') this.loadAiStudio();
     if (tabName === 'users') this.loadAdminUsers();
     if (tabName === 'orders') this.loadAdminOrders();
+    if (tabName === 'completion') this.loadCompletionTimes();
     if (tabName === 'reset') this.showResetSection(this.currentResetSection || 'security');
     if (tabName === 'site-settings') {
       this.loadAdminSettings();
@@ -3535,13 +3536,25 @@ class SmmApp {
     }
   }
 
+  // Dakika cinsinden ortalama sureyi okunur metne cevirir (12 dk, 3 sa 20 dk, 2 gün 5 sa).
+  // Saglayici API'leri bu veriyi vermez; kendi tamamlanan siparislerimizden hesaplanir.
+  formatAvgCompletion(minutes, count) {
+    const m = Number(minutes);
+    if (!Number.isFinite(m) || m <= 0 || !count) return '<span style="color:var(--text-dim);">—</span>';
+    let label;
+    if (m < 60) label = `${Math.round(m)} dk`;
+    else if (m < 1440) label = `${Math.floor(m / 60)} sa ${Math.round(m % 60)} dk`;
+    else label = `${Math.floor(m / 1440)} gün ${Math.round((m % 1440) / 60)} sa`;
+    return `<strong>${label}</strong><small style="display:block;color:var(--text-dim);">${count} sipariş ort.</small>`;
+  }
+
   // --- PROVIDER SERVICES EXPLORER WORKSPACE ---
   async openProviderExplorer(providerId) {
     this.currentExplorerProviderId = providerId;
     this.selectedExplorerPlatform = 'all';
     this.explorerCurrentPage = 1;
     this.explorerPageSize = 50;
-    document.getElementById('explorer-services-tbody').innerHTML = `<tr><td colspan="8" class="text-center"><i class="fa-solid fa-spinner fa-spin"></i> Sağlayıcı servisleri yükleniyor, lütfen bekleyin...</td></tr>`;
+    document.getElementById('explorer-services-tbody').innerHTML = `<tr><td colspan="9" class="text-center"><i class="fa-solid fa-spinner fa-spin"></i> Sağlayıcı servisleri yükleniyor, lütfen bekleyin...</td></tr>`;
     document.getElementById('modal-provider-explorer').classList.add('active');
 
     try {
@@ -3552,6 +3565,9 @@ class SmmApp {
       // Sitemizde bu saglayicidan zaten ekli olan servislerin ID'leri; ayni
       // servisi ikinci kez eklemeyi engellemek icin kullanilir.
       this.explorerAddedIds = new Set((res.added_service_ids || []).map(String));
+      // Kendi siparislerimizden hesaplanan ortalama tamamlanma sureleri
+      // (provider_service_id -> {n, avg_minutes}); yalnizca siparis verilmis servislerde dolu.
+      this.explorerCompletionStats = res.completion_stats || {};
       const rawList = res.services || [];
       // Pre-compute lowercase searchIndex for 60fps instant searching
       this.currentExplorerServices = rawList.map(s => {
@@ -3656,7 +3672,7 @@ class SmmApp {
     const tbody = document.getElementById('explorer-services-tbody');
 
     if (!this.currentExplorerServices || this.currentExplorerServices.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" class="text-center">Bu sağlayıcıda servis bulunamadı.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="text-center">Bu sağlayıcıda servis bulunamadı.</td></tr>`;
       this.renderExplorerPagination(0, 0);
       return;
     }
@@ -3701,7 +3717,7 @@ class SmmApp {
     const renderList = filtered.slice(startIndex, startIndex + pageSize);
 
     if (renderList.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" class="text-center">Aramanızla eşleşen servis bulunamadı.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="text-center">Aramanızla eşleşen servis bulunamadı.</td></tr>`;
       this.renderExplorerPagination(0, 0);
       return;
     }
@@ -3721,6 +3737,7 @@ class SmmApp {
           <td class="cell-service-title" title="${this.escapeHtml(s._name)}">${this.escapeHtml(s._name)}</td>
           <td class="cell-nowrap" style="color: var(--accent-cyan); font-weight: 700;">$${s._rate.toFixed(3)}</td>
           <td class="cell-nowrap" style="font-size: 0.85rem;">${s._min} - ${s._max}</td>
+          <td class="cell-nowrap" style="font-size: 0.85rem;">${(() => { const st = this.explorerCompletionStats?.[rawIdStr]; return st ? this.formatAvgCompletion(st.avg_minutes, st.n) : '<span style="color:var(--text-dim);" title="Bu servise henüz sipariş verilmedi">—</span>'; })()}</td>
           <td class="cell-nowrap">
             ${isRefill ? '<span class="badge badge-completed"><i class="fa-solid fa-shield-check"></i> Garantili</span>' : '<span class="badge badge-pending">Standart</span>'}
           </td>
@@ -3969,7 +3986,7 @@ class SmmApp {
   async loadAdminAddedServices() {
     const tbody = document.getElementById('admin-added-services-tbody');
     if (!tbody) return;
-    tbody.innerHTML = `<tr><td colspan="12" class="text-center"><i class="fa-solid fa-spinner fa-spin"></i> Sitedeki servisler yükleniyor...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="13" class="text-center"><i class="fa-solid fa-spinner fa-spin"></i> Sitedeki servisler yükleniyor...</td></tr>`;
 
     try {
       const res = await API.getAdminServices();
@@ -3984,7 +4001,7 @@ class SmmApp {
       this.syncAdminServicesProviderFilter();
       this.filterAdminAddedServicesTable();
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="12" class="text-center" style="color: var(--danger);">Servisler yüklenemedi.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="13" class="text-center" style="color: var(--danger);">Servisler yüklenemedi.</td></tr>`;
     }
   }
 
@@ -4373,7 +4390,7 @@ class SmmApp {
     if (favoriteBadge) favoriteBadge.innerText = all.filter(s => Number(s.is_favorite) === 1).length;
 
     if (all.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="12" class="text-center">Sitenize eklenmiş hiç servis bulunmuyor. Sağlayıcılar sekmesinden servis seçerek ekleyebilirsiniz.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="13" class="text-center">Sitenize eklenmiş hiç servis bulunmuyor. Sağlayıcılar sekmesinden servis seçerek ekleyebilirsiniz.</td></tr>`;
       this.renderAdminServicesPagination(0, 0, 1, pageSize);
       this.updateSelectedServicesCount();
       return;
@@ -4400,7 +4417,7 @@ class SmmApp {
         : statusFilter === 1
           ? 'Bu filtreyle eşleşen aktif servis bulunamadı.'
           : 'Pasife alınmış servis bulunmuyor.';
-      tbody.innerHTML = `<tr><td colspan="12" class="text-center">${emptyMsg}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="13" class="text-center">${emptyMsg}</td></tr>`;
       this.renderAdminServicesPagination(0, 0, 1, pageSize);
       this.updateSelectedServicesCount();
       return;
@@ -4431,7 +4448,7 @@ class SmmApp {
         const countInGroup = groupCounts.get(providerLabel);
         groupHeader = `
       <tr class="provider-group-row">
-        <td colspan="12" style="background: rgba(139, 92, 246, 0.12); border-top: 2px solid var(--primary); font-weight: 800; color: #fff; padding: 10px 14px;">
+        <td colspan="13" style="background: rgba(139, 92, 246, 0.12); border-top: 2px solid var(--primary); font-weight: 800; color: #fff; padding: 10px 14px;">
           <i class="fa-solid fa-server" style="color: var(--accent-cyan);"></i>
           ${this.escapeHtml(providerLabel)}
           <span class="badge badge-processing" style="margin-left: 8px;">${countInGroup} servis</span>
@@ -4474,6 +4491,7 @@ class SmmApp {
         <td class="cell-nowrap" style="color: var(--accent-cyan); font-weight: 700;">$${(Number(s.rate_per_1000_usd_cents || 0) / 100).toFixed(2)}</td>
         <td class="cell-nowrap">${profitLabel}</td>
         <td class="cell-nowrap" style="font-size: 0.85rem;">${s.min_quantity} - ${s.max_quantity}</td>
+        <td class="cell-nowrap" style="font-size: 0.85rem;">${this.formatAvgCompletion(s.avg_completion_minutes, s.completed_order_count)}</td>
         <td class="cell-nowrap">
           <span class="badge ${s.status ? 'badge-completed' : 'badge-canceled'}">
             ${s.status ? 'Aktif' : 'Pasif'}
@@ -5094,51 +5112,162 @@ class SmmApp {
       errBox.style.display = 'none';
     }
 
-    // Tekrar kullan formu: ayni musteri ve miktar onceden doldurulur, link bos.
-    document.getElementById('order-reuse-username').value = o.username || '';
-    document.getElementById('order-reuse-qty').value = o.quantity || 1;
+    document.getElementById('modal-order-detail').classList.add('active');
+  }
+
+  // --- SERVİSİ TEKRAR KULLAN (siparis detayindan ve tamamlanma listesinden) ---
+  openServiceReuseFromOrder() {
+    const o = this.orderDetailOrder;
+    if (!o) return;
+    this.openServiceReuse(o.service_id, o.service_name, { username: o.username, quantity: o.quantity });
+  }
+
+  async openServiceReuse(serviceId, serviceName, opts = {}) {
+    if (!serviceName) {
+      const s = (this.completionTimesList || []).find(x => x.id === serviceId)
+        || (this.currentAdminAddedServices || []).find(x => x.id === serviceId);
+      serviceName = s ? (s.name_tr || s.name) : null;
+    }
+    this.serviceReuseContext = { serviceId, serviceName: serviceName || `Servis #${serviceId}` };
+    this.orderReuseSelectedUser = null;
+
+    document.getElementById('order-reuse-summary').innerHTML = `<strong>Servis:</strong> ${this.escapeHtml(this.serviceReuseContext.serviceName)}<br>"Bakiyeden düş" tutarı kullanıcının bakiyesinden tahsil eder; "Hediye" ücret almaz.`;
+    document.getElementById('order-reuse-username').value = opts.username || '';
+    document.getElementById('order-reuse-qty').value = opts.quantity || 1;
     document.getElementById('order-reuse-link').value = '';
     document.getElementById('order-reuse-charge').value = 'charge';
-    document.getElementById('order-reuse-summary').textContent = `Servis: ${o.service_name}`;
+    document.getElementById('order-reuse-user-list').style.display = 'none';
+    document.getElementById('modal-service-reuse').classList.add('active');
 
-    document.getElementById('modal-order-detail').classList.add('active');
+    // Kullanici listesi arka planda yuklenir; secim kutusu aninda calisir.
+    if (!this.orderReuseUsers) {
+      try {
+        const res = await API.getAdminUsers('');
+        this.orderReuseUsers = res.users || [];
+      } catch { this.orderReuseUsers = []; }
+    }
+    // Onceden dolu gelen kullanici adi listeden dogrulanip secili sayilir.
+    if (opts.username) {
+      this.orderReuseSelectedUser = (this.orderReuseUsers || []).find(u => u.username.toLowerCase() === String(opts.username).toLowerCase()) || null;
+    }
+  }
+
+  filterOrderReuseUsers() {
+    const input = document.getElementById('order-reuse-username');
+    const list = document.getElementById('order-reuse-user-list');
+    if (!input || !list) return;
+    const q = input.value.trim().toLowerCase();
+    // Elle yazilan metin secimi gecersiz kilar; gonderimde yeniden dogrulanir.
+    if (this.orderReuseSelectedUser && this.orderReuseSelectedUser.username.toLowerCase() !== q) this.orderReuseSelectedUser = null;
+    const users = this.orderReuseUsers || [];
+    const matches = (q ? users.filter(u => u.username.toLowerCase().includes(q) || String(u.email || '').toLowerCase().includes(q)) : users).slice(0, 30);
+    if (!matches.length) {
+      list.innerHTML = '<div style="padding: 8px 10px; color: var(--text-dim); font-size: .85rem;">Eşleşen kullanıcı yok.</div>';
+    } else {
+      list.innerHTML = matches.map(u => `
+        <button type="button" class="btn btn-outline btn-sm" style="display: flex; width: 100%; justify-content: space-between; align-items: center; margin-bottom: 4px; text-align: left;"
+                onclick="app.selectOrderReuseUser(${u.id})">
+          <span><strong>${this.escapeHtml(u.username)}</strong>${u.banned ? ' <span class="badge badge-canceled">Banlı</span>' : ''}<small style="display:block;color:var(--text-dim);">${this.escapeHtml(u.email || '')}</small></span>
+          <span style="color: var(--success); font-weight: 700; font-size: .8rem;">₺${Number(u.balance || 0).toFixed(2)}</span>
+        </button>`).join('');
+    }
+    list.style.display = 'block';
+  }
+
+  selectOrderReuseUser(userId) {
+    const user = (this.orderReuseUsers || []).find(u => u.id === userId);
+    if (!user) return;
+    this.orderReuseSelectedUser = user;
+    document.getElementById('order-reuse-username').value = user.username;
+    this.hideOrderReuseUserList();
+  }
+
+  hideOrderReuseUserList() {
+    const list = document.getElementById('order-reuse-user-list');
+    if (list) list.style.display = 'none';
   }
 
   async handleOrderReuseSubmit(e) {
     e.preventDefault();
-    const source = this.orderDetailOrder;
-    if (!source) return;
+    const ctx = this.serviceReuseContext;
+    if (!ctx) return;
     const username = document.getElementById('order-reuse-username').value.trim();
     const link = document.getElementById('order-reuse-link').value.trim();
     const quantity = Number(document.getElementById('order-reuse-qty').value);
     const chargeUser = document.getElementById('order-reuse-charge').value === 'charge';
     if (!username || !link || !quantity) return;
 
-    // Kullanici adi id'ye cevrilir (birebir eslesme aranir).
-    let target;
-    try {
-      const res = await API.getAdminUsers(username);
-      target = (res.users || []).find(u => u.username.toLowerCase() === username.toLowerCase());
-    } catch (err) {
-      return showToast(`Kullanıcı aranamadı: ${err.message}`, 'error');
+    // Listeden secilmisse dogrudan kullanilir; elle yazilmissa birebir eslesme aranir.
+    let target = this.orderReuseSelectedUser && this.orderReuseSelectedUser.username.toLowerCase() === username.toLowerCase()
+      ? this.orderReuseSelectedUser : null;
+    if (!target) {
+      try {
+        const res = await API.getAdminUsers(username);
+        target = (res.users || []).find(u => u.username.toLowerCase() === username.toLowerCase());
+      } catch (err) {
+        return showToast(`Kullanıcı aranamadı: ${err.message}`, 'error');
+      }
     }
-    if (!target) return showToast(`"${username}" adında bir kullanıcı bulunamadı. Kullanıcı adını birebir yaz.`, 'warning');
+    if (!target) return showToast(`"${username}" adında bir kullanıcı bulunamadı. Listeden seçmeyi dene.`, 'warning');
     if (target.banned) return showToast(`"${username}" banlı; banlı kullanıcıya sipariş oluşturulamaz.`, 'warning');
 
     const confirmed = await confirmDialog(
-      `"${target.username}" kullanıcısına ${quantity} adet sipariş oluşturulacak ve sağlayıcıya iletilecek.\n\nServis: ${source.service_name}\nÜcretlendirme: ${chargeUser ? 'kullanıcının bakiyesinden düşülecek' : 'HEDİYE (ücret alınmayacak)'}. Devam edilsin mi?`,
+      `"${target.username}" kullanıcısına ${quantity} adet sipariş oluşturulacak ve sağlayıcıya iletilecek.\n\nServis: ${ctx.serviceName}\nÜcretlendirme: ${chargeUser ? 'kullanıcının bakiyesinden düşülecek' : 'HEDİYE (ücret alınmayacak)'}. Devam edilsin mi?`,
       { title: 'Servisi tekrar kullan', icon: 'fa-rotate-right', confirmText: 'Oluştur ve Gönder' }
     );
     if (!confirmed) return;
 
     try {
-      const res = await API.assignUserOrder(target.id, { service_id: source.service_id, link, quantity, charge_user: chargeUser });
+      const res = await API.assignUserOrder(target.id, { service_id: ctx.serviceId, link, quantity, charge_user: chargeUser });
       showToast(res.message, 'success');
+      this.closeModal('modal-service-reuse');
       this.closeModal('modal-order-detail');
       this.loadAdminOrders();
     } catch (err) {
       showToast(`Sipariş oluşturulamadı: ${err.message}`, 'error');
     }
+  }
+
+  // --- TAMAMLANMA SÜRELERİ SEKMESİ ---
+  async loadCompletionTimes() {
+    const tbody = document.getElementById('completion-times-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center"><i class="fa-solid fa-spinner fa-spin"></i> Yükleniyor...</td></tr>';
+    try {
+      const res = await API.getAdminServices();
+      this.adminUsdTryRate = Number(res.usd_try_rate) > 0 ? Number(res.usd_try_rate) : 35;
+      this.completionTimesList = (res.services || []).filter(s => Number(s.completed_order_count) > 0);
+      this.renderCompletionTimes();
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-center" style="color:var(--danger);">Liste yüklenemedi: ${this.escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+
+  renderCompletionTimes() {
+    const tbody = document.getElementById('completion-times-tbody');
+    if (!tbody) return;
+    const q = (document.getElementById('completion-search')?.value || '').trim().toLowerCase();
+    let list = this.completionTimesList || [];
+    if (q) list = list.filter(s => `${s.name_tr || s.name} ${s.category_name || ''}`.toLowerCase().includes(q));
+    // En hizli tamamlananlar ustte: hangi servislerin akici oldugu ilk bakista gorunur.
+    list = [...list].sort((a, b) => (a.avg_completion_minutes || 0) - (b.avg_completion_minutes || 0));
+    if (!list.length) {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-center">${q ? 'Aramanla eşleşen servis yok.' : 'Henüz tamamlanan sipariş verisi yok. Siparişler tamamlandıkça ortalama süreler burada birikecek.'}</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = list.map(s => `
+      <tr>
+        <td class="cell-nowrap"><span class="badge badge-processing">${this.escapeHtml(s.category_name || '—')}</span></td>
+        <td class="cell-truncate" title="${this.escapeHtml(s.name_tr || s.name)}"><strong>${this.escapeHtml(s.name_tr || s.name)}</strong><small style="display:block;color:var(--text-dim);">${this.escapeHtml(s.provider_name || 'Manuel')} · Servis #${this.escapeHtml(String(s.provider_service_id || s.id))}</small></td>
+        <td class="cell-nowrap">${this.formatAvgCompletion(s.avg_completion_minutes, s.completed_order_count)}</td>
+        <td class="cell-nowrap"><strong>${s.completed_order_count}</strong></td>
+        <td class="cell-nowrap"><span class="badge ${s.status ? 'badge-completed' : 'badge-canceled'}">${s.status ? 'Aktif' : 'Pasif'}</span></td>
+        <td class="cell-nowrap">
+          <button class="btn btn-primary btn-sm" onclick="app.openServiceReuse(${s.id})" ${s.status ? '' : 'disabled title="Pasif servise sipariş verilemez"'}>
+            <i class="fa-solid fa-rotate-right"></i> Tekrar Kullan
+          </button>
+        </td>
+      </tr>`).join('');
   }
 
   async sendOrderReviewMail(orderId, tekrar) {

@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260904b">
+  <link rel="stylesheet" href="/css/style.css?v=20260904c">
 </head>
 <body>
 
@@ -1193,6 +1193,7 @@ Content-Type: application/json
             <option value="orders">Siparişler</option>
             <option value="services">Servisler</option>
             <option value="providers">Sağlayıcılar</option>
+            <option value="completion">Tamamlanma Süreleri</option>
             <option value="payments">Para Yatırma</option>
             <option value="deposits">Ödemeler</option>
             <option value="coupons">Kuponlar</option>
@@ -1215,6 +1216,7 @@ Content-Type: application/json
             <div class="admin-nav-label">Operasyon</div>
             <button type="button" class="sidebar-item" data-admin-tab="statistics" onclick="app.switchAdminTab('statistics', event)"><i class="fa-solid fa-chart-line"></i><span>İstatistik</span></button>
             <button type="button" class="sidebar-item" data-admin-tab="orders" onclick="app.switchAdminTab('orders', event)"><i class="fa-solid fa-boxes-stacked"></i><span>Siparişler</span></button>
+            <button type="button" class="sidebar-item" data-admin-tab="completion" onclick="app.switchAdminTab('completion', event)"><i class="fa-solid fa-stopwatch"></i><span>Tamamlanma Süreleri</span></button>
             <button type="button" class="sidebar-item" data-admin-tab="services" onclick="app.switchAdminTab('services', event)"><i class="fa-solid fa-layer-group"></i><span>Servis Kataloğu</span></button>
             <button type="button" class="sidebar-item" data-admin-tab="providers" onclick="app.switchAdminTab('providers', event)"><i class="fa-solid fa-server"></i><span>Sağlayıcılar</span></button>
 
@@ -1582,6 +1584,7 @@ Content-Type: application/json
                       <th scope="col">Senin Fiyatın ($)</th>
                       <th scope="col">Kâr</th>
                       <th scope="col">Limitler</th>
+                      <th scope="col" title="Kendi sipariş geçmişinden hesaplanır (sağlayıcı API'si bu veriyi vermez)">Ort. Süre</th>
                       <th scope="col">Durum</th>
                       <th scope="col">İşlemler</th>
                     </tr>
@@ -1595,6 +1598,42 @@ Content-Type: application/json
               <!-- SAYFALAMA -->
               <div id="admin-services-pagination" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 4px 4px;">
                 <!-- Dynamic Pagination -->
+              </div>
+            </div>
+          </div>
+
+          <!-- ADMIN TAB: TAMAMLANMA SÜRELERİ -->
+          <div id="admin-tab-completion" style="display: none;">
+            <div class="flex-between mb-20">
+              <div>
+                <h2>⏱️ Servis Tamamlanma Süreleri</h2>
+                <p style="font-size: 0.88rem; color: var(--text-muted);">Kendi sipariş geçmişinden hesaplanır: bu servisi müşterilerin sipariş ettiğinde ortalama ne kadar sürede tamamlandı. Sağlayıcı API'leri bu veriyi vermez; liste, tamamlanan siparişlerin birikmesiyle dolar.</p>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="app.loadCompletionTimes()" title="Listeyi yenile">
+                <i class="fa-solid fa-rotate"></i> Yenile
+              </button>
+            </div>
+            <div class="glass-card">
+              <div class="form-group" style="max-width: 380px;">
+                <input aria-label="Servis veya kategori ara" type="search" id="completion-search" class="form-control"
+                       placeholder="🔍 Servis veya kategori ara..." oninput="app.renderCompletionTimes()">
+              </div>
+              <div class="table-responsive">
+                <table class="custom-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Kategori</th>
+                      <th scope="col">Servis</th>
+                      <th scope="col">Ortalama Tamamlanma</th>
+                      <th scope="col">Tamamlanan Sipariş</th>
+                      <th scope="col">Durum</th>
+                      <th scope="col">İşlem</th>
+                    </tr>
+                  </thead>
+                  <tbody id="completion-times-tbody">
+                    <tr><td colspan="6" class="text-center">Yükleniyor...</td></tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -3403,6 +3442,7 @@ Content-Type: application/json
               <th scope="col" style="text-align: left;">Servis Adı</th>
               <th scope="col" style="width: 130px;">Maliyet (Geliş)</th>
               <th scope="col" style="width: 130px;">Min / Max</th>
+              <th scope="col" style="width: 110px;" title="Bu servisi daha önce sipariş ettiysen kendi ortalama tamamlanma süren (sağlayıcı API'si bu veriyi vermez)">Ort. Süre</th>
               <th scope="col" style="width: 120px;">Telafi / Garanti</th>
               <th scope="col" style="width: 140px; text-align: right;">İşlem</th>
             </tr>
@@ -3824,17 +3864,29 @@ Content-Type: application/json
       <div id="order-detail-error" style="display: none; margin-top: 6px; padding: 10px 12px; border: 1px solid rgba(239,68,68,.35); border-radius: 10px; background: rgba(239,68,68,.08); color: var(--danger); font-size: .85rem; line-height: 1.45;">
       </div>
 
-      <hr style="border-color: rgba(255,255,255,.08); margin: 18px 0;">
+      <button class="btn btn-primary" style="width: 100%; margin-top: 18px;" onclick="app.openServiceReuseFromOrder()">
+        <i class="fa-solid fa-rotate-right"></i> Servisi Tekrar Kullan
+      </button>
+    </div>
+  </div>
 
-      <!-- Servisi tekrar kullan -->
-      <h3 style="margin-bottom: 6px;"><i class="fa-solid fa-rotate-right"></i> Servisi Tekrar Kullan</h3>
-      <p class="admin-help" style="margin-bottom: 14px;">Aynı servisle başka bir kullanıcıya (veya aynı kullanıcıya) yeni sipariş oluştur. "Bakiyeden düş" seçilirse tutar kullanıcının bakiyesinden tahsil edilir; "Hediye" seçilirse ücret alınmaz.</p>
+  <!-- MODAL: SERVİSİ TEKRAR KULLAN (sipariş detayından ve tamamlanma listesinden açılır) -->
+  <div id="modal-service-reuse" class="modal-backdrop">
+    <div class="glass-card modal-content" style="max-width: 520px;">
+      <div class="flex-between mb-20">
+        <h2 style="font-size: 1.2rem;"><i class="fa-solid fa-rotate-right"></i> Servisi Tekrar Kullan</h2>
+        <button class="btn-icon" aria-label="Kapat" onclick="app.closeModal('modal-service-reuse')"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div id="order-reuse-summary" class="admin-help" style="margin-bottom: 14px;"></div>
       <form onsubmit="app.handleOrderReuseSubmit(event)">
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
-          <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label" for="order-reuse-username">Kullanıcı Adı</label>
-            <input type="text" id="order-reuse-username" class="form-control" placeholder="kullanici_adi" required autocomplete="off">
-          </div>
+        <div class="form-group" style="position: relative;">
+          <label class="form-label" for="order-reuse-username">Kullanıcı</label>
+          <input type="text" id="order-reuse-username" class="form-control" placeholder="Ara: kullanıcı adı veya e-posta..." required autocomplete="off"
+                 oninput="app.filterOrderReuseUsers()" onfocus="app.filterOrderReuseUsers()"
+                 onblur="setTimeout(() => app.hideOrderReuseUserList(), 200)">
+          <div id="order-reuse-user-list" class="glass-card" style="display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 30; max-height: 230px; overflow-y: auto; padding: 6px; margin-top: 4px;"></div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group" style="margin-bottom: 0;">
             <label class="form-label" for="order-reuse-qty">Miktar</label>
             <input type="number" id="order-reuse-qty" class="form-control" min="1" required>
@@ -3851,7 +3903,6 @@ Content-Type: application/json
           <label class="form-label" for="order-reuse-link">Bağlantı (Link)</label>
           <input type="text" id="order-reuse-link" class="form-control" placeholder="https://..." required>
         </div>
-        <div id="order-reuse-summary" class="admin-help" style="margin-bottom: 10px;"></div>
         <button type="submit" class="btn btn-primary" style="width: 100%;"><i class="fa-solid fa-paper-plane"></i> Siparişi Oluştur ve Sağlayıcıya Gönder</button>
       </form>
     </div>
@@ -4046,7 +4097,7 @@ Content-Type: application/json
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260904b" defer></script>
-  <script src="/js/app.js?v=20260904b" defer></script>
+  <script src="/js/api.js?v=20260904c" defer></script>
+  <script src="/js/app.js?v=20260904c" defer></script>
 </body>
 </html>

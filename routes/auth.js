@@ -11,6 +11,7 @@ const { fromKurus } = require('../utils/money');
 const { sendMail } = require('../services/mailer');
 const { transactionalEmail, verificationCodeEmail } = require('../services/emailTemplates');
 const telegram = require('../services/telegramNotifier');
+const securityMonitor = require('../services/securityMonitor');
 
 async function getSiteName() {
   try {
@@ -127,12 +128,14 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     // Hangisinin yanlis oldugu bilerek soylenmez: aksi halde gecerli kullanici
     // adlari denenerek tespit edilebilirdi (kullanici enumerasyonu).
     if (!user || !passwordMatches) {
+      securityMonitor.logEvent('failed_login', req, { username: req.body.username, detail: 'Hatalı kullanıcı adı veya şifre' });
       return res.status(401).json({
         error: 'Kullanıcı adı veya şifre hatalı. Büyük/küçük harfe ve klavye diline dikkat edin.',
         error_en: 'Incorrect username or password. Check your caps lock and keyboard layout.'
       });
     }
     if (user.banned) {
+      securityMonitor.logEvent('banned_login', req, { username: user.username, detail: 'Banlı hesap giriş denemesi' });
       return res.status(403).json({
         error: 'Hesabınız askıya alınmıştır. Destek ekibiyle iletişime geçin.',
         error_en: 'Your account has been suspended. Please contact support.'
@@ -147,6 +150,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
         });
       }
       if (!(await verify({ token: req.body.totp, secret: decryptSecret(user.two_factor_secret) })).valid) {
+        securityMonitor.logEvent('failed_login', req, { username: user.username, detail: 'Geçersiz 2FA kodu' });
         return res.status(401).json({
           error: 'İki adımlı doğrulama kodu geçersiz veya süresi dolmuş. Uygulamadaki güncel kodu girin.',
           error_en: 'Two-factor code is invalid or expired. Enter the current code from your app.'

@@ -16,6 +16,7 @@ const telegram = require('../services/telegramNotifier');
 const Shopier = require('../services/shopier');
 const { buildXlsx, columnsFromRows } = require('../utils/xlsx');
 const { buildMetaDescription } = require('../utils/metaDescription');
+const securityMonitor = require('../services/securityMonitor');
 
 // --- Ortak dogrulama semalari ---------------------------------------------
 // Admin uclari da musteri uclari gibi sema ile dogrulanir; boylece negatif
@@ -337,6 +338,46 @@ router.post('/providers', validate(providerCreateSchema), async (req, res) => {
     res.json({ message: 'Sağlayıcı başarıyla eklendi.', provider_id: result.id, balance });
   } catch (err) {
     res.status(500).json({ error: 'Sağlayıcı eklenirken hata oluştu.' });
+  }
+});
+
+// Saglayici silme: saglayicinin TUM servisleri de kaldirilir. Siparis gecmisi
+// olan servisler silinemez (foreign key + rapor butunlugu); onlar pasife alinip
+// saglayici bagi koparilir, geri kalanlar gercekten silinir.
+router.delete('/providers/:id', requireIdParam, async (req, res) => {
+  try {
+    const providerId = req.recordId;
+    const provider = await dbAsync.get('SELECT id, name FROM providers WHERE id = ?', [providerId]);
+    if (!provider) return res.status(404).json({ error: 'Sağlayıcı bulunamadı.' });
+
+    const result = await withTransaction(async tx => {
+      const referenced = new Set((await tx.all(REFERENCED_SERVICE_SQL)).map(row => row.id));
+      const all = (await tx.all('SELECT id FROM services WHERE provider_id = ?', [providerId])).map(row => row.id);
+      const keep = all.filter(id => referenced.has(id));
+      const remove = all.filter(id => !referenced.has(id));
+
+      for (let i = 0; i < remove.length; i += 900) {
+        const chunk = remove.slice(i, i + 900);
+        await tx.run(`DELETE FROM services WHERE id IN (${chunk.map(() => '?').join(',')})`, chunk);
+      }
+      if (keep.length) {
+        const ph = keep.map(() => '?').join(',');
+        await tx.run(`UPDATE services SET status = 0, provider_id = NULL, provider_service_id = NULL WHERE id IN (${ph})`, keep);
+      }
+      await tx.run('DELETE FROM categories WHERE NOT EXISTS (SELECT 1 FROM services WHERE services.category_id = categories.id)');
+      await tx.run('DELETE FROM providers WHERE id = ?', [providerId]);
+      await tx.run('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+        [req.user.id, 'provider_deleted', 'provider', String(providerId),
+         JSON.stringify({ name: provider.name, deleted_services: remove.length, deactivated_services: keep.length }), req.ip]);
+      return { deleted: remove.length, kept: keep.length };
+    });
+
+    const parts = [`"${normalizePlainText(provider.name, 100)}" sağlayıcısı silindi`];
+    if (result.deleted > 0) parts.push(`${result.deleted} servisi kaldırıldı`);
+    if (result.kept > 0) parts.push(`${result.kept} servisi sipariş geçmişi olduğu için pasife alındı`);
+    res.json({ message: parts.join('; ') + '.', deleted_services: result.deleted, deactivated_services: result.kept });
+  } catch (err) {
+    res.status(500).json({ error: 'Sağlayıcı silinirken hata oluştu.' });
   }
 });
 
@@ -1408,6 +1449,52 @@ router.post('/reset-demo-data', async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// GÜVENLİK MERKEZİ (Tehlike Alanı > Güvenlik)
+// Basarisiz girisler, hiz limiti ihlalleri, engelli IP denemeleri ve IP
+// engelleme yonetimi. Olaylar services/securityMonitor.js tarafindan yazilir.
+// ---------------------------------------------------------------------------
+const SECURITY_EVENT_TYPES = new Set(['failed_login', 'banned_login', 'rate_limit', 'blocked_hit']);
+
+router.get('/security/overview', async (req, res) => {
+  try {
+    const type = SECURITY_EVENT_TYPES.has(String(req.query.type)) ? String(req.query.type) : null;
+    res.json(await securityMonitor.getOverview({ type }));
+  } catch (err) {
+    res.status(500).json({ error: 'Güvenlik verileri yüklenemedi.' });
+  }
+});
+
+const ipField = z.string().trim().min(3).max(64).regex(/^[0-9a-fA-F.:]+$/, 'Geçerli bir IPv4 veya IPv6 adresi girin.');
+
+router.post('/security/block-ip', validate(z.object({ ip: ipField, reason: z.string().trim().max(200).optional() })), async (req, res) => {
+  try {
+    const targetIp = req.body.ip.trim();
+    // Admin kendi baglantisini keserse panele bir daha giremez.
+    if (targetIp === securityMonitor.clientIp(req) || targetIp === req.ip) {
+      return res.status(400).json({ error: 'Şu an bağlı olduğun IP adresini engelleyemezsin.' });
+    }
+    await securityMonitor.blockIp(targetIp, req.body.reason || '', req.user.id);
+    await dbAsync.run('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'ip_blocked', 'blocked_ip', targetIp, JSON.stringify({ reason: req.body.reason || '' }), req.ip]);
+    res.json({ message: `${targetIp} adresi engellendi. Bu IP'den gelen tüm istekler artık reddedilecek.` });
+  } catch (err) {
+    res.status(500).json({ error: 'IP engellenemedi.' });
+  }
+});
+
+router.post('/security/unblock-ip', validate(z.object({ ip: ipField })), async (req, res) => {
+  try {
+    const targetIp = req.body.ip.trim();
+    await securityMonitor.unblockIp(targetIp);
+    await dbAsync.run('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'ip_unblocked', 'blocked_ip', targetIp, null, req.ip]);
+    res.json({ message: `${targetIp} adresinin engeli kaldırıldı.` });
+  } catch (err) {
+    res.status(500).json({ error: 'Engel kaldırılamadı.' });
+  }
+});
+
 // CHANGE ADMIN PASSWORD
 router.post('/change-password', validate(changePasswordSchema), async (req, res) => {
   try {
@@ -1842,6 +1929,78 @@ router.get('/telegram/chats', async (req, res) => {
     res.json({ chats });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PARA YATIRMA (Finans > Para Yatırma)
+// payments tablosu her basarili yuklemeyi "method" etiketiyle tutar (IBAN
+// onayi, Shopier, PayTR, kripto, bonus/kupon...). Burada yontemler gruplanir;
+// liste + gunluk/haftalik/aylik ozet tek istekte doner.
+// ---------------------------------------------------------------------------
+const PAYMENT_METHOD_GROUP_SQL = `CASE
+  WHEN p.method LIKE 'Banka/Papara%' THEN 'bank'
+  WHEN p.method = 'Shopier' THEN 'shopier'
+  WHEN p.method = 'PayTR' THEN 'paytr'
+  WHEN p.method LIKE 'Kripto%' THEN 'crypto'
+  WHEN p.method LIKE 'Bonus%' OR p.method LIKE 'Kupon%' OR p.method = 'Referans Kazancı' THEN 'bonus'
+  ELSE 'other' END`;
+// Gercek para girisi sayilan gruplar: bonus/kupon/referans ve gelistirme
+// ortami yuklemeleri ciroya katilmaz.
+const REAL_MONEY_GROUPS = `('bank', 'shopier', 'paytr', 'crypto')`;
+
+router.get('/payments', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim().slice(0, 100);
+    const group = ['bank', 'shopier', 'paytr', 'crypto', 'bonus', 'other'].includes(String(req.query.method)) ? String(req.query.method) : null;
+
+    const where = [`p.status = 'completed'`];
+    const params = [];
+    if (q) {
+      const like = `%${q.replace(/[\\%_]/g, ch => `\\${ch}`)}%`;
+      where.push(`(u.username LIKE ? ESCAPE '\\' OR u.email LIKE ? ESCAPE '\\' OR p.transaction_id LIKE ? ESCAPE '\\')`);
+      params.push(like, like, like);
+    }
+    if (group) {
+      where.push(`${PAYMENT_METHOD_GROUP_SQL} = ?`);
+      params.push(group);
+    }
+
+    const [payments, totals, byMethod] = await Promise.all([
+      dbAsync.all(
+        `SELECT p.id, p.user_id, p.amount, p.amount_kurus, p.method, p.transaction_id, p.created_at,
+                u.username, u.email, ${PAYMENT_METHOD_GROUP_SQL} AS method_group
+         FROM payments p JOIN users u ON u.id = p.user_id
+         WHERE ${where.join(' AND ')}
+         ORDER BY p.id DESC LIMIT 200`, params),
+      // Ozet kartlari: yalnizca gercek para girisleri (bonus haric).
+      dbAsync.get(
+        `SELECT
+           COALESCE(SUM(CASE WHEN date(p.created_at) = date('now') THEN p.amount_kurus END), 0) AS today_kurus,
+           COALESCE(SUM(CASE WHEN p.created_at >= datetime('now', '-6 days') THEN p.amount_kurus END), 0) AS week_kurus,
+           COALESCE(SUM(CASE WHEN p.created_at >= datetime('now', '-29 days') THEN p.amount_kurus END), 0) AS month_kurus,
+           COALESCE(SUM(p.amount_kurus), 0) AS total_kurus,
+           COUNT(*) AS total_count
+         FROM payments p
+         WHERE p.status = 'completed' AND ${PAYMENT_METHOD_GROUP_SQL} IN ${REAL_MONEY_GROUPS}`),
+      dbAsync.all(
+        `SELECT ${PAYMENT_METHOD_GROUP_SQL} AS grp, COUNT(*) AS n, COALESCE(SUM(p.amount_kurus), 0) AS total_kurus
+         FROM payments p WHERE p.status = 'completed' GROUP BY grp`)
+    ]);
+
+    res.json({
+      payments,
+      stats: {
+        today: fromKurus(totals.today_kurus),
+        week: fromKurus(totals.week_kurus),
+        month: fromKurus(totals.month_kurus),
+        total: fromKurus(totals.total_kurus),
+        count: totals.total_count
+      },
+      by_method: byMethod.map(row => ({ group: row.grp, count: row.n, total: fromKurus(row.total_kurus) }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Para yatırma kayıtları yüklenemedi.' });
   }
 });
 

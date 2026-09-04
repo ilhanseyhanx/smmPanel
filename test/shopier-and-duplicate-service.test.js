@@ -227,7 +227,12 @@ test('imzalı ödeme bildirimi bakiyeyi yükler, ürünü siler ve tekrarı yok 
   assert.equal(odeme.method, 'Shopier');
   assert.equal(odeme.status, 'completed');
 
-  // Gecici urun magazadan silinmis olmali.
+  // Gecici urun magazadan silinmis olmali. Silme, webhook yaniti dondukten
+  // sonra beklenmeden (fire-and-forget) yapilir; makine yavassa yanittan
+  // birkac ms sonra tamamlanabilir. Kisa bir sure yoklanir.
+  for (let i = 0; i < 40 && sahte.urunler.has(intent.provider_ref); i++) {
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
   assert.equal(sahte.urunler.has(intent.provider_ref), false, 'geçici ürün mağazada kalmış');
 
   // Ayni bildirim tekrar gelirse bakiye ikinci kez yuklenmemeli.

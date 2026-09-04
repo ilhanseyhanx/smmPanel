@@ -1193,6 +1193,7 @@ Content-Type: application/json
             <option value="orders">Siparişler</option>
             <option value="services">Servisler</option>
             <option value="providers">Sağlayıcılar</option>
+            <option value="payments">Para Yatırma</option>
             <option value="deposits">Ödemeler</option>
             <option value="coupons">Kuponlar</option>
             <option value="campaigns">Kampanyalar</option>
@@ -1218,6 +1219,7 @@ Content-Type: application/json
             <button type="button" class="sidebar-item" data-admin-tab="providers" onclick="app.switchAdminTab('providers', event)"><i class="fa-solid fa-server"></i><span>Sağlayıcılar</span></button>
 
             <div class="admin-nav-label">Finans</div>
+            <button type="button" class="sidebar-item" data-admin-tab="payments" onclick="app.switchAdminTab('payments', event)"><i class="fa-solid fa-money-bill-trend-up"></i><span>Para Yatırma</span></button>
             <button type="button" class="sidebar-item" data-admin-tab="deposits" onclick="app.switchAdminTab('deposits', event)"><i class="fa-solid fa-wallet"></i><span>Ödeme Bildirimleri</span><em id="admin-nav-deposits-count"></em></button>
             <button type="button" class="sidebar-item" data-admin-tab="coupons" onclick="app.switchAdminTab('coupons', event)"><i class="fa-solid fa-ticket"></i><span>Kuponlar</span></button>
             <button type="button" class="sidebar-item" data-admin-tab="campaigns" onclick="app.switchAdminTab('campaigns', event)"><i class="fa-solid fa-bullhorn"></i><span>Kampanyalar</span></button>
@@ -1594,6 +1596,84 @@ Content-Type: application/json
               <div id="admin-services-pagination" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 4px 4px;">
                 <!-- Dynamic Pagination -->
               </div>
+            </div>
+          </div>
+
+          <!-- ADMIN TAB: PARA YATIRMA (TÜM YÖNTEMLER) -->
+          <div id="admin-tab-payments" style="display: none;">
+            <div class="flex-between mb-20">
+              <h2>💰 Para Yatırma</h2>
+              <button class="btn btn-outline btn-sm" onclick="app.loadAdminPayments()" title="Listeyi yenile">
+                <i class="fa-solid fa-rotate"></i> Yenile
+              </button>
+            </div>
+
+            <!-- Özet: yalnızca gerçek para girişleri (bonus/kupon hariç) -->
+            <div class="stats-grid mb-30" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));">
+              <div class="glass-card stat-card">
+                <div class="stat-icon green"><i class="fa-solid fa-sun"></i></div>
+                <div>
+                  <div class="stat-val" id="pay-stat-today">₺0</div>
+                  <div class="stat-lbl">Bugün</div>
+                </div>
+              </div>
+              <div class="glass-card stat-card">
+                <div class="stat-icon cyan"><i class="fa-solid fa-calendar-week"></i></div>
+                <div>
+                  <div class="stat-val" id="pay-stat-week">₺0</div>
+                  <div class="stat-lbl">Son 7 Gün</div>
+                </div>
+              </div>
+              <div class="glass-card stat-card">
+                <div class="stat-icon"><i class="fa-solid fa-calendar-days"></i></div>
+                <div>
+                  <div class="stat-val" id="pay-stat-month">₺0</div>
+                  <div class="stat-lbl">Son 30 Gün</div>
+                </div>
+              </div>
+              <div class="glass-card stat-card">
+                <div class="stat-icon green"><i class="fa-solid fa-vault"></i></div>
+                <div>
+                  <div class="stat-val" id="pay-stat-total">₺0</div>
+                  <div class="stat-lbl">Toplam <small id="pay-stat-count" style="color: var(--text-dim); font-weight: 400;"></small></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Yöntem kırılımı -->
+            <div id="pay-method-breakdown" class="stats-grid mb-30" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));">
+              <!-- app.js doldurur -->
+            </div>
+
+            <div class="glass-card">
+              <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px;">
+                <div class="form-group" style="flex: 1 1 260px; max-width: 380px; margin-bottom: 0;">
+                  <input aria-label="Kullanıcı adı, e-posta veya işlem no ara" type="search" id="admin-payments-search" class="form-control"
+                         placeholder="🔍 Kullanıcı adı, e-posta veya işlem no ara..."
+                         oninput="app.debouncedAdminPaymentsSearch()">
+                </div>
+                <div id="admin-payments-filters" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  <!-- Yöntem filtre düğmeleri app.js tarafından doldurulur -->
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="custom-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">İşlem</th>
+                      <th scope="col">Kullanıcı</th>
+                      <th scope="col">Yöntem</th>
+                      <th scope="col">Tutar</th>
+                      <th scope="col">İşlem No</th>
+                      <th scope="col">Tarih</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-payments-tbody">
+                    <tr><td colspan="6" class="text-center">Yükleniyor...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p class="admin-help" style="margin-top: 12px;">Son 200 kayıt gösterilir. Özet kartları yalnızca gerçek para girişlerini sayar; bonus, kupon ve referans kazançları yöntem kırılımında ayrıca görünür.</p>
             </div>
           </div>
 
@@ -2040,22 +2120,34 @@ Content-Type: application/json
 
           <!-- ADMIN TAB 4: ALL ORDERS -->
           <div id="admin-tab-orders" style="display: none;">
-            <h2 style="margin-bottom: 20px;">📦 Tüm Siparişlerin Yönetimi</h2>
+            <div class="flex-between mb-20">
+              <h2>📦 Sipariş Yönetimi</h2>
+              <button class="btn btn-outline btn-sm" onclick="app.loadAdminOrders()" title="Listeyi yenile">
+                <i class="fa-solid fa-rotate"></i> Yenile
+              </button>
+            </div>
             <div class="glass-card">
-              <div class="form-group" style="max-width: 420px;">
-                <input aria-label="Sipariş no, kullanıcı adı veya bağlantı ara" type="search" id="admin-orders-search" class="form-control"
-                       placeholder="🔍 Sipariş no, kullanıcı adı veya bağlantı ara..."
-                       oninput="app.debouncedAdminOrdersSearch()">
+              <!-- Arama + durum filtresi tek satırda: durum sekmeleri sayaç da gösterir -->
+              <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px;">
+                <div class="form-group" style="flex: 1 1 280px; max-width: 420px; margin-bottom: 0;">
+                  <input aria-label="Sipariş no, kullanıcı adı veya bağlantı ara" type="search" id="admin-orders-search" class="form-control"
+                         placeholder="🔍 Sipariş no, kullanıcı adı veya bağlantı ara..."
+                         oninput="app.debouncedAdminOrdersSearch()">
+                </div>
+                <div id="admin-orders-filters" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  <!-- Durum filtre düğmeleri app.js tarafından doldurulur -->
+                </div>
               </div>
               <div class="table-responsive">
                 <table class="custom-table">
                   <thead>
                     <tr>
-                      <th scope="col">ID</th>
+                      <th scope="col">Sipariş</th>
                       <th scope="col">Müşteri</th>
                       <th scope="col">Servis</th>
                       <th scope="col">Bağlantı</th>
                       <th scope="col">Miktar</th>
+                      <th scope="col">Tutar</th>
                       <th scope="col">Durum</th>
                       <th scope="col">Aksiyon</th>
                     </tr>
@@ -2679,22 +2771,173 @@ Content-Type: application/json
             </div>
           </div>
 
-          <!-- ADMIN TAB 6: SYSTEM RESET -->
+          <!-- ADMIN TAB 6: TEHLİKE ALANI (GÜVENLİK MERKEZİ + SİSTEM SIFIRLAMA) -->
           <div id="admin-tab-reset" style="display: none;">
-            <h2 style="margin-bottom: 20px; color: var(--danger);">🧹 Sistem Sıfırlama & Demo Veri Temizliği</h2>
-            
-            <div class="glass-card" style="border-color: rgba(239, 68, 68, 0.4); max-width: 700px;">
-              <h3 style="color: var(--danger); margin-bottom: 12px;"><i class="fa-solid fa-broom"></i> Tüm Demo Verileri Sil</h3>
-              <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.6;">
-                Bu işlem paneli sıfırlayarak canlıya geçiş öncesinde tüm demo verileri kaldırır:<br>
-                • Demo API Sağlayıcıyı siler.<br>
-                • Test servislerini ve varsayılan kategorileri siler.<br>
-                • Deneme siparişlerini ve demo kullanıcıyı siler.<br>
-                • <strong>Mevcut Admin hesabınız ve giriş yetkiniz korunur.</strong>
+            <h2 style="margin-bottom: 16px; color: var(--danger);">⚠️ Tehlike Alanı</h2>
+
+            <!-- Alt kategori düğmeleri -->
+            <div class="settings-subtabs">
+              <button type="button" class="settings-subtab active" data-reset-section="security" onclick="app.showResetSection('security')"><i class="fa-solid fa-shield-halved"></i> Güvenlik Merkezi</button>
+              <button type="button" class="settings-subtab" data-reset-section="cleanup" onclick="app.showResetSection('cleanup')"><i class="fa-solid fa-broom"></i> Sistem Sıfırlama</button>
+            </div>
+
+            <!-- ALT BÖLÜM: GÜVENLİK MERKEZİ -->
+            <div id="reset-section-security">
+              <p class="admin-help" style="margin-bottom: 16px;">
+                Uygulama katmanına ulaşan şüpheli hareketler burada görünür: başarısız girişler, hız limiti ihlalleri ve engelli IP denemeleri.
+                Hacimli DDoS saldırıları siteye ulaşmadan Cloudflare katmanında durdurulur; buradan uygulamaya sızan denemeleri izleyip IP veya kullanıcı bazında engelleyebilirsin.
               </p>
-              <button class="btn btn-outline" onclick="app.confirmResetDemoData()" style="color: var(--danger); border-color: rgba(239, 68, 68, 0.5); background: rgba(239, 68, 68, 0.1); width: 100%; padding: 14px; font-size: 1rem;">
-                <i class="fa-solid fa-triangle-exclamation"></i> Evet, Tüm Demo Verileri Kalıcı Olarak Sil ve Paneli Sıfırla
-              </button>
+
+              <!-- Son 24 saat özeti -->
+              <div class="stats-grid mb-30" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));">
+                <div class="glass-card stat-card">
+                  <div class="stat-icon" style="background: rgba(245,158,11,.15); color: var(--warning); border-color: rgba(245,158,11,.2);"><i class="fa-solid fa-user-lock"></i></div>
+                  <div>
+                    <div class="stat-val" id="sec-stat-failed-login">0</div>
+                    <div class="stat-lbl">Başarısız Giriş (24s)</div>
+                  </div>
+                </div>
+                <div class="glass-card stat-card">
+                  <div class="stat-icon" style="background: rgba(239,68,68,.15); color: var(--danger); border-color: rgba(239,68,68,.2);"><i class="fa-solid fa-gauge-high"></i></div>
+                  <div>
+                    <div class="stat-val" id="sec-stat-rate-limit">0</div>
+                    <div class="stat-lbl">Hız Limiti İhlali (24s)</div>
+                  </div>
+                </div>
+                <div class="glass-card stat-card">
+                  <div class="stat-icon" style="background: rgba(239,68,68,.15); color: var(--danger); border-color: rgba(239,68,68,.2);"><i class="fa-solid fa-ban"></i></div>
+                  <div>
+                    <div class="stat-val" id="sec-stat-blocked-hit">0</div>
+                    <div class="stat-lbl">Engellenen İstek (24s)</div>
+                  </div>
+                </div>
+                <div class="glass-card stat-card">
+                  <div class="stat-icon cyan"><i class="fa-solid fa-shield-halved"></i></div>
+                  <div>
+                    <div class="stat-val" id="sec-stat-blocked-count">0</div>
+                    <div class="stat-lbl">Engelli IP Sayısı</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Şüpheli IP'ler -->
+              <div class="glass-card mb-30">
+                <div class="flex-between mb-20">
+                  <h3><i class="fa-solid fa-crosshairs"></i> Şüpheli IP Adresleri <small style="color: var(--text-dim); font-weight: 400;">(son 7 gün, olay sayısına göre)</small></h3>
+                  <button class="btn btn-outline btn-sm" onclick="app.loadSecurityCenter()"><i class="fa-solid fa-rotate"></i> Yenile</button>
+                </div>
+                <div class="table-responsive">
+                  <table class="custom-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">IP Adresi</th>
+                        <th scope="col">Olay Sayısı</th>
+                        <th scope="col">Olay Türleri</th>
+                        <th scope="col">Son Olay</th>
+                        <th scope="col">İşlem</th>
+                      </tr>
+                    </thead>
+                    <tbody id="sec-top-ips-tbody">
+                      <tr><td colspan="5" class="text-center">Yükleniyor...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Hedef alınan kullanıcılar -->
+              <div class="glass-card mb-30">
+                <h3 class="mb-20"><i class="fa-solid fa-user-shield"></i> Hedef Alınan Kullanıcılar <small style="color: var(--text-dim); font-weight: 400;">(son 7 günde başarısız giriş denemesi yapılan hesaplar)</small></h3>
+                <div class="table-responsive">
+                  <table class="custom-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Kullanıcı Adı</th>
+                        <th scope="col">Deneme Sayısı</th>
+                        <th scope="col">Son Deneme</th>
+                        <th scope="col">Hesap Durumu</th>
+                        <th scope="col">İşlem</th>
+                      </tr>
+                    </thead>
+                    <tbody id="sec-targeted-users-tbody">
+                      <tr><td colspan="5" class="text-center">Yükleniyor...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Engelli IP yönetimi -->
+              <div class="glass-card mb-30">
+                <h3 class="mb-20"><i class="fa-solid fa-ban"></i> Engelli IP Adresleri</h3>
+                <form onsubmit="app.handleBlockIpSubmit(event)" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px;">
+                  <input type="text" id="sec-block-ip-input" class="form-control" placeholder="IP adresi (örn. 185.23.45.67)" required
+                         pattern="[0-9a-fA-F.:]{3,64}" style="flex: 1 1 200px; max-width: 260px;">
+                  <input type="text" id="sec-block-reason-input" class="form-control" placeholder="Sebep (isteğe bağlı)" maxlength="200" style="flex: 1 1 220px; max-width: 320px;">
+                  <button type="submit" class="btn btn-outline" style="color: var(--danger); border-color: rgba(239,68,68,.4);"><i class="fa-solid fa-plus"></i> Engelle</button>
+                </form>
+                <div class="table-responsive">
+                  <table class="custom-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">IP Adresi</th>
+                        <th scope="col">Sebep</th>
+                        <th scope="col">Engellenme Tarihi</th>
+                        <th scope="col">İşlem</th>
+                      </tr>
+                    </thead>
+                    <tbody id="sec-blocked-ips-tbody">
+                      <tr><td colspan="4" class="text-center">Yükleniyor...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Olay günlüğü -->
+              <div class="glass-card">
+                <div class="flex-between mb-20">
+                  <h3><i class="fa-solid fa-list-ul"></i> Güvenlik Olay Günlüğü <small style="color: var(--text-dim); font-weight: 400;">(son 30 gün saklanır)</small></h3>
+                  <select id="sec-event-type-filter" class="form-control" style="max-width: 240px;" onchange="app.loadSecurityCenter()">
+                    <option value="">Tüm olaylar</option>
+                    <option value="failed_login">Başarısız girişler</option>
+                    <option value="banned_login">Banlı hesap denemeleri</option>
+                    <option value="rate_limit">Hız limiti ihlalleri</option>
+                    <option value="blocked_hit">Engelli IP denemeleri</option>
+                  </select>
+                </div>
+                <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                  <table class="custom-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Zaman</th>
+                        <th scope="col">Tür</th>
+                        <th scope="col">IP</th>
+                        <th scope="col">Adres</th>
+                        <th scope="col">Kullanıcı</th>
+                        <th scope="col">Detay</th>
+                      </tr>
+                    </thead>
+                    <tbody id="sec-events-tbody">
+                      <tr><td colspan="6" class="text-center">Yükleniyor...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- ALT BÖLÜM: SİSTEM SIFIRLAMA -->
+            <div id="reset-section-cleanup" style="display: none;">
+              <div class="glass-card" style="border-color: rgba(239, 68, 68, 0.4); max-width: 700px;">
+                <h3 style="color: var(--danger); margin-bottom: 12px;"><i class="fa-solid fa-broom"></i> Tüm Demo Verileri Sil</h3>
+                <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.6;">
+                  Bu işlem paneli sıfırlayarak canlıya geçiş öncesinde tüm demo verileri kaldırır:<br>
+                  • Demo API Sağlayıcıyı siler.<br>
+                  • Test servislerini ve varsayılan kategorileri siler.<br>
+                  • Deneme siparişlerini ve demo kullanıcıyı siler.<br>
+                  • <strong>Mevcut Admin hesabınız ve giriş yetkiniz korunur.</strong>
+                </p>
+                <button class="btn btn-outline" onclick="app.confirmResetDemoData()" style="color: var(--danger); border-color: rgba(239, 68, 68, 0.5); background: rgba(239, 68, 68, 0.1); width: 100%; padding: 14px; font-size: 1rem;">
+                  <i class="fa-solid fa-triangle-exclamation"></i> Evet, Tüm Demo Verileri Kalıcı Olarak Sil ve Paneli Sıfırla
+                </button>
+              </div>
             </div>
           </div>
 

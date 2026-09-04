@@ -10,6 +10,7 @@ const path = require('path');
 const { initDatabase } = require('./config/database');
 const { startOrderWorker } = require('./services/orderWorker');
 const { notFoundApi, errorHandler } = require('./middleware/errorHandler');
+const securityMonitor = require('./services/securityMonitor');
 
 const authRoutes = require('./routes/auth');
 const servicesRoutes = require('./routes/services');
@@ -24,6 +25,14 @@ const PORT = process.env.PORT || 3000;
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
+
+// Guvenlik Merkezi'nden engellenen IP'ler: istek daha isin basinda kesilir.
+// Kontrol bellekteki Set uzerinden yapilir, veritabanina gidilmez (hizli).
+app.use((req, res, next) => {
+  if (!securityMonitor.isBlocked(securityMonitor.clientIp(req))) return next();
+  securityMonitor.logEvent('blocked_hit', req);
+  res.status(403).json({ error: 'Erişiminiz engellendi.' });
+});
 app.use(pinoHttp({
   level: process.env.LOG_LEVEL || 'info',
   autoLogging: process.env.NODE_ENV !== 'test',
@@ -107,8 +116,14 @@ app.use(express.urlencoded({ extended: false, limit: '512kb' }));
 // tarayicilarin eski veriyi gostermesini engeller.
 app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
-const apiLimiter = rateLimit({ windowMs: 60_000, limit: 180, standardHeaders: 'draft-8', legacyHeaders: false });
-const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false });
+// Limiti asan istekler Guvenlik Merkezi'ne islenir (ayni IP dakikada bir kez;
+// saldiri aninda veritabanini log satirlariyla bogmamak icin).
+const rateLimitHandler = (req, res, next, options) => {
+  securityMonitor.logEvent('rate_limit', req);
+  res.status(options.statusCode).send(options.message);
+};
+const apiLimiter = rateLimit({ windowMs: 60_000, limit: 180, standardHeaders: 'draft-8', legacyHeaders: false, handler: rateLimitHandler });
+const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, handler: rateLimitHandler });
 app.use('/api', apiLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
@@ -1276,6 +1291,8 @@ app.use(errorHandler);
 // Initialize DB and start server
 async function startServer() {
   await initDatabase();
+  // Engelli IP listesi bellege alinir; 30 gunden eski olaylar temizlenir.
+  await securityMonitor.init();
   return app.listen(PORT, () => {
     console.log(`\n==================================================`);
     console.log(`🚀 SMM Panel Sunucusu Yayında!`);
@@ -1292,6 +1309,9 @@ async function startServer() {
     shopierReconcileTimer.unref?.();
     // Telegram hesap eslestirme + hatirlatma e-postasi isleri
     require('./services/marketingWorker').startMarketingWorker();
+    // Guvenlik olaylari gunde bir temizlenir (30 gunluk pencere korunur).
+    const securityPruneTimer = setInterval(() => securityMonitor.pruneOldEvents(), 24 * 60 * 60 * 1000);
+    securityPruneTimer.unref?.();
   });
 }
 

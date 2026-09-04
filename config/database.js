@@ -247,6 +247,29 @@ async function runMigrations() {
   `);
   await dbAsync.run('CREATE INDEX IF NOT EXISTS idx_site_visits_date ON site_visits(visit_date)');
 
+  // Guvenlik Merkezi: basarisiz giris / hiz limiti / engelli IP denemeleri
+  // burada birikir (30 gun saklanir); panelden engellenen IP'ler blocked_ips'te.
+  await dbAsync.exec(`
+    CREATE TABLE IF NOT EXISTS security_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      ip TEXT NOT NULL DEFAULT '',
+      path TEXT,
+      username TEXT,
+      detail TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_security_events_created ON security_events(created_at);
+    CREATE INDEX IF NOT EXISTS idx_security_events_ip ON security_events(ip);
+    CREATE TABLE IF NOT EXISTS blocked_ips (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ip TEXT UNIQUE NOT NULL,
+      reason TEXT,
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   await dbAsync.exec(`
     UPDATE users SET balance_kurus = CAST(ROUND(balance * 100) AS INTEGER) WHERE balance_kurus = 0 AND balance != 0;
     UPDATE services SET rate_per_1000_kurus = CAST(ROUND(rate_per_1000 * 100) AS INTEGER) WHERE rate_per_1000_kurus = 0 AND rate_per_1000 != 0;

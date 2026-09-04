@@ -258,6 +258,7 @@ class SmmApp {
     // vurusunda istek atmamak icin 300ms bekletilir.
     this.debouncedAdminUsersSearch = this.debounce(() => this.loadAdminUsers(), 300);
     this.debouncedAdminOrdersSearch = this.debounce(() => this.loadAdminOrders(), 300);
+    this.debouncedAdminPaymentsSearch = this.debounce(() => this.loadAdminPayments(), 300);
 
     // Oturum kontrolü asenkron tamamlanır; bekleyen işlemler bu sözü bekleyebilir.
     this.ready = this.init();
@@ -2946,6 +2947,7 @@ class SmmApp {
     if (tabName === 'services') this.loadAdminAddedServices();
     if (tabName === 'statistics') this.loadAdminStatistics();
     if (tabName === 'deposits') this.loadAdminPaymentNotifications();
+    if (tabName === 'payments') this.loadAdminPayments();
     if (tabName === 'coupons') this.loadAdminCoupons();
     if (tabName === 'campaigns') this.loadAdminCampaigns();
     if (tabName === 'email-marketing') this.loadAdminEmailMarketing();
@@ -2956,6 +2958,7 @@ class SmmApp {
     if (tabName === 'ai-studio') this.loadAiStudio();
     if (tabName === 'users') this.loadAdminUsers();
     if (tabName === 'orders') this.loadAdminOrders();
+    if (tabName === 'reset') this.showResetSection(this.currentResetSection || 'security');
     if (tabName === 'site-settings') {
       this.loadAdminSettings();
       // Sekme hangi yoldan acilirsa acilsin (mobil secim kutusu dahil) bolum
@@ -3496,11 +3499,34 @@ class SmmApp {
             <button class="btn btn-outline btn-sm" onclick="app.showImportServicesModal(${p.id})" title="Tüm servisleri % kar ile toplu aktar">
               <i class="fa-solid fa-bolt"></i> Toplu Aktar
             </button>
+            <button class="btn btn-outline btn-sm" onclick="app.confirmDeleteProvider(${p.id})" title="Sağlayıcıyı ve tüm servislerini sil"
+                    style="color: var(--danger); border-color: rgba(239, 68, 68, 0.4);">
+              <i class="fa-solid fa-trash"></i> Sil
+            </button>
           </td>
         </tr>
       `).join('');
     } catch (err) {
       tbody.innerHTML = `<tr><td colspan="5" class="text-center">Sağlayıcılar yüklenemedi.</td></tr>`;
+    }
+  }
+
+  async confirmDeleteProvider(providerId) {
+    const name = this.adminProviderNames?.[String(providerId)] || `#${providerId}`;
+    const confirmed = await confirmDialog(
+      `"${name}" sağlayıcısı ve bu sağlayıcıya ait TÜM servisler silinecek.\n\nSipariş geçmişi olan servisler rapor bütünlüğü için silinmez; pasife alınır ve sağlayıcı bağlantısı koparılır. Bu işlem geri alınamaz. Devam edilsin mi?`,
+      { title: 'Sağlayıcıyı sil', icon: 'fa-trash', danger: true, confirmText: 'Evet, Sağlayıcıyı ve Servislerini Sil' }
+    );
+    if (!confirmed) return;
+    try {
+      const res = await API.deleteAdminProvider(providerId);
+      showToast(res.message, 'success');
+      this.loadAdminProviders();
+      // Servis listesi ve vitrindeki katalog da degisti; acik onbellekler tazelenir.
+      this.loadAdminAddedServices?.();
+      this.loadServicesData?.();
+    } catch (err) {
+      showToast(`Sağlayıcı silinemedi: ${err.message}`, 'error');
     }
   }
 
@@ -4069,6 +4095,14 @@ class SmmApp {
         ? '<span class="badge badge-pending">İlk kontrol</span>'
         : `<span class="badge ${item.price_increased ? 'badge-canceled' : item.price_decreased ? 'badge-completed' : 'badge-pending'}">${item.change_percent > 0 ? '+' : ''}%${Number(item.change_percent).toFixed(2)}</span>`;
       const suggestedMargin = Number.isFinite(Number(item.current_margin_percent)) ? Math.max(0, Number(item.current_margin_percent)).toFixed(1) : '70';
+      // Saglayicida bulunamayan (silinmis) servis icin fiyat guncellenemez;
+      // onun yerine dogrudan pasife alma / silme secenekleri sunulur.
+      const actions = item._notChecked
+        ? `<button class="btn btn-primary btn-sm" disabled><i class="fa-solid fa-check"></i> Güncelle</button>`
+        : item.unavailable
+          ? `<button class="btn btn-outline btn-sm" title="Servisi sitede pasife al (satışa kapat)" onclick="app.deactivateAuditedService(${item.id})"><i class="fa-solid fa-eye-slash"></i> Pasife Al</button>
+             <button class="btn btn-outline btn-sm" title="Servisi kalıcı olarak sil" style="color:var(--danger);border-color:rgba(239,68,68,.4);" onclick="app.deleteAuditedService(${item.id})"><i class="fa-solid fa-trash"></i> Sil</button>`
+          : `<button class="btn btn-primary btn-sm" onclick="app.applyAuditedProviderPrice(${item.id})"><i class="fa-solid fa-check"></i> ${item._updated ? 'Tekrar Güncelle' : 'Güncelle'}</button>`;
       return `<tr id="price-audit-row-${item.id}" class="${rowClass}">
         <td class="cell-truncate"><strong>${this.escapeHtml(item.name_tr)}</strong><small style="display:block;color:var(--text-dim);">${this.escapeHtml(item.provider_name)} · #${this.escapeHtml(item.provider_service_id)}</small></td>
         <td class="cell-nowrap">${this.formatProviderCost(item.previous_cost_rate, item.previous_cost_currency)}</td>
@@ -4076,9 +4110,41 @@ class SmmApp {
         <td class="cell-nowrap">${change}</td>
         <td class="cell-nowrap"><strong>₺${Number(item.current_sale_try || 0).toFixed(2)}</strong><small style="display:block;color:var(--text-dim);">$${Number(item.current_sale_usd || 0).toFixed(2)}</small></td>
         <td><input id="price-audit-margin-${item.id}" class="form-control price-audit-margin-input" type="number" min="0" max="1000" step="0.1" value="${suggestedMargin}" ${item.unavailable ? 'disabled' : ''}></td>
-        <td class="cell-nowrap"><button class="btn btn-primary btn-sm" onclick="app.applyAuditedProviderPrice(${item.id})" ${item.unavailable ? 'disabled' : ''}><i class="fa-solid fa-check"></i> ${item._updated ? 'Tekrar Güncelle' : 'Güncelle'}</button></td>
+        <td class="cell-nowrap">${actions}</td>
       </tr>`;
     }).join('');
+  }
+
+  // Saglayicida artik bulunmayan servisi listeden pasife alir; satir tablodan
+  // dusurulur, katalog onbellekleri tazelenir.
+  async deactivateAuditedService(serviceId) {
+    try {
+      await API.bulkStatusAdminServices({ service_ids: [serviceId], status: 0 });
+      showToast('Servis pasife alındı; sitede satışa kapatıldı.', 'success');
+      this.providerPriceAuditResults = (this.providerPriceAuditResults || []).filter(item => item.id !== serviceId);
+      this.renderProviderPriceAudit();
+      await Promise.all([this.loadAdminAddedServices(), this.loadServicesData()]);
+    } catch (err) {
+      showToast(`Servis pasife alınamadı: ${err.message}`, 'error');
+    }
+  }
+
+  async deleteAuditedService(serviceId) {
+    const item = (this.providerPriceAuditResults || []).find(entry => entry.id === serviceId);
+    const confirmed = await confirmDialog(
+      `"${item?.name_tr || `#${serviceId}`}" servisi kalıcı olarak silinecek. Sipariş geçmişi varsa silinmez, pasife alınır. Devam edilsin mi?`,
+      { title: 'Servisi sil', icon: 'fa-trash', danger: true, confirmText: 'Sil' }
+    );
+    if (!confirmed) return;
+    try {
+      const res = await API.deleteAdminService(serviceId);
+      showToast(res.message, 'success');
+      this.providerPriceAuditResults = (this.providerPriceAuditResults || []).filter(entry => entry.id !== serviceId);
+      this.renderProviderPriceAudit();
+      await Promise.all([this.loadAdminAddedServices(), this.loadServicesData()]);
+    } catch (err) {
+      showToast(`Servis silinemedi: ${err.message}`, 'error');
+    }
   }
 
   async applyAuditedProviderPrice(serviceId) {
@@ -4849,48 +4915,100 @@ class SmmApp {
     const q = document.getElementById('admin-orders-search')?.value.trim() || '';
     try {
       const res = await API.getAdminOrders(q);
-      if (!res.orders.length) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center">${q ? 'Aramanla eşleşen sipariş bulunamadı.' : 'Henüz sipariş yok.'}</td></tr>`;
-        return;
-      }
-      tbody.innerHTML = res.orders.map(o => {
-        const badgeClass = o.status === 'completed' ? 'badge-completed'
-          : (o.status === 'processing' || o.status === 'in_progress') ? 'badge-processing'
-          : (o.status === 'failed' || o.status === 'canceled') ? 'badge-canceled'
-          : 'badge-pending';
-        // Hata/iptal sebebi durumun hemen altinda gorunur (saglayici mesaji dahil).
-        const reason = o.failure_reason
-          ? `<div style="font-size:.72rem;color:var(--danger);margin-top:4px;max-width:240px;white-space:normal;line-height:1.35;">${this.escapeHtml(o.failure_reason)}</div>`
-          : '';
-        // Mudahale butonlari yalnizca hala akista olan siparislerde gorunur.
-        // failed: islem hic yapilmadi, tutar iade edildi -> mudahale edilemez.
-        // completed/canceled: is bitti -> buton gereksiz.
-        const canAct = ['pending', 'processing', 'in_progress'].includes(o.status);
-        // Tamamlanan siparise yorum daveti maili: sablon E-Posta Pazarlama >
-        // Sablonlar'daki "Sipariş Tamamlandı — Yorum Daveti" kaydidir.
-        const reviewMailBtn = o.status === 'completed'
-          ? (o.review_mail_sent_at
-            ? `<button class="btn btn-outline btn-sm" title="Gönderildi: ${new Date(o.review_mail_sent_at).toLocaleString('tr-TR')} — tekrar göndermek için tıkla" onclick="app.sendOrderReviewMail(${o.id}, true)"><i class="fa-solid fa-envelope-circle-check"></i> Gönderildi</button>`
-            : `<button class="btn btn-primary btn-sm" title="Yorum daveti maili gönder" onclick="app.sendOrderReviewMail(${o.id}, false)"><i class="fa-solid fa-envelope"></i> Mail Gönder</button>`)
-          : '';
-        const actions = canAct
-          ? `<button class="btn btn-primary btn-sm" onclick="app.updateOrderStatus(${o.id}, 'completed')">Tamamla</button>
-             <button class="btn btn-outline btn-sm" onclick="app.updateOrderStatus(${o.id}, 'canceled')">İptal & İade</button>`
-          : (reviewMailBtn || `<span style="color:var(--text-dim);font-size:.8rem;">${o.status === 'failed' ? 'İade edildi' : '—'}</span>`);
-        return `
-        <tr>
-          <td>#${o.id}</td>
-          <td>${this.escapeHtml(o.username)}</td>
-          <td style="font-size: 0.85rem;">${this.escapeHtml(o.service_name)}</td>
-          <td>${this.renderOrderLink(o.link, 40, '0.8rem')}</td>
-          <td>${o.quantity}</td>
-          <td><span class="badge ${badgeClass}">${this.escapeHtml(o.status)}</span>${reason}</td>
-          <td>${actions}</td>
-        </tr>`;
-      }).join('');
+      this.adminOrdersCache = res.orders || [];
+      this.adminOrdersQuery = q;
+      this.renderAdminOrders();
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="7" class="text-center">Siparişler yüklenemedi.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center">Siparişler yüklenemedi.</td></tr>`;
     }
+  }
+
+  // Durum gruplari: filtre dugmeleri ve rozetler ayni tanimi kullanir.
+  adminOrderStatusInfo(status) {
+    const map = {
+      pending: { label: 'Bekliyor', badge: 'badge-pending', group: 'pending' },
+      processing: { label: 'İşlemde', badge: 'badge-processing', group: 'active' },
+      in_progress: { label: 'İşlemde', badge: 'badge-processing', group: 'active' },
+      completed: { label: 'Tamamlandı', badge: 'badge-completed', group: 'completed' },
+      partial: { label: 'Kısmi Teslim', badge: 'badge-pending', group: 'problem' },
+      canceled: { label: 'İptal Edildi', badge: 'badge-canceled', group: 'problem' },
+      failed: { label: 'Başarısız', badge: 'badge-canceled', group: 'problem' }
+    };
+    return map[status] || { label: status, badge: 'badge-pending', group: 'problem' };
+  }
+
+  renderAdminOrders() {
+    const tbody = document.getElementById('admin-all-orders-tbody');
+    const filtersEl = document.getElementById('admin-orders-filters');
+    if (!tbody) return;
+    const orders = this.adminOrdersCache || [];
+    const filter = this.adminOrdersFilter || 'all';
+
+    // Filtre dugmeleri sayaçlariyla birlikte her cizimde tazelenir.
+    if (filtersEl) {
+      const groups = [
+        { key: 'all', label: 'Tümü', count: orders.length },
+        { key: 'pending', label: 'Bekleyen' },
+        { key: 'active', label: 'İşlemde' },
+        { key: 'completed', label: 'Tamamlanan' },
+        { key: 'problem', label: 'Sorunlu' }
+      ];
+      groups.forEach(g => {
+        if (g.key !== 'all') g.count = orders.filter(o => this.adminOrderStatusInfo(o.status).group === g.key).length;
+      });
+      filtersEl.innerHTML = groups.map(g => `
+        <button type="button" class="btn ${filter === g.key ? 'btn-primary' : 'btn-outline'} btn-sm"
+                onclick="app.setAdminOrdersFilter('${g.key}')">${g.label} (${g.count})</button>`).join('');
+    }
+
+    const visible = filter === 'all' ? orders : orders.filter(o => this.adminOrderStatusInfo(o.status).group === filter);
+    if (!visible.length) {
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center">${this.adminOrdersQuery ? 'Aramanla eşleşen sipariş bulunamadı.' : (orders.length ? 'Bu filtreye uyan sipariş yok.' : 'Henüz sipariş yok.')}</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = visible.map(o => {
+      const info = this.adminOrderStatusInfo(o.status);
+      // Hata/iptal sebebi durumun hemen altinda gorunur (saglayici mesaji dahil).
+      const reason = o.failure_reason
+        ? `<div style="font-size:.72rem;color:var(--danger);margin-top:4px;max-width:240px;white-space:normal;line-height:1.35;">${this.escapeHtml(o.failure_reason)}</div>`
+        : '';
+      // Mudahale butonlari yalnizca hala akista olan siparislerde gorunur.
+      // failed: islem hic yapilmadi, tutar iade edildi -> mudahale edilemez.
+      // completed/canceled: is bitti -> buton gereksiz.
+      const canAct = ['pending', 'processing', 'in_progress'].includes(o.status);
+      // Tamamlanan siparise yorum daveti maili: sablon E-Posta Pazarlama >
+      // Sablonlar'daki "Sipariş Tamamlandı — Yorum Daveti" kaydidir.
+      const reviewMailBtn = o.status === 'completed'
+        ? (o.review_mail_sent_at
+          ? `<button class="btn btn-outline btn-sm" title="Gönderildi: ${new Date(o.review_mail_sent_at).toLocaleString('tr-TR')} — tekrar göndermek için tıkla" onclick="app.sendOrderReviewMail(${o.id}, true)"><i class="fa-solid fa-envelope-circle-check"></i> Gönderildi</button>`
+          : `<button class="btn btn-primary btn-sm" title="Yorum daveti maili gönder" onclick="app.sendOrderReviewMail(${o.id}, false)"><i class="fa-solid fa-envelope"></i> Mail Gönder</button>`)
+        : '';
+      const actions = canAct
+        ? `<button class="btn btn-primary btn-sm" onclick="app.updateOrderStatus(${o.id}, 'completed')">Tamamla</button>
+           <button class="btn btn-outline btn-sm" onclick="app.updateOrderStatus(${o.id}, 'canceled')">İptal & İade</button>`
+        : (reviewMailBtn || `<span style="color:var(--text-dim);font-size:.8rem;">${o.status === 'failed' ? 'İade edildi' : '—'}</span>`);
+      const tarih = o.created_at ? new Date(o.created_at).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+      const saglayici = o.provider_name
+        ? `<small style="display:block;color:var(--text-dim);">${this.escapeHtml(o.provider_name)}${o.provider_order_id ? ` · #${this.escapeHtml(String(o.provider_order_id))}` : ''}</small>`
+        : '<small style="display:block;color:var(--text-dim);">Manuel</small>';
+      return `
+      <tr>
+        <td class="cell-nowrap"><strong>#${o.id}</strong><small style="display:block;color:var(--text-dim);">${tarih}</small></td>
+        <td>${this.escapeHtml(o.username)}</td>
+        <td style="font-size: 0.85rem; max-width: 260px;">${this.escapeHtml(o.service_name)}${saglayici}</td>
+        <td>${this.renderOrderLink(o.link, 40, '0.8rem')}</td>
+        <td>${o.quantity}</td>
+        <td class="cell-nowrap" style="font-weight: 700;">₺${Number(o.charge || 0).toFixed(2)}</td>
+        <td><span class="badge ${info.badge}">${info.label}</span>${reason}</td>
+        <td class="cell-nowrap">${actions}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  setAdminOrdersFilter(filter) {
+    this.adminOrdersFilter = filter;
+    this.renderAdminOrders();
   }
 
   async sendOrderReviewMail(orderId, tekrar) {
@@ -4932,6 +5050,89 @@ class SmmApp {
     }
 
     document.getElementById('modal-auth').classList.add('active');
+  }
+
+  // --- FİNANS: PARA YATIRMA (TÜM YÖNTEMLER) ---
+  adminPaymentMethodInfo(group) {
+    const map = {
+      bank: { label: 'Havale/EFT', icon: 'fa-building-columns', badge: 'badge-processing' },
+      shopier: { label: 'Shopier', icon: 'fa-credit-card', badge: 'badge-completed' },
+      paytr: { label: 'PayTR', icon: 'fa-credit-card', badge: 'badge-completed' },
+      crypto: { label: 'Kripto', icon: 'fa-coins', badge: 'badge-pending' },
+      bonus: { label: 'Bonus/Kupon', icon: 'fa-gift', badge: 'badge-pending' },
+      other: { label: 'Diğer', icon: 'fa-circle-question', badge: 'badge-pending' }
+    };
+    return map[group] || map.other;
+  }
+
+  async loadAdminPayments() {
+    const tbody = document.getElementById('admin-payments-tbody');
+    if (!tbody) return;
+    const q = document.getElementById('admin-payments-search')?.value.trim() || '';
+    const method = this.adminPaymentsFilter || '';
+    try {
+      const res = await API.getAdminPayments(q, method);
+
+      // Ozet kartlari (gercek para: bonus/kupon haric)
+      const tl = v => `₺${Number(v || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      document.getElementById('pay-stat-today').textContent = tl(res.stats.today);
+      document.getElementById('pay-stat-week').textContent = tl(res.stats.week);
+      document.getElementById('pay-stat-month').textContent = tl(res.stats.month);
+      document.getElementById('pay-stat-total').textContent = tl(res.stats.total);
+      document.getElementById('pay-stat-count').textContent = `(${res.stats.count} işlem)`;
+
+      // Yontem kirilimi kartlari
+      const breakdown = document.getElementById('pay-method-breakdown');
+      const order = ['bank', 'shopier', 'paytr', 'crypto', 'bonus', 'other'];
+      const byMethod = new Map((res.by_method || []).map(row => [row.group, row]));
+      breakdown.innerHTML = order
+        .filter(g => byMethod.has(g))
+        .map(g => {
+          const row = byMethod.get(g);
+          const info = this.adminPaymentMethodInfo(g);
+          return `
+            <div class="glass-card stat-card">
+              <div class="stat-icon cyan"><i class="fa-solid ${info.icon}"></i></div>
+              <div>
+                <div class="stat-val" style="font-size: 1.05rem;">${tl(row.total)}</div>
+                <div class="stat-lbl">${info.label} <small style="color: var(--text-dim);">(${row.count})</small></div>
+              </div>
+            </div>`;
+        }).join('') || '<p class="admin-help">Henüz ödeme kaydı yok.</p>';
+
+      // Yontem filtre dugmeleri
+      const filtersEl = document.getElementById('admin-payments-filters');
+      const filterDefs = [{ key: '', label: 'Tümü' }].concat(order.map(g => ({ key: g, label: this.adminPaymentMethodInfo(g).label })));
+      filtersEl.innerHTML = filterDefs.map(f => `
+        <button type="button" class="btn ${method === f.key ? 'btn-primary' : 'btn-outline'} btn-sm"
+                onclick="app.setAdminPaymentsFilter('${f.key}')">${f.label}</button>`).join('');
+
+      // Liste
+      if (!(res.payments || []).length) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center">${q || method ? 'Filtrene uyan ödeme kaydı bulunamadı.' : 'Henüz para yatırma kaydı yok.'}</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = res.payments.map(p => {
+        const info = this.adminPaymentMethodInfo(p.method_group);
+        const tutar = Number.isFinite(Number(p.amount_kurus)) && p.amount_kurus > 0 ? p.amount_kurus / 100 : Number(p.amount || 0);
+        return `
+        <tr>
+          <td>#${p.id}</td>
+          <td><strong>${this.escapeHtml(p.username)}</strong><small style="display:block;color:var(--text-dim);">${this.escapeHtml(p.email || '')}</small></td>
+          <td><span class="badge ${info.badge}"><i class="fa-solid ${info.icon}"></i> ${info.label}</span><small style="display:block;color:var(--text-dim);margin-top:2px;">${this.escapeHtml(p.method)}</small></td>
+          <td class="cell-nowrap" style="color: var(--success); font-weight: 700;">${tl(tutar)}</td>
+          <td style="font-size: 0.78rem; color: var(--text-dim); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${this.escapeHtml(p.transaction_id || '')}">${this.escapeHtml(p.transaction_id || '—')}</td>
+          <td class="cell-nowrap" style="font-size: 0.85rem;">${p.created_at ? new Date(p.created_at).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
+        </tr>`;
+      }).join('');
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-center" style="color:var(--danger);">Para yatırma kayıtları yüklenemedi: ${this.escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+
+  setAdminPaymentsFilter(method) {
+    this.adminPaymentsFilter = method;
+    this.loadAdminPayments();
   }
 
   // --- ADMIN DEPOSITS, COUPONS, TICKETS ---
@@ -5393,6 +5594,155 @@ class SmmApp {
       } catch (err) {
         showToast(`Hata: ${err.message}`, 'error');
       }
+    }
+  }
+
+  // --- TEHLİKE ALANI: ALT BÖLÜMLER & GÜVENLİK MERKEZİ ---
+  showResetSection(section) {
+    this.currentResetSection = section;
+    document.querySelectorAll('#admin-tab-reset [data-reset-section]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.resetSection === section);
+    });
+    document.getElementById('reset-section-security').style.display = section === 'security' ? 'block' : 'none';
+    document.getElementById('reset-section-cleanup').style.display = section === 'cleanup' ? 'block' : 'none';
+    if (section === 'security') this.loadSecurityCenter();
+  }
+
+  async loadSecurityCenter() {
+    const eventsTbody = document.getElementById('sec-events-tbody');
+    if (!eventsTbody) return;
+    const typeFilter = document.getElementById('sec-event-type-filter')?.value || '';
+    try {
+      const res = await API.getSecurityOverview(typeFilter);
+
+      // Ozet kartlari (son 24 saat)
+      document.getElementById('sec-stat-failed-login').textContent = (res.summary.failed_login || 0) + (res.summary.banned_login || 0);
+      document.getElementById('sec-stat-rate-limit').textContent = res.summary.rate_limit || 0;
+      document.getElementById('sec-stat-blocked-hit').textContent = res.summary.blocked_hit || 0;
+      document.getElementById('sec-stat-blocked-count').textContent = res.blocked_count || 0;
+
+      const typeLabel = t => ({
+        failed_login: '<span class="badge badge-pending">Başarısız giriş</span>',
+        banned_login: '<span class="badge badge-canceled">Banlı hesap denemesi</span>',
+        rate_limit: '<span class="badge badge-canceled">Hız limiti ihlali</span>',
+        blocked_hit: '<span class="badge badge-canceled">Engelli IP denemesi</span>'
+      }[t] || `<span class="badge badge-pending">${this.escapeHtml(t)}</span>`);
+      const tarih = v => v ? new Date(v).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+
+      // Supheli IP'ler
+      const topIpsTbody = document.getElementById('sec-top-ips-tbody');
+      topIpsTbody.innerHTML = (res.top_ips || []).length
+        ? res.top_ips.map(row => `
+          <tr>
+            <td class="cell-nowrap"><code>${this.escapeHtml(row.ip)}</code></td>
+            <td><strong>${row.n}</strong></td>
+            <td style="font-size: 0.8rem;">${String(row.types || '').split(',').map(t => typeLabel(t)).join(' ')}</td>
+            <td class="cell-nowrap" style="font-size: 0.85rem;">${tarih(row.last_at)}</td>
+            <td class="cell-nowrap">${row.blocked
+              ? '<span class="badge badge-canceled">Engelli</span>'
+              : `<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:rgba(239,68,68,.4);" onclick="app.blockIpFromList('${this.escapeHtml(row.ip)}')"><i class="fa-solid fa-ban"></i> IP'yi Engelle</button>`}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="5" class="text-center">Son 7 günde şüpheli hareket kaydedilmedi. 👍</td></tr>';
+
+      // Hedef alinan kullanicilar
+      const usersTbody = document.getElementById('sec-targeted-users-tbody');
+      usersTbody.innerHTML = (res.targeted_users || []).length
+        ? res.targeted_users.map(row => `
+          <tr>
+            <td><strong>${this.escapeHtml(row.username)}</strong>${row.user_id ? '' : ' <small style="color:var(--text-dim);">(kayıtlı değil)</small>'}</td>
+            <td><strong>${row.n}</strong></td>
+            <td class="cell-nowrap" style="font-size: 0.85rem;">${tarih(row.last_at)}</td>
+            <td>${row.user_id ? (row.banned ? '<span class="badge badge-canceled">Banlı</span>' : '<span class="badge badge-completed">Aktif</span>') : '—'}</td>
+            <td class="cell-nowrap">${row.user_id && !row.banned
+              ? `<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:rgba(239,68,68,.4);" onclick="app.banUserFromSecurity(${row.user_id}, '${this.escapeHtml(row.username)}')"><i class="fa-solid fa-user-slash"></i> Hesabı Banla</button>`
+              : '—'}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="5" class="text-center">Son 7 günde hesaplara yönelik giriş denemesi yok. 👍</td></tr>';
+
+      // Engelli IP listesi
+      const blockedTbody = document.getElementById('sec-blocked-ips-tbody');
+      blockedTbody.innerHTML = (res.blocked_ips || []).length
+        ? res.blocked_ips.map(row => `
+          <tr>
+            <td class="cell-nowrap"><code>${this.escapeHtml(row.ip)}</code></td>
+            <td style="font-size: 0.85rem;">${this.escapeHtml(row.reason || '—')}</td>
+            <td class="cell-nowrap" style="font-size: 0.85rem;">${tarih(row.created_at)}</td>
+            <td><button class="btn btn-outline btn-sm" onclick="app.unblockSecurityIp('${this.escapeHtml(row.ip)}')"><i class="fa-solid fa-unlock"></i> Engeli Kaldır</button></td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" class="text-center">Engelli IP yok.</td></tr>';
+
+      // Olay gunlugu
+      eventsTbody.innerHTML = (res.events || []).length
+        ? res.events.map(ev => `
+          <tr>
+            <td class="cell-nowrap" style="font-size: 0.85rem;">${tarih(ev.created_at)}</td>
+            <td>${typeLabel(ev.type)}</td>
+            <td class="cell-nowrap"><code>${this.escapeHtml(ev.ip || '—')}</code></td>
+            <td style="font-size: 0.8rem; color: var(--text-dim);">${this.escapeHtml(ev.path || '—')}</td>
+            <td>${this.escapeHtml(ev.username || '—')}</td>
+            <td style="font-size: 0.85rem;">${this.escapeHtml(ev.detail || '—')}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="6" class="text-center">${typeFilter ? 'Bu türde olay kaydı yok.' : 'Henüz güvenlik olayı kaydedilmedi. Sistem temiz. 👍'}</td></tr>`;
+    } catch (err) {
+      eventsTbody.innerHTML = `<tr><td colspan="6" class="text-center" style="color:var(--danger);">Güvenlik verileri yüklenemedi: ${this.escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+
+  async handleBlockIpSubmit(e) {
+    e.preventDefault();
+    const ipInput = document.getElementById('sec-block-ip-input');
+    const reasonInput = document.getElementById('sec-block-reason-input');
+    const ip = ipInput.value.trim();
+    if (!ip) return;
+    try {
+      const res = await API.blockSecurityIp(ip, reasonInput.value.trim());
+      showToast(res.message, 'success');
+      ipInput.value = '';
+      reasonInput.value = '';
+      this.loadSecurityCenter();
+    } catch (err) {
+      showToast(`IP engellenemedi: ${err.message}`, 'error');
+    }
+  }
+
+  async blockIpFromList(ip) {
+    const confirmed = await confirmDialog(
+      `${ip} adresi engellenecek: bu IP'den gelen TÜM istekler (site dahil) reddedilecek. Devam edilsin mi?`,
+      { title: "IP'yi engelle", icon: 'fa-ban', danger: true, confirmText: 'Engelle' }
+    );
+    if (!confirmed) return;
+    try {
+      const res = await API.blockSecurityIp(ip, 'Güvenlik Merkezi: şüpheli hareket listesinden engellendi');
+      showToast(res.message, 'success');
+      this.loadSecurityCenter();
+    } catch (err) {
+      showToast(`IP engellenemedi: ${err.message}`, 'error');
+    }
+  }
+
+  async unblockSecurityIp(ip) {
+    try {
+      const res = await API.unblockSecurityIp(ip);
+      showToast(res.message, 'success');
+      this.loadSecurityCenter();
+    } catch (err) {
+      showToast(`Engel kaldırılamadı: ${err.message}`, 'error');
+    }
+  }
+
+  // Guvenlik Merkezi'nden hizli ban: kullanicilar sekmesindeki onay akisinin aynisi.
+  async banUserFromSecurity(userId, username) {
+    const confirmed = await confirmDialog(
+      `"${username}" kullanıcısı banlanacak: giriş yapamaz, açık oturumları anında kapanır. Devam edilsin mi?`,
+      { title: 'Kullanıcıyı banla', icon: 'fa-ban', danger: true, confirmText: 'Banla' }
+    );
+    if (!confirmed) return;
+    try {
+      const res = await API.setUserBan(userId, true);
+      showToast(res.message, 'success');
+      this.loadSecurityCenter();
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
     }
   }
 

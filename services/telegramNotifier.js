@@ -448,7 +448,72 @@ async function notifyDeposit({ username, amount, method, bonus }) {
   return send(lines.join('\n'));
 }
 
+// ---------------------------------------------------------------------------
+// GUNLUK OZET
+// Her aksam 21:00'de (Istanbul; Turkiye'de yaz saati yok, sabit UTC+3) admin
+// kanalina gunun ozeti gecer: siparis/ciro, tamamlanan, yeni uye, yatirilan
+// para ve gunun en cok satan servisi. Ayni gun icin bir kez gonderilir
+// (site_settings'te son gonderim gunu tutulur; restart'ta tekrarlanmaz).
+// ---------------------------------------------------------------------------
+const SUMMARY_HOUR_TR = 21;
+
+function istanbulNow() {
+  return new Date(Date.now() + 3 * 3600 * 1000); // getUTC* ile okunur
+}
+
+async function buildDailySummary() {
+  // SQLite tarihleri UTC'dir; '+3 hours' Istanbul gunune cevirir.
+  const GUN = "date(created_at, '+3 hours') = date('now', '+3 hours')";
+  const [siparis, tamamlanan, uye, yatirim, enCok, bekleyenBildirim] = await Promise.all([
+    dbAsync.get(`SELECT COUNT(*) n, COALESCE(SUM(charge_kurus), 0) ciro FROM orders WHERE ${GUN}`),
+    dbAsync.get(`SELECT COUNT(*) n FROM orders WHERE status = 'completed' AND date(completed_at, '+3 hours') = date('now', '+3 hours')`),
+    dbAsync.get(`SELECT COUNT(*) n FROM users WHERE ${GUN}`),
+    dbAsync.get(`SELECT COUNT(*) n, COALESCE(SUM(amount_kurus), 0) toplam FROM payments
+                 WHERE status = 'completed' AND ${GUN}
+                   AND (method LIKE 'Banka/Papara%' OR method IN ('Shopier', 'PayTR') OR method LIKE 'Kripto%')`),
+    dbAsync.get(`SELECT COALESCE(s.name_tr, s.name) ad, COUNT(*) n FROM orders o JOIN services s ON s.id = o.service_id
+                 WHERE date(o.created_at, '+3 hours') = date('now', '+3 hours')
+                 GROUP BY o.service_id ORDER BY n DESC LIMIT 1`),
+    dbAsync.get(`SELECT COUNT(*) n FROM payment_notifications WHERE status = 'pending'`)
+  ]);
+
+  const tl = kurus => `₺${(Number(kurus || 0) / 100).toFixed(2)}`;
+  const lines = [
+    '🌙 <b>Günlük Özet</b> — ' + istanbulNow().toISOString().slice(0, 10).split('-').reverse().join('.'),
+    '',
+    `🛒 Sipariş: <b>${siparis.n}</b> adet · ${tl(siparis.ciro)}`,
+    `✅ Tamamlanan: <b>${tamamlanan.n}</b>`,
+    `💰 Para yatırma: <b>${yatirim.n}</b> işlem · <b>${tl(yatirim.toplam)}</b>`,
+    `🆕 Yeni üye: <b>${uye.n}</b>`
+  ];
+  if (enCok) lines.push(`🏆 Günün servisi: ${escapeHtml(enCok.ad)} (${enCok.n} sipariş)`);
+  if (bekleyenBildirim.n > 0) lines.push(`⏳ Onay bekleyen ödeme bildirimi: <b>${bekleyenBildirim.n}</b>`);
+  return lines.join('\n');
+}
+
+async function maybeSendDailySummary() {
+  try {
+    const ist = istanbulNow();
+    if (ist.getUTCHours() !== SUMMARY_HOUR_TR) return;
+    const bugun = ist.toISOString().slice(0, 10);
+    const row = await dbAsync.get("SELECT value FROM site_settings WHERE key = 'telegram_daily_summary_last'");
+    if (row?.value === bugun) return;
+    // Once isaretlenir: gonderim hata verirse dakikada bir yeniden denenip
+    // kanali ayni mesajla doldurmasin (ertesi gun yine denenir).
+    await dbAsync.run("INSERT INTO site_settings (key, value) VALUES ('telegram_daily_summary_last', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [bugun]);
+    await send(await buildDailySummary());
+  } catch (err) {
+    console.error('Günlük özet gönderilemedi:', err.message);
+  }
+}
+
+function startDailySummaryScheduler() {
+  const timer = setInterval(maybeSendDailySummary, 60 * 1000);
+  timer.unref?.();
+}
+
 module.exports = {
   notifyNewUser, notifyNewOrder, notifyOrderFinished, formatDuration, sendTestMessage, listRecentChats, loadConfig,
-  getBotUsername, sendToChat, notifyOrderOwner, processLinkUpdates, notifyDeposit, notifyPaymentEvent, notifyTicketEvent
+  getBotUsername, sendToChat, notifyOrderOwner, processLinkUpdates, notifyDeposit, notifyPaymentEvent, notifyTicketEvent,
+  startDailySummaryScheduler, buildDailySummary
 };

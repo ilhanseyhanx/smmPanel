@@ -1462,6 +1462,29 @@ router.put('/orders/:id/status', requireIdParam, validate(orderStatusSchema), as
   }
 });
 
+// VERITABANI YEDEGI INDIRME
+// Canli dosya dogrudan gonderilmez: WAL modunda ana dosya tek basina tutarli
+// degildir. VACUUM INTO o anki tutarli bir kopyayi tek dosya olarak cikarir.
+router.get('/backup/download', async (req, res) => {
+  const fs = require('fs');
+  const os = require('os');
+  const pathMod = require('path');
+  const target = pathMod.join(os.tmpdir(), `smmjet-yedek-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.sqlite`);
+  try {
+    // Yol tamamen sunucu tarafinda uretilir (kullanici girdisi yok); SQLite'a
+    // tek tirnaklari kacirilmis literal olarak verilir.
+    await dbAsync.run(`VACUUM INTO '${target.replace(/'/g, "''")}'`);
+    await dbAsync.run('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, 'db_backup_downloaded', 'database', null, null, req.ip]);
+    res.download(target, `smmjet-yedek-${new Date().toISOString().slice(0, 10)}.sqlite`, () => {
+      fs.unlink(target, () => {});
+    });
+  } catch (err) {
+    fs.unlink(target, () => {});
+    res.status(500).json({ error: 'Yedek oluşturulamadı: ' + err.message });
+  }
+});
+
 // RESET DEMO DATA
 router.post('/reset-demo-data', async (req, res) => {
   try {

@@ -1,5 +1,25 @@
 const API_BASE = '/api';
 
+// SQLite tarihleri UTC yazar ama "YYYY-MM-DD HH:MM:SS" bicimi saat dilimi
+// tasimaz; tarayici bunu ZIYARETCININ yerel saati sanir ve paneldeki tum
+// saatler Turkiye'de 3 saat geri gorunurdu. API'den gelen bu bicimdeki
+// metinler ISO-UTC'ye ("...T...Z") cevrilir; new Date() artik dogru yorumlar.
+const DB_DATE_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/;
+function normalizeDbDates(value) {
+  if (typeof value === 'string') {
+    return DB_DATE_RE.test(value) ? value.replace(' ', 'T') + 'Z' : value;
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) value[i] = normalizeDbDates(value[i]);
+    return value;
+  }
+  if (value && typeof value === 'object') {
+    for (const key of Object.keys(value)) value[key] = normalizeDbDates(value[key]);
+    return value;
+  }
+  return value;
+}
+
 const API = {
   // Oturum HttpOnly cookie'de tutulur; JavaScript token'a erişemez.
   getToken: () => true,
@@ -21,7 +41,7 @@ const API = {
     try {
       const res = await fetch(`${API_BASE}${endpoint}`, config);
       const contentType = res.headers.get('content-type') || '';
-      const data = contentType.includes('application/json') ? await res.json() : {};
+      const data = contentType.includes('application/json') ? normalizeDbDates(await res.json()) : {};
       if (!res.ok) {
         // JSON olmayan yanit (ör. nginx 502/504 HTML sayfasi) icin anlamli mesaj.
         const fallback = res.status === 504 || res.status === 524
@@ -179,6 +199,7 @@ const API = {
   getCouponUsages: (id) => API.request(`/admin/coupons/${id}/usages`),
   deleteAdminCoupon: (id) => API.request(`/admin/coupons/${id}`, { method: 'DELETE' }),
   resetDemoData: () => API.request('/admin/reset-demo-data', { method: 'POST' }),
+  downloadDbBackup: () => API.download('/admin/backup/download'),
   getSecurityOverview: (type = '') => API.request(`/admin/security/overview${type ? `?type=${encodeURIComponent(type)}` : ''}`),
   blockSecurityIp: (ip, reason = '') => API.request('/admin/security/block-ip', { method: 'POST', body: JSON.stringify({ ip, reason }) }),
   unblockSecurityIp: (ip) => API.request('/admin/security/unblock-ip', { method: 'POST', body: JSON.stringify({ ip }) }),

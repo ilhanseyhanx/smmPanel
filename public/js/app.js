@@ -6005,6 +6005,25 @@ class SmmApp {
     }
   }
 
+  async downloadDbBackup(button) {
+    const original = button?.innerHTML;
+    if (button) {
+      button.disabled = true;
+      button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Yedek hazırlanıyor...';
+    }
+    try {
+      const fileName = await API.downloadDbBackup();
+      showToast(`Yedek indirildi (${fileName}). Güvenli bir yere taşımayı unutma!`, 'success');
+    } catch (err) {
+      showToast(`Yedek indirilemedi: ${err.message}`, 'error');
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.innerHTML = original;
+      }
+    }
+  }
+
   async handleChangeAdminPassword(e) {
     e.preventDefault();
     const new_password = document.getElementById('admin-new-password').value;

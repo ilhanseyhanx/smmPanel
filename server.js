@@ -1312,6 +1312,8 @@ async function startServer() {
     // Guvenlik olaylari gunde bir temizlenir (30 gunluk pencere korunur).
     const securityPruneTimer = setInterval(() => securityMonitor.pruneOldEvents(), 24 * 60 * 60 * 1000);
     securityPruneTimer.unref?.();
+    // Her aksam 21:00'de (TR) Telegram'a gunun ozeti gider.
+    require('./services/telegramNotifier').startDailySummaryScheduler();
   });
 }
 

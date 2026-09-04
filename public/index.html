@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260904c">
+  <link rel="stylesheet" href="/css/style.css?v=20260904d">
 </head>
 <body>
 
@@ -2817,7 +2817,7 @@ Content-Type: application/json
             <!-- Alt kategori düğmeleri -->
             <div class="settings-subtabs">
               <button type="button" class="settings-subtab active" data-reset-section="security" onclick="app.showResetSection('security')"><i class="fa-solid fa-shield-halved"></i> Güvenlik Merkezi</button>
-              <button type="button" class="settings-subtab" data-reset-section="cleanup" onclick="app.showResetSection('cleanup')"><i class="fa-solid fa-broom"></i> Sistem Sıfırlama</button>
+              <button type="button" class="settings-subtab" data-reset-section="cleanup" onclick="app.showResetSection('cleanup')"><i class="fa-solid fa-database"></i> Yedek & Sıfırlama</button>
             </div>
 
             <!-- ALT BÖLÜM: GÜVENLİK MERKEZİ -->
@@ -2962,8 +2962,20 @@ Content-Type: application/json
               </div>
             </div>
 
-            <!-- ALT BÖLÜM: SİSTEM SIFIRLAMA -->
+            <!-- ALT BÖLÜM: YEDEK & SIFIRLAMA -->
             <div id="reset-section-cleanup" style="display: none;">
+              <div class="glass-card" style="max-width: 700px; margin-bottom: 24px;">
+                <h3 style="margin-bottom: 12px;"><i class="fa-solid fa-download"></i> 💾 Veritabanı Yedeği</h3>
+                <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 16px; line-height: 1.6;">
+                  Sunucu her gece <strong>04:00</strong>'te otomatik yedek alır (son 14 gün saklanır).
+                  Buradan da o anki tutarlı bir kopyayı tek dosya olarak bilgisayarına indirebilirsin —
+                  düzenli olarak indirip ayrı bir yerde saklaman önerilir (sunucu tamamen giderse tek güvence budur).
+                </p>
+                <button class="btn btn-primary" onclick="app.downloadDbBackup(this)" style="width: 100%; padding: 12px;">
+                  <i class="fa-solid fa-download"></i> Veritabanını Şimdi İndir (.sqlite)
+                </button>
+              </div>
+
               <div class="glass-card" style="border-color: rgba(239, 68, 68, 0.4); max-width: 700px;">
                 <h3 style="color: var(--danger); margin-bottom: 12px;"><i class="fa-solid fa-broom"></i> Tüm Demo Verileri Sil</h3>
                 <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.6;">
@@ -4097,7 +4109,7 @@ Content-Type: application/json
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260904c" defer></script>
-  <script src="/js/app.js?v=20260904c" defer></script>
+  <script src="/js/api.js?v=20260904d" defer></script>
+  <script src="/js/app.js?v=20260904d" defer></script>
 </body>
 </html>

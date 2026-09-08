@@ -477,12 +477,12 @@ test('sitemap.xml içindeki her adres geçerlidir (404 vermez)', async () => {
 test('alt sayfalarin kaynaginda ana sayfa icerigi bulunmaz', async () => {
   // Her izin BASKA bir sayfaya ait oldugu adres listesi.
   const izler = [
-    ['ana sayfa hero', 'Jet SMM Panel (SMMJET);'],
-    ['sozlesme metni', 'view-terms" class="app-view" style'],
-    ['gizlilik metni', 'view-privacy" class="app-view" style'],
-    ['iade metni', 'view-refund" class="app-view" style'],
-    ['hakkimizda metni', 'view-about" class="app-view" style'],
-    ['API dokumani', 'view-smm-panel-api" class="app-view" style']
+    ['ana sayfa hero', '<section id="view-landing"'],
+    ['sozlesme metni', '<section id="view-terms"'],
+    ['gizlilik metni', '<section id="view-privacy"'],
+    ['iade metni', '<section id="view-refund"'],
+    ['hakkimizda metni', '<section id="view-about"'],
+    ['API dokumani', '<section id="view-smm-panel-api"']
   ];
   // adres -> o adrese ait olan (dolayisiyla bulunmasi NORMAL olan) iz
   const kendi = {
@@ -514,7 +514,7 @@ test('ana sayfa icerigi blog yazisinin kaynagina girmez', async () => {
   const html = (await sayfa("/blog/sizinti-testi")).text;
   assert.ok(html.includes("Yazının metni."), "yazı metni HTML’de yok");
   assert.ok(!html.includes("Jet SMM Panel (SMMJET);"), "ana sayfa tanıtım metni blog kaynağında");
-  assert.ok(!html.includes('view-terms" class="app-view" style'), "sözleşme metni blog kaynağında");
+  assert.ok(!html.includes('<section id="view-terms"'), "sözleşme metni blog kaynağında");
 });
 
 test('gorunum ayiklamasi isaretlemeyi bozmaz (section etiketleri dengeli)', async () => {

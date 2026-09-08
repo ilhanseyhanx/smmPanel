@@ -148,11 +148,11 @@ function stripInactiveViews(html, aktifGorunum) {
     if (id === aktifGorunum) continue;
     const sinir = bolumSinirlari(sonuc, id);
     if (!sinir) continue;
-    // Yer tutucu birakilir: app.js "gorunum yok" durumunu tam sayfa yuklemesi
-    // ile cozer (bkz. public/js/app.js navigate()), bos ekrana dusmez.
-    sonuc = sonuc.slice(0, sinir.bas) +
-      `<section id="${id}" class="app-view" data-gated="route" style="display: none;"></section>` +
-      sonuc.slice(sinir.son);
+    // Bolum TAMAMEN kaldirilir; bos bir kabuk birakilmaz. app.js'te birden
+    // cok yerde "document.getElementById('view-...') var mi" kontrolu var;
+    // bos kabuk bu kontrolleri yaniltir ve kullanici bos ekran gorurdu.
+    // Gorunum yoksa navigate() dogru sayfayi sunucudan ister (tam yukleme).
+    sonuc = sonuc.slice(0, sinir.bas) + sonuc.slice(sinir.son);
   }
   return sonuc;
 }

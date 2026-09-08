@@ -64,7 +64,7 @@ test('blog görünümü açık, ana sayfa içeriği kaynağa hiç girmez', async
   // çıkarılıyor (utils/gatedMarkup.js stripInactiveViews). display:none ile
   // gizlenen metni arama motoru yine okur ve her alt sayfa ana sayfanın
   // kopyası gibi görünürdü.
-  assert.ok(html.includes('<section id="view-landing" class="app-view" data-gated="route" style="display: none;"></section>'),
+  assert.ok(!html.includes('<section id="view-landing"'),
     'ana sayfa görünümü kaynaktan çıkarılmamış');
   assert.ok(!html.includes('AKIŞTA KAL'), 'ana sayfa hero metni blog kaynağında duruyor');
   assert.ok(!html.includes('view-terms" class="app-view" style'), 'sözleşme metni blog kaynağında duruyor');

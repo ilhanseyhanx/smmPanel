@@ -8575,6 +8575,23 @@ print(sonuc.get("error") or sonuc.get("order"))`;
     this.navigate('auth');
   }
 
+  // Blog sayfasindaki "Hizmet Sayfalari" seridinin sayfalari arasinda gecis.
+  // Serit sticky bir kutuda duruyor; sayfa sayisi artinca kutu ekrandan uzun
+  // olup alttakilere ulasilamiyordu (bkz. utils/landingPages.js aside dali).
+  lpAsideGoto(sayfa, dugme) {
+    const kutu = dugme ? dugme.closest('.blog-aside') : document.getElementById('blog-landing-aside');
+    if (!kutu) return;
+    kutu.querySelectorAll('[data-lp-page]').forEach(liste => {
+      liste.style.display = Number(liste.dataset.lpPage) === Number(sayfa) ? 'grid' : 'none';
+    });
+    kutu.querySelectorAll('[data-lp-goto]').forEach(btn => {
+      const etkin = Number(btn.dataset.lpGoto) === Number(sayfa);
+      btn.classList.toggle('active', etkin);
+      if (etkin) btn.setAttribute('aria-current', 'true');
+      else btn.removeAttribute('aria-current');
+    });
+  }
+
   toggleAuthViewMode() {
     this.showAuthPage(this.authMode === 'login' ? 'register' : 'login');
   }

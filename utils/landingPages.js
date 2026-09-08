@@ -419,9 +419,29 @@ function landingLinksHtml(pages, { variant = 'footer' } = {}) {
   const link = (p, cls) => `<a href="/${esc(p.slug)}"${cls ? ` class="${cls}"` : ''} onclick="app.openLandingPage('${esc(p.slug)}');return false;">`
     + (cls ? `<i class="${esc(p.platform_icon)}" aria-hidden="true"></i> ` : '') + `${esc(p.title)}</a>`;
   if (variant === 'aside') {
+    // Serit .blog-aside icinde position:sticky ile duruyor. Sayfa sayisi
+    // arttikca kutu ekrandan uzun oluyordu ve sticky oldugu icin alttaki
+    // sayfalara KAYDIRILAMIYORDU: kullanici yalnizca ilk eklenenleri
+    // gorebiliyordu. Cozum: gorunumu sayfalara bol.
+    // Baglantilarin TAMAMI HTML'de kalir (yalnizca gizlenir), boylece arama
+    // motoru hepsini tarar ve ic baglanti akisi bozulmaz.
+    const SAYFA_BOYU = 6;
+    const gruplar = [];
+    for (let i = 0; i < pages.length; i += SAYFA_BOYU) gruplar.push(pages.slice(i, i + SAYFA_BOYU));
+    const listeler = gruplar.map((grup, i) =>
+      `<div class="blog-aside-links" data-lp-page="${i + 1}"${i ? ' style="display: none;"' : ''}>`
+      + grup.map(p => link(p, 'blog-aside-btn')).join('') + '</div>').join('');
+    const sayfalama = gruplar.length > 1
+      ? `<nav class="blog-aside-pager" aria-label="Hizmet sayfaları sayfalama">`
+        + gruplar.map((_, i) =>
+          `<button type="button" class="blog-aside-page-btn${i ? '' : ' active'}"`
+          + ` data-lp-goto="${i + 1}" aria-label="Sayfa ${i + 1}"`
+          + `${i ? '' : ' aria-current="true"'} onclick="app.lpAsideGoto(${i + 1}, this)">${i + 1}</button>`).join('')
+        + '</nav>'
+      : '';
     return `<h2 class="blog-aside-title">🛒 Hizmet Sayfaları</h2>`
       + `<p class="blog-aside-lead">Takipçi, beğeni ve izlenme paketlerine platforma göre ulaşın.</p>`
-      + `<div class="blog-aside-links">${pages.map(p => link(p, 'blog-aside-btn')).join('')}</div>`;
+      + listeler + sayfalama;
   }
   return pages.map(p => link(p)).join('');
 }

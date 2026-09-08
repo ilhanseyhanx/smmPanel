@@ -4283,6 +4283,12 @@ body.neo-app-active .service-editor-step { background: #ffde17; color: #090909; 
 .blog-aside-btn { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 2px solid #090909; background: #ffde17; color: #090909; font-size: .84rem; font-weight: 800; text-decoration: none; box-shadow: 3px 3px 0 #090909; transition: transform .12s, box-shadow .12s; }
 .blog-aside-btn i { width: 18px; text-align: center; font-size: 1rem; }
 .blog-aside-btn:hover { background: #fff; transform: translate(2px, 2px); box-shadow: 1px 1px 0 #090909; }
+/* Hizmet sayfalari seridinin sayfalama dugmeleri (1-2-3). Serit sticky bir
+   kutuda durdugu icin uzun liste ekrandan tasip ulasilamaz hale geliyordu. */
+.blog-aside-pager { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; justify-content: center; }
+.blog-aside-page-btn { min-width: 32px; padding: 6px 10px; border: 2px solid #090909; background: #fff; color: #090909; font-size: .82rem; font-weight: 800; cursor: pointer; box-shadow: 2px 2px 0 #090909; transition: transform .12s, box-shadow .12s, background .12s; }
+.blog-aside-page-btn:hover { transform: translate(1px, 1px); box-shadow: 1px 1px 0 #090909; }
+.blog-aside-page-btn.active { background: #ffde17; }
 @media (max-width: 1024px) {
   .blog-layout { grid-template-columns: 1fr; }
   .blog-aside { position: static; }

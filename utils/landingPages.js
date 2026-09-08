@@ -455,8 +455,40 @@ async function rewriteServiceLinks(html, dbAsync) {
   return source.replace(re, (m, id) => `href="${target.get(Number(id))}"`);
 }
 
+// Blog yazisinin altinda gosterilen "ilgili hizmetler" seridi.
+// Amac: yayindaki 32 yazinin 17 tanesinin hicbir satis sayfasina baglanti
+// vermemesi ve 6 satis sayfasinin blogdan hic baglanti almamasiydi
+// (olcum 8 Eyl 2026). Yazinin kategorisi platformla eslesirse o platformun
+// sayfalari, eslesmezse genel bir secki gosterilir.
+const KATEGORI_PLATFORM = [
+  ['instagram', 'instagram'], ['tiktok', 'tiktok'], ['twitch', 'twitch'],
+  ['telegram', 'telegram'], ['spotify', 'spotify'], ['facebook', 'facebook'],
+  ['linkedin', 'linkedin'], ['youtube', 'youtube'],
+  ['twitter', 'x-twitter'], ['x (', 'x-twitter'], ['threads', 'threads']
+];
+
+function relatedServicesHtml(pages, { category = "", limit = 4 } = {}) {
+  if (!Array.isArray(pages) || !pages.length) return "";
+  const kat = String(category || "").toLowerCase();
+  const eslesme = KATEGORI_PLATFORM.find(([anahtar]) => kat.includes(anahtar));
+  let secilen = [];
+  if (eslesme) secilen = pages.filter(p => p.platform_key === eslesme[1]);
+  // Eslesen platform yoksa (Strateji, Rehber, Guvenlik...) ya da o platformun
+  // yayinda sayfasi yoksa genel secki: sirali listenin basi.
+  if (!secilen.length) secilen = pages.slice(0, limit);
+  secilen = secilen.slice(0, limit);
+  if (!secilen.length) return "";
+  const baglantilar = secilen.map(p =>
+    `<a href="/${esc(p.slug)}" class="blog-aside-btn" onclick="app.openLandingPage('${esc(p.slug)}');return false;">`
+    + `<i class="${esc(p.platform_icon)}" aria-hidden="true"></i> ${esc(p.title)}</a>`).join("");
+  return `<div class="glass-card" style="padding: 24px; margin-top: 24px;">`
+    + `<h2 class="blog-aside-title">İlgili hizmetler</h2>`
+    + `<p class="blog-aside-lead">Bu yazıda anlatılan adımları hızlandırmak için kullanabileceğiniz hizmet sayfaları.</p>`
+    + `<div class="blog-aside-links">${baglantilar}</div></div>`;
+}
+
 module.exports = {
   rewriteServiceLinks,
   PLATFORMS, RESERVED_SLUGS, SLUG_RE, slugify, isValidSlug, parseList, parseFaq, parseIds, parseSlugs, parseJsonArray,
-  normalizePagePayload, localizePage, fetchPage, listPublished, renderLandingPageHtml, buildLandingJsonLd, landingLinksHtml
+  relatedServicesHtml, normalizePagePayload, localizePage, fetchPage, listPublished, renderLandingPageHtml, buildLandingJsonLd, landingLinksHtml
 };

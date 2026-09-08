@@ -260,7 +260,7 @@ module.exports = [
 <li><strong>21-30. gün:</strong> Günlük 3+ sipariş varsa web sitesi ve API otomasyonunu planlayın; muhasebeciyle fatura düzenini konuşun.</li>
 </ol>
 <h2>API ile otomasyon</h2>
-<p>Panelin API'siyle kendi sitenizdeki siparişi otomatik olarak panele iletebilir, durumu sorgulayabilir ve bakiyenizi kontrol edebilirsiniz. Adım adım kurulum için <a href="/blog/smm-panel-api-entegrasyonu-rehberi">API entegrasyonu rehberi</a> ve <a href="/api-docs">API dokümantasyonu</a>.</p>
+<p>Panelin API'siyle kendi sitenizdeki siparişi otomatik olarak panele iletebilir, durumu sorgulayabilir ve bakiyenizi kontrol edebilirsiniz. Adım adım kurulum için <a href="/blog/smm-panel-api-entegrasyonu-rehberi">API entegrasyonu rehberi</a> ve <a href="/smm-panel-api">API dokümantasyonu</a>.</p>
 <h2>Yeni başlayanların 5 hatası</h2>
 <ol>
 <li>Müşteriye "hiç düşmez, hesabın kapanmaz" demek — yenileme koşullarını dürüstçe aktarın; <a href="/blog/refill-yenileme-nedir-takipci-neden-duser">yenileme rehberi</a>.</li>
@@ -315,7 +315,7 @@ module.exports = [
 <li><strong>Days 21-30:</strong> with 3+ orders a day, plan the website and API automation; talk to an accountant about invoicing.</li>
 </ol>
 <h2>Automation with the API</h2>
-<p>With the panel's API you can forward orders from your own site automatically, query status and check your balance. For step-by-step setup see the <a href="/blog/smm-panel-api-entegrasyonu-rehberi">API integration guide</a> and the <a href="/api-docs">API documentation</a>.</p>
+<p>With the panel's API you can forward orders from your own site automatically, query status and check your balance. For step-by-step setup see the <a href="/blog/smm-panel-api-entegrasyonu-rehberi">API integration guide</a> and the <a href="/smm-panel-api">API documentation</a>.</p>
 <h2>The 5 beginner mistakes</h2>
 <ol>
 <li>Telling customers "they never drop, your account can't be banned" — pass on refill terms honestly; <a href="/blog/refill-yenileme-nedir-takipci-neden-duser">refill guide</a>.</li>
@@ -407,7 +407,7 @@ const data = await res.json(); // { status: 'Completed', remains: '0', ... }</co
 <li>Completed olunca müşteriye bildirim; Partial/Canceled ise kısmi iade hesaplar.</li>
 </ol>
 <h2>Hata yönetimi</h2>
-<p>Yanıtta <code>error</code> alanı varsa işlem yapılmamıştır: "Invalid API Key" (anahtar hatalı), "Invalid parameters" (eksik/yanlış alan, miktar sınır dışı ya da yetersiz bakiye), "Invalid action" (bilinmeyen action), "Order not found" (yanlış sipariş id). Sipariş oluşturma hataları (ör. yetersiz bakiye, gizli profil) İngilizce mesajla aynı alanda döner. İstekleri yeniden denerken üstel bekleme uygulayın; dakikada 180 istek sınırı vardır. Tüm kodlar <a href="/api-docs">API dokümantasyonu</a>nda listelenir.</p>
+<p>Yanıtta <code>error</code> alanı varsa işlem yapılmamıştır: "Invalid API Key" (anahtar hatalı), "Invalid parameters" (eksik/yanlış alan, miktar sınır dışı ya da yetersiz bakiye), "Invalid action" (bilinmeyen action), "Order not found" (yanlış sipariş id). Sipariş oluşturma hataları (ör. yetersiz bakiye, gizli profil) İngilizce mesajla aynı alanda döner. İstekleri yeniden denerken üstel bekleme uygulayın; dakikada 180 istek sınırı vardır. Tüm kodlar <a href="/smm-panel-api">API dokümantasyonu</a>nda listelenir.</p>
 <h2>Güvenlik kuralları</h2>
 <ul>
 <li>Anahtarı ortam değişkeninde tutun, depoya (git) eklemeyin.</li>
@@ -487,7 +487,7 @@ const data = await res.json(); // { status: 'Completed', remains: '0', ... }</co
 <li>Notify the customer on Completed; on Partial/Canceled calculate a partial refund.</li>
 </ol>
 <h2>Error handling</h2>
-<p>If the response contains an <code>error</code> field nothing was processed: "Invalid API Key" (wrong key), "Invalid parameters" (missing/invalid field, quantity out of range or insufficient balance), "Invalid action" (unknown action), "Order not found" (wrong order id). Order creation errors (e.g. insufficient balance, private profile) come back in the same field with an English message. Apply exponential backoff when retrying; there is a limit of 180 requests per minute. All codes are listed in the <a href="/api-docs">API documentation</a>.</p>
+<p>If the response contains an <code>error</code> field nothing was processed: "Invalid API Key" (wrong key), "Invalid parameters" (missing/invalid field, quantity out of range or insufficient balance), "Invalid action" (unknown action), "Order not found" (wrong order id). Order creation errors (e.g. insufficient balance, private profile) come back in the same field with an English message. Apply exponential backoff when retrying; there is a limit of 180 requests per minute. All codes are listed in the <a href="/smm-panel-api">API documentation</a>.</p>
 <h2>Security rules</h2>
 <ul>
 <li>Keep the key in an environment variable, never commit it to git.</li>

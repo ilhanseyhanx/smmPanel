@@ -52,7 +52,7 @@ test('404 sayfası kullanıcıyı boş ekranda bırakmaz', async () => {
 });
 
 test('bilinen adresler 404 dönmez', async () => {
-  for (const url of ['/', '/services', '/blog', '/register', '/tickets', '/api-docs', '/terms', '/privacy', '/refund']) {
+  for (const url of ['/', '/services', '/blog', '/register', '/tickets', '/smm-panel-api', '/terms', '/privacy', '/refund']) {
     assert.equal((await sayfa(url)).status, 200, `${url} yanlışlıkla 404 döndü`);
   }
 });
@@ -67,7 +67,7 @@ test('her sayfa kendi canonical adresini bildirir', async () => {
     '/services': 'https://jetsmmpanel.com/services',
     '/blog': 'https://jetsmmpanel.com/blog',
     '/register': 'https://jetsmmpanel.com/register',
-    '/api-docs': 'https://jetsmmpanel.com/api-docs',
+    '/smm-panel-api': 'https://jetsmmpanel.com/smm-panel-api',
     '/terms': 'https://jetsmmpanel.com/terms'
   };
   for (const [url, canonical] of Object.entries(beklenen)) {
@@ -81,7 +81,7 @@ test('her sayfa kendi canonical adresini bildirir', async () => {
 
 test('her sayfanın kendi başlığı vardır (yinelenen içerik uyarısı)', async () => {
   const basliklar = new Set();
-  for (const url of ['/', '/services', '/blog', '/register', '/api-docs', '/terms', '/privacy', '/refund']) {
+  for (const url of ['/', '/services', '/blog', '/smm-panel-api', '/terms', '/privacy', '/refund']) {
     const html = (await sayfa(url)).text;
     const baslik = oznitelik(html, /<title>([\s\S]*?)<\/title>/);
     assert.ok(baslik, `${url} sayfasının başlığı yok`);
@@ -91,14 +91,17 @@ test('her sayfanın kendi başlığı vardır (yinelenen içerik uyarısı)', as
 });
 
 test('panel içi sayfalar indekslenmez (ince/yinelenen içerik)', async () => {
-  for (const url of ['/orders', '/profile', '/add-funds', '/new-order', '/admin']) {
+  // /register ve /tickets de bu gruba girdi (8 Eyl 2026): ikisinin de ozgun
+  // metni yok — kayit formu her sayfada bulunuyor, destek icerigi ise yalnizca
+  // oturum acan kullaniciya gonderiliyor.
+  for (const url of ['/orders', '/profile', '/add-funds', '/new-order', '/admin', '/register', '/tickets']) {
     const html = (await sayfa(url)).text;
     assert.match(html, /<meta name="robots" content="noindex/, `${url} indekslenmeye açık`);
   }
 });
 
 test('herkese açık sayfalar indekslenmeye açıktır', async () => {
-  for (const url of ['/', '/services', '/blog', '/register', '/terms']) {
+  for (const url of ['/', '/services', '/blog', '/terms', '/privacy', '/refund', '/smm-panel-api']) {
     const html = (await sayfa(url)).text;
     assert.ok(!/<meta name="robots" content="noindex/.test(html), `${url} yanlışlıkla noindex`);
   }
@@ -462,4 +465,69 @@ test('sitemap.xml içindeki her adres geçerlidir (404 vermez)', async () => {
       assert.equal((await sayfa(adres)).status, 200, `sitemap'teki ${adres} adresi 404 dönüyor`);
     }
   }
+});
+
+// ---------------------------------------------------------------
+// [HATA] Ana sayfa icerigi butun adreslerin kaynagina giriyordu
+// Olcum (canli, 8 Eyl 2026): /terms, /privacy, /tickets, /api-docs ve blog
+// yazilarinin HEPSI ayni ~22 KB metni tasiyordu; /twitch-izleyici-satin-al
+// sayfasinda ozgun icerik toplam metnin yalnizca %13 uydu.
+// ---------------------------------------------------------------
+
+test('alt sayfalarin kaynaginda ana sayfa icerigi bulunmaz', async () => {
+  // Her izin BASKA bir sayfaya ait oldugu adres listesi.
+  const izler = [
+    ['ana sayfa hero', 'Jet SMM Panel (SMMJET);'],
+    ['sozlesme metni', 'view-terms" class="app-view" style'],
+    ['gizlilik metni', 'view-privacy" class="app-view" style'],
+    ['iade metni', 'view-refund" class="app-view" style'],
+    ['hakkimizda metni', 'view-about" class="app-view" style'],
+    ['API dokumani', 'view-smm-panel-api" class="app-view" style']
+  ];
+  // adres -> o adrese ait olan (dolayisiyla bulunmasi NORMAL olan) iz
+  const kendi = {
+    '/': 'ana sayfa hero',
+    '/terms': 'sozlesme metni',
+    '/privacy': 'gizlilik metni',
+    '/refund': 'iade metni',
+    '/about': 'hakkimizda metni',
+    '/smm-panel-api': 'API dokumani'
+  };
+  for (const url of ['/', '/terms', '/privacy', '/refund', '/about', '/smm-panel-api', '/services', '/blog', '/tickets']) {
+    const html = (await sayfa(url)).text;
+    for (const [ad, iz] of izler) {
+      if (kendi[url] === ad) {
+        assert.ok(html.includes(iz), `${url} kendi icerigini kaybetmis (${ad})`);
+      } else {
+        assert.ok(!html.includes(iz), `${url} kaynaginda baska sayfanin icerigi var: ${ad}`);
+      }
+    }
+  }
+});
+
+test('ana sayfa icerigi blog yazisinin kaynagina girmez', async () => {
+  const { dbAsync } = require("../config/database");
+  await dbAsync.run(
+    "INSERT INTO blog_posts (title, slug, content, status, category) VALUES (?, ?, ?, ?, ?)",
+    ["Sizinti Testi", "sizinti-testi", "<p>Yazının metni.</p>", "published", "Rehber"]
+  );
+  const html = (await sayfa("/blog/sizinti-testi")).text;
+  assert.ok(html.includes("Yazının metni."), "yazı metni HTML’de yok");
+  assert.ok(!html.includes("Jet SMM Panel (SMMJET);"), "ana sayfa tanıtım metni blog kaynağında");
+  assert.ok(!html.includes('view-terms" class="app-view" style'), "sözleşme metni blog kaynağında");
+});
+
+test('gorunum ayiklamasi isaretlemeyi bozmaz (section etiketleri dengeli)', async () => {
+  for (const url of ['/', '/terms', '/blog', '/smm-panel-api', '/boyle-bir-sayfa-yok']) {
+    const html = (await sayfa(url)).text;
+    const ac = (html.match(/<section[\s>]/gi) || []).length;
+    const kapa = (html.match(/<\/section\s*>/gi) || []).length;
+    assert.equal(ac, kapa, `${url} adresinde section etiketleri dengesiz (${ac} açılış / ${kapa} kapanış)`);
+  }
+});
+
+test('eski /api-docs adresi tek adimda yeni adrese 301 doner', async () => {
+  const res = await sayfa('/api-docs');
+  assert.equal(res.status, 301, `/api-docs ${res.status} döndü`);
+  assert.equal(res.headers.location, '/smm-panel-api', 'yönlendirme hedefi yanlış');
 });

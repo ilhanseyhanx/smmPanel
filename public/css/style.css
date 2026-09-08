@@ -2505,7 +2505,7 @@ body.neo-app-active .app-view:not(#view-landing):not(#view-admin) .main-content:
 #view-orders .main-content::before { content: '03 / HAREKETLER'; }
 #view-add-funds .main-content::before { content: '04 / CÜZDAN'; }
 #view-tickets .main-content::before { content: '05 / DESTEK MERKEZİ'; }
-#view-api-docs .main-content::before { content: '06 / GELİŞTİRİCİ ALANI'; }
+#view-smm-panel-api .main-content::before { content: '06 / GELİŞTİRİCİ ALANI'; }
 #view-blog .main-content::before { content: '07 / SMM LAB'; }
 #view-blog-detail .main-content::before { content: '07 / SMM LAB / YAZI'; }
 
@@ -2731,9 +2731,9 @@ body.neo-app-active .table-pagination {
 #view-tickets #tickets-telegram-link { background: #ffde17 !important; color: #090909 !important; }
 
 /* API ve blog */
-#view-api-docs .main-content > .glass-card:first-of-type { background: #21a9f6 !important; }
-#view-api-docs pre,
-#view-api-docs .glass-card div[style*="font-family: monospace"] {
+#view-smm-panel-api .main-content > .glass-card:first-of-type { background: #21a9f6 !important; }
+#view-smm-panel-api pre,
+#view-smm-panel-api .glass-card div[style*="font-family: monospace"] {
   border: 3px solid #090909 !important;
   border-radius: 0 !important;
   background: #090909 !important;
@@ -2742,7 +2742,7 @@ body.neo-app-active .table-pagination {
   font-family: 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace !important;
   line-height: 1.65;
 }
-#view-api-docs pre { margin-bottom: 28px !important; }
+#view-smm-panel-api pre { margin-bottom: 28px !important; }
 
 #view-blog .text-center { text-align: left; }
 #view-blog .text-center p { max-width: 700px !important; margin: 0 !important; font-weight: 650; }
@@ -4083,7 +4083,7 @@ body.neo-app-active .legal-page h2 { color: #090909; }
 /* API dokümanında h3 -> h2, h4 -> h3 kaydırıldı. Boyutlar satır içi style
    ile geldiği için ek kural gerekmez; yalnızca varsayılan h2 büyüklüğünün
    devreye girmemesi sağlanır. */
-#view-api-docs h2, #view-api-docs h3 { font-size: inherit; }
+#view-smm-panel-api h2, #view-smm-panel-api h3 { font-size: inherit; }
 
 /* --- Hakkımızda sayfası ----------------------------------------------------
    Yasal sayfalarla aynı düzeni kullanır; ek olarak kaynak listesi vardır. */

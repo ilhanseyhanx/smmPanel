@@ -2,7 +2,7 @@
 https://jetsmmpanel.com/services
 https://jetsmmpanel.com/blog
 https://jetsmmpanel.com/about
-https://jetsmmpanel.com/api-docs
+https://jetsmmpanel.com/smm-panel-api
 https://jetsmmpanel.com/register
 https://jetsmmpanel.com/terms
 https://jetsmmpanel.com/privacy

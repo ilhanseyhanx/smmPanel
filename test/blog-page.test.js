@@ -56,12 +56,18 @@ test('yazı içeriği JavaScript çalışmadan da HTML içinde gelir (SEO)', asy
   assert.ok(html.includes('4 dk okuma'), 'okuma süresi basılmamış');
 });
 
-test('blog görünümü açık, ana sayfa görünümü kapalı gelir', async () => {
+test('blog görünümü açık, ana sayfa içeriği kaynağa hiç girmez', async () => {
   const html = await blogSayfasi();
   assert.match(html, /<section id="view-blog-detail" class="app-view" style="display: block;">/,
     'blog görünümü açık değil');
-  assert.match(html, /<section id="view-landing" class="app-view neo-landing" style="display: none;">/,
-    'ana sayfa görünümü kapatılmamış');
+  // Ana sayfa görünümü artık CSS ile GİZLENMİYOR, kaynaktan tamamen
+  // çıkarılıyor (utils/gatedMarkup.js stripInactiveViews). display:none ile
+  // gizlenen metni arama motoru yine okur ve her alt sayfa ana sayfanın
+  // kopyası gibi görünürdü.
+  assert.ok(html.includes('<section id="view-landing" class="app-view" data-gated="route" style="display: none;"></section>'),
+    'ana sayfa görünümü kaynaktan çıkarılmamış');
+  assert.ok(!html.includes('AKIŞTA KAL'), 'ana sayfa hero metni blog kaynağında duruyor');
+  assert.ok(!html.includes('view-terms" class="app-view" style'), 'sözleşme metni blog kaynağında duruyor');
 });
 
 test('SEO etiketleri yazıya göre ayarlanır', async () => {

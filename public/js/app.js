@@ -238,6 +238,18 @@ function promptDialog(message, options = {}) {
   });
 }
 
+// Sunucunun tanidigi SPA adresleri (kaynak: utils/pageMeta.js SAYFALAR).
+// Bir adres bu listede YOKSA kok adresli satis sayfasi olabilir
+// (or. /instagram-takipci-satin-al). Liste eskiden 'gorunum DOM'da var mi'
+// diye anlasiliyordu; sunucu artik yalnizca aktif gorunumu gonderdigi icin
+// (SEO ayiklamasi) o yontem yaniltici oldu.
+const SPA_ROTALARI = [
+  'landing', 'services', 'blog', 'blog-detail', 'landing-page', 'smm-panel-api',
+  'about', 'terms', 'privacy', 'refund', 'register', 'auth', 'tickets',
+  'orders', 'new-order', 'add-funds', 'profile', 'admin', 'not-found',
+  'payment-success', 'payment-failed', 'reset-password', 'verify-email'
+];
+
 class SmmApp {
   constructor() {
     this.currentUser = null;
@@ -599,7 +611,7 @@ class SmmApp {
     // localhost yaziyorsa canli alan adiyla degistirilir.
     const apiBaseSpan = document.getElementById('api-docs-base-url');
     if (apiBaseSpan) apiBaseSpan.textContent = `${window.location.origin}/api/v2`;
-    document.querySelectorAll('#view-api-docs pre').forEach(block => {
+    document.querySelectorAll('#view-smm-panel-api pre').forEach(block => {
       if (!block.dataset.contentTr) block.dataset.contentTr = block.textContent;
       const localized = this.locale === 'en'
         ? block.dataset.contentTr.replaceAll('/kullaniciadi', '/username')
@@ -875,7 +887,7 @@ class SmmApp {
       const path = window.location.pathname.replace(/^\/+|\/+$/g, '') || 'landing';
       const [popRoute] = path.split('?');
       if (popRoute.startsWith('blog/')) this.loadBlogPostDetail(decodeURIComponent(popRoute.slice(5)), false);
-      else if (!document.getElementById(`view-${popRoute}`) && /^[a-z0-9-]+$/.test(popRoute)) this.openLandingPage(popRoute, false);
+      else if (!SPA_ROTALARI.includes(popRoute) && /^[a-z0-9-]+$/.test(popRoute)) this.openLandingPage(popRoute, false);
       else this.navigate(popRoute, false);
     });
   }
@@ -955,15 +967,20 @@ class SmmApp {
       return;
     }
 
-    // Oturum acildi ama sayfa oturumsuzken yuklendiyse gorunumun isaretlemesi
-    // henuz gelmemistir; tam yukleme ile sunucudan istenir.
-    if (!document.getElementById(`view-${viewName}`) && this.currentUser) {
+    // Isaretlemesi bu sayfada BULUNMAYAN gorunume gecis: tam sayfa yuklemesi.
+    // Iki sebeple olabilir:
+    //   1) Oturum sayfa yuklendikten sonra acildi; panel gorunumleri gelmedi
+    //      (bkz. utils/gatedMarkup.js stripGatedMarkup).
+    //   2) SEO: sunucu her adrese YALNIZCA o adrese ait icerik gorunumunu
+    //      gonderir; ana sayfa / hakkimizda / sozlesme metinleri alt
+    //      sayfalarin kaynagina karismasin diye cikarilir (stripInactiveViews).
+    // Her iki durumda da dogru sayfa sunucudan istenir. Sunucu bu adreslerin
+    // hepsini tanidigi icin (utils/pageMeta.js) istek bosa gitmez; tanimadigi
+    // bir ad gelirse 404 gorunumunu dondurur.
+    if (!document.getElementById(`view-${viewName}`)) {
       window.location.assign(viewName === 'landing' ? '/' : `/${viewName}`);
       return;
     }
-
-    // Bilinmeyen adresler ana sayfaya duser (bos ekran yerine).
-    if (!document.getElementById(`view-${viewName}`)) viewName = 'landing';
 
     this.currentView = viewName;
     // Temiz adres: #hash yerine gercek yol (ana sayfa "/", digerleri "/gorunum").
@@ -1012,7 +1029,7 @@ class SmmApp {
     } else if (viewName === 'profile') {
       this.loadProfileView();
       this.loadApiKey();
-    } else if (viewName === 'api-docs') {
+    } else if (viewName === 'smm-panel-api') {
       this.loadApiKey();
     } else if (viewName === 'tickets') {
       this.loadUserTickets();
@@ -7406,6 +7423,9 @@ print(sonuc.get("error") or sonuc.get("order"))`;
 
       document.getElementById('blog-detail-category').innerText = post.category || this.ui('Rehber', 'Guide');
       document.getElementById('blog-detail-title').innerText = post.title;
+      // Kirinti yolu da yaziya gore guncellenir (sunucu ilk yuklemede basar).
+      const kirinti = document.getElementById('blog-detail-crumb');
+      if (kirinti) kirinti.textContent = post.title;
       const yazarImza = this.blogAuthorName || `${this.siteName || 'Jet SMM Panel'} ${this.locale === 'en' ? 'Editorial Team' : 'Editör Ekibi'}`;
       // Yazar profili tanimliysa imza tiklanabilir (admin ayari blog_author_url).
       const yazarHtml = this.blogAuthorName && this.blogAuthorUrl && this.blogAuthorUrl.startsWith('http')

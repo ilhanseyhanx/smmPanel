@@ -88,3 +88,75 @@ function sessionState(req) {
 }
 
 module.exports = { stripGatedMarkup, sessionState, BLOKLAR };
+
+// ---------------------------------------------------------------------------
+// ROTA BAZLI GORUNUM AYIKLAMA (SEO)
+// ---------------------------------------------------------------------------
+// Yukaridaki admin/auth ayiklamasi panel isaretlemesini cikariyordu, ama ANA
+// SAYFAYA OZGU pazarlama bloklari her adreste gonderilmeye devam ediyordu.
+// Olculen durum (canli, 8 Eyl 2026): /terms, /privacy, /tickets, /smm-panel-api,
+// /twitch-izleyici-satin-al ve blog yazilarinin HEPSI ayni 22,4 KB metni
+// tasiyordu; /twitch sayfasinda ozgun icerik toplam metnin yalnizca %13'uydu.
+// Google bunu "yinelenen icerik" olarak gorur ve sayfanin gercek konusunu
+// bulmasi zorlasir.
+//
+// Cozum: sunucu, o adrese ait OLMAYAN icerik agirlikli gorunumleri HTML'den
+// tamamen cikarir. CSS ile gizleme (display:none) yeterli degildir — bot
+// kaynagi okur, gizli metni de sayar.
+//
+// NEYIN CIKARILDIGI: yalnizca kendi basina metin tasiyan tanitim/sozlesme
+// gorunumleri. Bos kabuk olan gorunumler (hizmet tablosu, blog listesi,
+// giris formu...) yerinde kalir; bunlar SPA icinde aninda gecis yapilan sik
+// yollar ve HTML'e kayda deger metin eklemezler.
+const ICERIK_GORUNUMLERI = [
+  'view-landing',   // hero, tanitim, nasil calisir, blog onizleme, CTA, SSS
+  'view-about',     // hakkimizda + editoryal politika
+  'view-terms',     // kullanim sartlari
+  'view-privacy',   // gizlilik + KVKK
+  'view-refund',    // iade politikasi
+  'view-smm-panel-api'   // API dokumantasyonu (tam teknik metin)
+];
+
+/**
+ * <section id="..."> blogunun bitis konumunu ic ice section'lari sayarak bulur.
+ * Kaba bir regex ("ilk </section>") ic ice kullanimda yanlis yerden keserdi.
+ */
+function bolumSinirlari(html, id) {
+  const bas = html.indexOf(`<section id="${id}"`);
+  if (bas === -1) return null;
+  const re = /<section\b|<\/section\s*>/gi;
+  re.lastIndex = bas;
+  let derinlik = 0;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    if (m[0][1] === '/') {
+      derinlik--;
+      if (derinlik === 0) return { bas, son: m.index + m[0].length };
+    } else derinlik++;
+  }
+  return null; // etiketler eslesmiyorsa hic dokunma
+}
+
+/**
+ * Bu adrese ait olmayan icerik gorunumlerini HTML'den cikarir.
+ * @param {string} html
+ * @param {string} aktifGorunum  Korunacak gorunum kimligi (or. 'view-terms')
+ */
+function stripInactiveViews(html, aktifGorunum) {
+  let sonuc = String(html || '');
+  for (const id of ICERIK_GORUNUMLERI) {
+    if (id === aktifGorunum) continue;
+    const sinir = bolumSinirlari(sonuc, id);
+    if (!sinir) continue;
+    // Yer tutucu birakilir: app.js "gorunum yok" durumunu tam sayfa yuklemesi
+    // ile cozer (bkz. public/js/app.js navigate()), bos ekrana dusmez.
+    sonuc = sonuc.slice(0, sinir.bas) +
+      `<section id="${id}" class="app-view" data-gated="route" style="display: none;"></section>` +
+      sonuc.slice(sinir.son);
+  }
+  return sonuc;
+}
+
+module.exports.stripInactiveViews = stripInactiveViews;
+module.exports.ICERIK_GORUNUMLERI = ICERIK_GORUNUMLERI;
+

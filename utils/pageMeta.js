@@ -18,7 +18,7 @@
 const SAYFALAR = {
   '': {
     view: 'view-landing',
-    title: 'Jet SMM Panel - Otomatik Sosyal Medya Büyüme Paneli',
+    title: 'SMM Panel - Instagram, TikTok ve YouTube | Jet SMM Panel',
     description: 'Instagram, TikTok, YouTube ve Twitter için takipçi, beğeni ve izlenme hizmetlerini tek panelden yönet. Otomatik teslimat, güvenli ödeme ve 7/24 destek.'
   },
   services: {
@@ -31,17 +31,28 @@ const SAYFALAR = {
     title: 'Sosyal Medya Büyüme Rehberi - Blog | Jet SMM Panel',
     description: 'Sosyal medya büyüme rehberleri, algoritma ipuçları ve kampanya duyuruları. SMM panelini verimli kullanmak için hazırladığımız güncel yazıları buradan okuyun.'
   },
-  'api-docs': {
-    view: 'view-api-docs',
-    title: 'API Dokümantasyonu | Jet SMM Panel',
-    description: 'SMM panel API belgeleri: sipariş oluşturma, durum sorgulama ve bakiye uçlarının tüm parametreleri, örnek istekler ve hata kodlarıyla birlikte açıklanır.'
+  // Adres 8 Eyl 2026'da /api-docs'tan tasindi: hedef sorgu 'smm panel api'
+  // ve adresin kendisi de bu eslesmeyi tasiyor. Eski adres 301 ile buraya
+  // yonlendirilir (bkz. server.js).
+  'smm-panel-api': {
+    view: 'view-smm-panel-api',
+    title: 'SMM Panel API - Bayiler İçin API Entegrasyonu | Jet SMM Panel',
+    description: 'SMM panel API entegrasyonu: kimlik doğrulama, servis listesi, sipariş oluşturma, durum sorgulama ve bakiye uçları; örnek istek ve hata kodlarıyla.'
   },
+  // Kayit ekraninin tek icerigi formdur ve form site genelinde her sayfada
+  // bulunur; bu adresin ozgun metni yok. Sayfa calismaya devam eder,
+  // yalnizca arama sonuclarina cikmaz (baglantilar izlenmeye devam eder).
   register: {
+    noindex: true,
     view: 'view-auth',
     title: 'Ücretsiz Hesap Oluştur | Jet SMM Panel',
     description: 'Ücretsiz hesap oluştur, bakiye yükle ve Instagram, TikTok, YouTube siparişlerini saniyeler içinde başlat. Kayıt birkaç adım sürer, kart bilgisi istenmez.'
   },
+  // Destek icerigi yalnizca oturum acan kullaniciya gonderilir (AUTH-ONLY),
+  // botun gordugu sey bos bir iskelettir; oturumsuz ziyaretci de giris
+  // ekranina yonlendirilir. Indekslenirse iceriksiz sayfa olarak gorunur.
   tickets: {
+    noindex: true,
     view: 'view-tickets',
     title: 'Destek ve Canlı Yardım | Jet SMM Panel',
     description: 'Sipariş, ödeme ve bakiye konularındaki sorularınız için destek talebi açın. Telegram canlı destek hattımız ve bilet sistemimiz 7/24 yanınızda çalışır.'

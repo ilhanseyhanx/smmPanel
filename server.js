@@ -131,6 +131,26 @@ app.use('/api/auth/forgot-password', authLimiter);
 app.use('/api/auth/reset-password', authLimiter);
 
 // ----------------------------------------------------
+// ----------------------------------------------------
+// KALICI ADRES DEGISIKLIKLERI (301)
+// Yayindaki bir adres degistiginde eskisi calismaya devam etmeli ve arama
+// motoru sinyali (baglantilar, siralama gecmisi) yeni adrese tasinmali.
+// Zincir kurulmaz: eski adres TEK adimda nihai hedefe gider.
+// ----------------------------------------------------
+const KALICI_YONLENDIRMELER = new Map([
+  // 8 Eyl 2026: API dokumaninin adresi hedef sorguyu tasisin diye tasindi.
+  ['/api-docs', '/smm-panel-api']
+]);
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  // Sondaki egik cizgi de karsilanir: /api-docs/ -> /smm-panel-api
+  const yol = req.path.length > 1 ? req.path.replace(/\/+$/, '') : req.path;
+  const hedef = KALICI_YONLENDIRMELER.get(yol);
+  if (!hedef) return next();
+  const soru = req.originalUrl.indexOf('?');
+  res.redirect(301, hedef + (soru === -1 ? '' : req.originalUrl.slice(soru)));
+});
+
 // SEO: dinamik sitemap + robots (statik dosyalardan ONCE tanimlanmali)
 // Sitemap, PUBLIC_BASE_URL ve yayindaki blog yazilarindan uretilir.
 // ----------------------------------------------------
@@ -143,8 +163,7 @@ app.get('/sitemap.xml', async (req, res) => {
       { loc: `${base}/services`, priority: '0.9', changefreq: 'daily' },
       { loc: `${base}/blog`, priority: '0.8', changefreq: 'weekly' },
       { loc: `${base}/about`, priority: '0.6', changefreq: 'monthly' },
-      { loc: `${base}/api-docs`, priority: '0.5', changefreq: 'monthly' },
-      { loc: `${base}/register`, priority: '0.6', changefreq: 'monthly' },
+      { loc: `${base}/smm-panel-api`, priority: '0.5', changefreq: 'monthly' },
       { loc: `${base}/terms`, priority: '0.3', changefreq: 'yearly' },
       { loc: `${base}/privacy`, priority: '0.3', changefreq: 'yearly' },
       { loc: `${base}/refund`, priority: '0.3', changefreq: 'yearly' }
@@ -244,7 +263,7 @@ app.get('/llms.txt', async (req, res) => {
       `- [Ana Sayfa ve Hizmet Kataloğu](${base}/): Güncel hizmet listesi, fiyatlar ve sık sorulan sorular`,
       `- [Hizmetler ve Fiyat Listesi](${base}/services): Platform bazında tüm servisler, 1000 adet fiyatları ve limitler`,
       `- [Hakkımızda ve Editoryal Politika](${base}/about): Panelin işleyişi, kalite taahhütleri ve içerik ilkeleri`,
-      `- [API Dokümantasyonu](${base}/api-docs): Bayiler için API v2 uçları, istek örnekleri ve hata kodları`,
+      `- [API Dokümantasyonu](${base}/smm-panel-api): Bayiler için API v2 uçları, istek örnekleri ve hata kodları`,
       `- [Kullanım Şartları](${base}/terms): Üyelik ve hizmet koşulları`,
       `- [Gizlilik ve KVKK](${base}/privacy): Kişisel verilerin işlenmesi ve çerez politikası`,
       `- [İade Politikası](${base}/refund): İade, düşüş telafisi (refill) ve garanti koşulları`,
@@ -451,6 +470,9 @@ app.get('/blog/:slug', async (req, res) => {
     // motorlari HTML'de gercek metni gormeye devam eder.
     let html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
     html = stripGatedMarkup(html, sessionState(req));
+    // Bu adrese ait olmayan tanitim/sozlesme gorunumleri HTML'den cikarilir
+    // (ana sayfa icerigi blog yazisinin kaynagina karismasin).
+    html = stripInactiveViews(html, 'view-blog-detail');
     html = await applyTelegramLink(html);
     html = await applyLandingLinks(html);
     // API dokumanindaki localhost ornekleri botlar icin gercek adrese cevrilir.
@@ -520,7 +542,9 @@ app.get('/blog/:slug', async (req, res) => {
       .replace('<section id="view-landing" class="app-view neo-landing">', '<section id="view-landing" class="app-view neo-landing" style="display: none;">')
       .replace('<section id="view-blog-detail" class="app-view" style="display: none;">', '<section id="view-blog-detail" class="app-view" style="display: block;">')
       .replace(/(<span class="badge badge-completed mb-15" id="blog-detail-category">)[\s\S]*?(<\/span>)/, `$1${escapeAttr(post.category || 'Blog')}$2`)
-      .replace(/(<h1 id="blog-detail-title"[^>]*>)[\s\S]*?(<\/h1>)/, `$1${escapeAttr(post.title)}$2`)
+      .replace(/(<h1 id="blog-detail-title"[^>]*>)[\s\S]*?(<\/h1>)/, `$1${escapeAttr(post.title)}$2`)
+      // Gorunur kirinti yolunun son halkasi (BreadcrumbList semasiyla ayni metin).
+      .replace('<span id="blog-detail-crumb">Yazı</span>', `<span id="blog-detail-crumb">${escapeAttr(post.title)}</span>`)
       // tarihMetni parcalari tek tek escape edildi; yazar baglantisi HTML olarak kalmali.
       .replace(/(id="blog-detail-date">)[\s\S]*?(<\/div>)/, `$1${tarihMetni}$2`)
       .replace(/(<div id="blog-detail-content"[^>]*>)[\s\S]*?(<\/div>)/, `$1${safeContent}$2`)
@@ -543,6 +567,17 @@ app.get('/blog/:slug', async (req, res) => {
     // Yazinin basligi sayfanin tek h1'i olmalidir; diger gorunumlerin
     // basliklari h2'ye cevrilir. Icerik basildiktan SONRA calisir, cunku
     // yukaridaki degistirmeler <h1 id="blog-detail-title"> etiketini arar.
+    // Ilgili hizmet sayfalari: yazinin kategorisine gore secilir. Blogdan
+    // satis sayfalarina ic baglanti akisi saglar — olcumde yayindaki 32
+    // yazinin 17'si hicbir satis sayfasina baglanti vermiyordu (8 Eyl 2026).
+    try {
+      const { dbAsync: db2 } = require('./config/database');
+      const { listPublished, relatedServicesHtml } = require('./utils/landingPages');
+      const sayfalar = await listPublished(db2);
+      const serit = relatedServicesHtml(sayfalar, { category: post.category, limit: 4 });
+      if (serit) html = html.replace('<div id="blog-related-services"></div>', `<div id="blog-related-services">${serit}</div>`);
+    } catch { /* satis sayfalari okunamazsa serit basilmaz */ }
+
     html = enforceSingleH1(html, 'view-blog-detail');
 
     res.setHeader('Cache-Control', 'no-cache');
@@ -722,7 +757,7 @@ const { extractVerificationCode, extractAnalyticsId } = require('./utils/seoVeri
 const { enforceSingleH1 } = require('./utils/headings');
 const { buildMetaDescription } = require('./utils/metaDescription');
 const { pageForPath } = require('./utils/pageMeta');
-const { stripGatedMarkup, sessionState } = require('./utils/gatedMarkup');
+const { stripGatedMarkup, sessionState, stripInactiveViews } = require('./utils/gatedMarkup');
 // Etiketler iki parcaya ayrilir: "siteOgUrl" yalnizca ana sayfaya aittir
 // (blog yazisinin kendi og:url'i vardir, ustune ana sayfaninki basilirsa
 // paylasim onizlemesi yanlis adresi gosterir), "common" ise her sayfaya
@@ -1145,6 +1180,8 @@ app.use(async (req, res, next) => {
 
     let html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
     html = stripGatedMarkup(html, sessionState(req));
+    // Satis sayfasinin kaynaginda ana sayfa pazarlama metni bulunmamali.
+    html = stripInactiveViews(html, 'view-landing-page');
     html = await applyTelegramLink(html);
     html = await applyLandingLinks(html);
     html = html.split('http://localhost:3000').join(base);
@@ -1210,6 +1247,9 @@ app.use(async (req, res) => {
 
     // Panel ici ve yonetim isaretlemesi yalnizca ilgili oturuma gonderilir.
     html = stripGatedMarkup(html, sessionState(req));
+    // Yalnizca bu adrese ait icerik gorunumu gonderilir; digerleri (ana sayfa,
+    // hakkimizda, sozlesmeler, API dokumani) kaynaktan tamamen cikarilir.
+    html = stripInactiveViews(html, sayfa.view);
 
     const seo = await buildSeoParts();
     const base = String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
@@ -1236,7 +1276,19 @@ app.use(async (req, res) => {
 
     // Panel ici sayfalar ve 404: bot gordugu sey bos iskelet oldugu icin
     // indekslenmemeli, yoksa "benzer yinelenen icerik" uyarisi uretirler.
-    if (sayfa.noindex) html = html.replace('</head>', '  <meta name="robots" content="noindex, follow">\n</head>');
+    if (sayfa.noindex) html = html.replace('</head>', '  <meta name="robots" content="noindex, follow">\n</head>');
+
+    // 404 sayfasinin canonical'i ana sayfayi gostermemeli: var olmayan bir
+    // adres ana sayfanin kopyasi degildir. Etiket tamamen kaldirilir
+    // (sayfa zaten noindex + 404 donuyor).
+    if (sayfa.status === 404) {
+      const im = '<link rel="canonical"';
+      const i = html.indexOf(im);
+      if (i !== -1) {
+        const son = html.indexOf('>', i);
+        if (son !== -1) html = html.slice(0, i) + html.slice(son + 1);
+      }
+    }
 
     // og:url index.html'de sabit duruyor; eklemek yerine degistiriyoruz ki
     // sayfada iki kez basilmasin (paylasim araclari cift etiketi karistirir).
@@ -1258,6 +1310,24 @@ app.use(async (req, res) => {
     html = html.replace('<div id="landing-faq"></div>', `<div id="landing-faq">${renderFaqHtml()}</div>`);
     if (sayfa.view === 'view-landing') {
       html = html.replace('</head>', `  <script type="application/ld+json">${faqJsonLd()}</script>\n</head>`);
+    
+      // Hero'daki hizmet sayisi CANLI katalogdan basilir. Sabit yazilan
+      // pazarlama sayilari eskir: burada eskiden "12.000+ kullanici"
+      // yaziyordu, veritabanindaki gercek deger 34'tu (8 Eyl 2026).
+      try {
+        const { dbAsync } = require('./config/database');
+        const satir = await dbAsync.get('SELECT COUNT(*) n FROM services WHERE status = 1');
+        const adet = Number(satir && satir.n);
+        if (Number.isFinite(adet) && adet > 0) {
+          const im = '<strong id="landing-service-count">';
+          const i = html.indexOf(im);
+          if (i !== -1) {
+            const icerikBas = i + im.length;
+            const icerikSon = html.indexOf('</strong>', icerikBas);
+            if (icerikSon !== -1) html = html.slice(0, icerikBas) + adet + html.slice(icerikSon);
+          }
+        }
+      } catch { /* katalog okunamazsa isaretlemedeki deger kalir */ }
     } else if (sayfa.view === 'view-services') {
       const ssr = await buildServicesSsr(base || '');
       if (ssr.rows) html = html.replace('<tbody id="full-services-tbody">', `<tbody id="full-services-tbody">${ssr.rows}`);

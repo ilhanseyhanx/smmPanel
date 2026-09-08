@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260904d">
+  <link rel="stylesheet" href="/css/style.css?v=20260908a">
 </head>
 <body>
 
@@ -76,7 +76,7 @@
            yalnizca mobil hamburger menusunde gorunur (CSS ile). -->
       <li class="auth-required nav-mobile-only" style="display:none;"><a class="nav-link" href="/profile" onclick="app.navigate('profile'); return false;"><i class="fa-solid fa-user-circle" aria-hidden="true"></i> Profilim</a></li>
       <li><a class="nav-link" href="/blog" onclick="app.navigate('blog'); return false;"><i class="fa-solid fa-newspaper" aria-hidden="true"></i> Blog</a></li>
-      <li><a class="nav-link" href="/api-docs" onclick="app.navigate('api-docs'); return false;"><i class="fa-solid fa-code" aria-hidden="true"></i> API</a></li>
+      <li><a class="nav-link" href="/smm-panel-api" onclick="app.navigate('smm-panel-api'); return false;"><i class="fa-solid fa-code" aria-hidden="true"></i> API</a></li>
       <li class="admin-only" style="display:none;"><a class="nav-link" href="/admin" style="color: var(--accent-cyan);" onclick="app.navigate('admin'); return false;">
         <i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Admin Panel
       </a></li>
@@ -118,8 +118,8 @@
       <div class="neo-hero">
         <div class="neo-hero-copy">
           <div class="neo-kicker"><span>01</span> SOSYAL BÜYÜME PLATFORMU</div>
-          <h1 class="hero-title" id="landing-hero-title">AKIŞTA KAL.<br><span>ÖNDE</span> KAL.</h1>
-          <p class="hero-subtitle" id="landing-hero-subtitle">Instagram, TikTok, YouTube ve diğer platformlarda görünürlüğünü saniyeler içinde artır.</p>
+          <h1 class="hero-title" id="landing-hero-title">SMM PANEL<br><span>Instagram, TikTok</span> ve YouTube Hizmetleri</h1>
+          <p class="hero-subtitle" id="landing-hero-subtitle">Akışta kal, önde kal. Instagram, TikTok, YouTube ve diğer platformlarda görünürlüğünü saniyeler içinde artır.</p>
           <!-- Tanim paragrafi: sloganlar AI/arama botlarina bilgi tasimaz;
                markayi ve hizmeti tek cumlede tanimlayan bu blok, "SMM panel
                nedir / Jet SMM Panel nedir" sorgularinin alintilanabilir
@@ -131,7 +131,7 @@
             </button>
             <button class="neo-text-link" onclick="app.navigate('services')"><span data-i18n="home.explore">Fiyatları İncele</span> ↗</button>
           </div>
-          <div class="neo-proof"><span class="neo-avatars"><b>İ</b><b>S</b><b>M</b><b>J</b></span><strong>12.000+</strong> kullanıcı büyümeyi SMMJET ile hızlandırıyor.</div>
+          <div class="neo-proof"><span class="neo-avatars"><b>İ</b><b>S</b><b>M</b><b>J</b></span><strong id="landing-service-count">167</strong> hizmet tek panelde, otomatik teslimat.</div>
           <div class="neo-scribble"><i class="fa-solid fa-arrow-turn-up"></i> 6 saniyede başlar!</div>
         </div>
 
@@ -907,10 +907,10 @@
     <!-- 6.5. RESELLER API DOCUMENTATION VIEW -->
     <!--AUTH-ONLY-END-->
 
-    <section id="view-api-docs" class="app-view" style="display: none;">
+    <section id="view-smm-panel-api" class="app-view" style="display: none;">
       <div class="main-content" style="max-width: 950px;">
         <div class="flex-between mb-20" style="gap: 14px; flex-wrap: wrap;">
-          <h1 style="font-size: 1.8rem;">🌐 SMM Reseller API Dokümantasyonu (v2)</h1>
+          <h1 style="font-size: 1.8rem;">🌐 SMM Panel API Dokümantasyonu</h1>
           <button type="button" class="btn btn-primary" id="api-howto-btn" onclick="app.showApiGuide()" style="white-space: nowrap;">
             <i class="fa-solid fa-circle-question"></i> Nasıl Kullanılır?
           </button>
@@ -985,6 +985,61 @@ Content-Type: application/json
   "action": "status",
   "order": 1042
 }</pre>
+
+          <h3 style="color: #fff; margin-bottom: 10px;">4. Bakiye Sorgulama</h3>
+          <pre style="background: rgba(7,10,18,0.6); padding: 14px; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 0.85rem; overflow-x: auto;">
+POST http://localhost:3000/api/v2
+Content-Type: application/json
+
+{
+  "key": "YOUR_API_KEY",
+  "action": "balance"
+}
+
+// Yanıt
+{ "balance": "125.40", "currency": "TRY" }</pre>
+
+          <h3 style="color: #fff; margin-bottom: 10px;">5. Toplu Sipariş Durumu (tek istekte 100 sipariş)</h3>
+          <pre style="background: rgba(7,10,18,0.6); padding: 14px; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 0.85rem; overflow-x: auto;">
+POST http://localhost:3000/api/v2
+Content-Type: application/json
+
+{
+  "key": "YOUR_API_KEY",
+  "action": "status",
+  "orders": "1042,1043,1044"
+}
+
+// Yanıt: sipariş numarası -> durum
+{
+  "1042": { "status": "Completed", "start_count": 1500, "remains": 0, "charge": "12.50", "currency": "TRY" },
+  "1043": { "status": "Processing", "start_count": 980, "remains": 220, "charge": "8.00", "currency": "TRY" }
+}</pre>
+
+          <h3 style="color: #fff; margin-bottom: 10px;">Sipariş Durum Değerleri</h3>
+          <pre style="background: rgba(7,10,18,0.6); padding: 14px; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 0.85rem; overflow-x: auto;">
+Pending      sipariş alındı, sağlayıcıya iletilmeyi bekliyor
+Processing   işleniyor
+Completed    tamamlandı
+Partial      kısmen teslim edildi (kalan tutar iade edilir)
+Canceled     iptal edildi</pre>
+
+          <h3 style="color: #fff; margin-bottom: 10px;">Hata Cevapları</h3>
+          <p style="color: var(--text-muted); margin-bottom: 10px;">SMM API geleneğine uygun olarak HTTP durum kodu <strong>her zaman 200</strong> döner; hata gövdedeki <code>error</code> alanında bildirilir. İstemcinizde önce bu alanı kontrol edin.</p>
+          <pre style="background: rgba(7,10,18,0.6); padding: 14px; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 0.85rem; overflow-x: auto;">
+{ "error": "Invalid API Key" }     anahtar yok, yanlış veya hesap askıda
+{ "error": "Invalid parameters" }  link boş ya da miktar geçersiz
+{ "error": "Order not found" }     sipariş yok veya size ait değil
+{ "error": "Invalid orders" }      toplu sorguda geçerli sipariş numarası yok
+{ "error": "Invalid action" }      desteklenmeyen action değeri</pre>
+
+          <h3 style="color: #fff; margin-bottom: 10px;">Güvenlik</h3>
+          <ul style="color: var(--text-muted); line-height: 1.9; padding-left: 20px;">
+            <li>API anahtarınızı yalnızca kendi sunucunuzda saklayın; tarayıcıda çalışan koda veya mobil uygulamaya gömmeyin.</li>
+            <li>İstekleri her zaman HTTPS üzerinden gönderin.</li>
+            <li>Anahtar hesabınızın bakiyesini harcayabilir. Sızdığından şüphelenirseniz Profil sayfasından yenileyin; eski anahtar anında geçersiz olur.</li>
+            <li>Sipariş sorgularında yalnızca kendi hesabınıza ait siparişleri görebilirsiniz.</li>
+          </ul>
         </div>
       </div>
     </section>
@@ -1014,6 +1069,11 @@ Content-Type: application/json
     <!-- 6.7. PUBLIC BLOG DETAIL VIEW -->
     <section id="view-blog-detail" class="app-view" style="display: none;">
       <div class="main-content" style="max-width: 850px;">
+        <nav class="lp-breadcrumb" aria-label="breadcrumb">
+          <a href="/">Ana Sayfa</a> <span aria-hidden="true">›</span>
+          <a href="/blog" onclick="app.navigate('blog');return false;">Blog</a> <span aria-hidden="true">›</span>
+          <span id="blog-detail-crumb">Yazı</span>
+        </nav>
         <button class="btn btn-outline btn-sm mb-20" onclick="app.navigate('blog')">
           <i class="fa-solid fa-arrow-left"></i> <span data-i18n="blog.back">Tüm Makalelere Dön</span>
         </button>
@@ -1040,6 +1100,10 @@ Content-Type: application/json
             <button type="button" id="share-copy" class="share-btn" onclick="app.copyPageLink()" aria-label="Bağlantıyı kopyala"><i class="fa-solid fa-link" aria-hidden="true"></i><span class="sr-only">Bağlantıyı kopyala</span></button>
           </div>
         </article>
+
+        <!-- İlgili hizmet sayfaları: sunucu yazının kategorisine göre doldurur
+             (server.js blog SSR). İçerik yoksa boş kalır ve hiç basılmaz. -->
+        <div id="blog-related-services"></div>
       </div>
     </section>
 
@@ -3199,7 +3263,7 @@ Content-Type: application/json
   <footer class="neo-footer">
     <div class="brand-wordmark">SMM<span>JET</span></div>
     <p>Hızlı. Güvenli. Ölçülebilir.<br>Sosyal büyümede yeni standart.</p>
-    <nav class="footer-links" aria-label="Alt bilgi menüsü"><a href="/about" onclick="app.navigate('about');return false;">Hakkımızda</a><a href="/services" onclick="app.navigate('services');return false;">Hizmetler</a><a href="/blog" onclick="app.navigate('blog');return false;">Blog</a><a href="/api-docs" onclick="app.navigate('api-docs');return false;">API</a><a href="/tickets" onclick="app.navigate('tickets');return false;">Destek</a><a href="/terms" onclick="app.navigate('terms');return false;">Kullanım Şartları</a><a href="/privacy" onclick="app.navigate('privacy');return false;">Gizlilik &amp; KVKK</a><a href="/refund" onclick="app.navigate('refund');return false;">İade Politikası</a></nav>
+    <nav class="footer-links" aria-label="Alt bilgi menüsü"><a href="/about" onclick="app.navigate('about');return false;">Hakkımızda</a><a href="/services" onclick="app.navigate('services');return false;">Hizmetler</a><a href="/blog" onclick="app.navigate('blog');return false;">Blog</a><a href="/smm-panel-api" onclick="app.navigate('smm-panel-api');return false;">API</a><a href="/tickets" onclick="app.navigate('tickets');return false;">Destek</a><a href="/terms" onclick="app.navigate('terms');return false;">Kullanım Şartları</a><a href="/privacy" onclick="app.navigate('privacy');return false;">Gizlilik &amp; KVKK</a><a href="/refund" onclick="app.navigate('refund');return false;">İade Politikası</a></nav>
     <!-- Satış sayfaları bağlantıları: sunucu tarafında doldurulur (server.js applyLandingLinks). -->
     <nav class="footer-links footer-links-pages" id="footer-landing-pages"></nav>
     <!-- Sosyal profiller: admin panelde adres girilen kanallar app.js
@@ -4109,7 +4173,7 @@ Content-Type: application/json
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260904d" defer></script>
-  <script src="/js/app.js?v=20260904d" defer></script>
+  <script src="/js/api.js?v=20260908a" defer></script>
+  <script src="/js/app.js?v=20260908a" defer></script>
 </body>
 </html>

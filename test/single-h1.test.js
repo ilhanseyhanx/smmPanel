@@ -90,7 +90,9 @@ test('blog yazısında tek h1 vardır ve o da yazının başlığıdır', async 
 test('ana sayfada tek h1 vardır', async () => {
   const basliklar = h1lerini(await sayfa('/'));
   assert.equal(basliklar.length, 1, `${basliklar.length} adet h1 var: ${basliklar.join(' | ')}`);
-  assert.match(basliklar[0], /AKIŞTA KAL/i, 'ana sayfanın h1 başlığı değişmiş');
+  // H1 8 Eyl 2026'da marka sloganindan hedef sorguya cevrildi: Google'in en
+  // agirlik verdigi baslik burasi ve eski metinde anahtar kelime hic gecmiyordu.
+  assert.match(basliklar[0], /SMM PANEL/i, 'ana sayfanın h1 başlığı değişmiş');
 });
 
 test('hizmetler ve blog listesi sayfalarında da tek h1 vardır', async () => {

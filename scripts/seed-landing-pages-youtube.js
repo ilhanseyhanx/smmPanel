@@ -152,26 +152,26 @@ const PAGES = [
 (async () => {
   const db = new sqlite3.Database(dbPath);
   db.configure('busyTimeout', 5000);
-  const get = (q, p = []) => new Promise((r, j) => db.get(q, p, (e, row) => e ? j(e) : r(row)));
-  const run = (q, p = []) => new Promise((r, j) => db.run(q, p, function (e) { e ? j(e) : r(this); }));
+  const get = (q, prm = []) => new Promise((r, j) => db.get(q, prm, (e, row) => e ? j(e) : r(row)));
+  const run = (q, prm = []) => new Promise((r, j) => db.run(q, prm, function (e) { e ? j(e) : r(this); }));
+
+  const tablo = await get("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'landing_pages'");
+  if (!tablo) { console.error('landing_pages tablosu yok: once sunucuyu yeni kodla baslat.'); process.exit(1); }
 
   let eklenen = 0, atlanan = 0;
   for (const ham of PAGES) {
-    const varOlan = await get('SELECT id FROM landing_pages WHERE slug = ?', [ham.slug]);
-    if (varOlan) { console.log('atlandi (zaten var): ' + ham.slug); atlanan++; continue; }
-    const p = normalizePagePayload(ham);
-    await run('INSERT INTO landing_pages'
-      + ' (slug, status, platform_key, category_ids, title_tr, title_en, subtitle_tr, subtitle_en,'
-      + '  seo_title_tr, seo_title_en, seo_description_tr, seo_description_en, content_tr, content_en,'
-      + '  steps_tr, steps_en, faq_tr, faq_en, cta_text_tr, cta_text_en, related_blog_slugs, sort_order, updated_at)'
-      + ' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)',
-      [p.slug, p.status, p.platform_key, p.category_ids, p.title_tr, p.title_en, p.subtitle_tr, p.subtitle_en,
-        p.seo_title_tr, p.seo_title_en, p.seo_description_tr, p.seo_description_en, p.content_tr, p.content_en,
-        p.steps_tr, p.steps_en, p.faq_tr, p.faq_en, p.cta_text_tr, p.cta_text_en, p.related_blog_slugs, p.sort_order]);
-    console.log('olusturuldu (taslak): ' + p.slug);
+    if (await get('SELECT id FROM landing_pages WHERE slug = ?', [ham.slug])) {
+      console.log('atlandi (zaten var): ' + ham.slug); atlanan++; continue;
+    }
+    const sonuc = normalizePagePayload(ham);
+    if (sonuc.error) { console.error('HATA ' + ham.slug + ': ' + sonuc.error); continue; }
+    const cols = Object.keys(sonuc.fields);
+    await run('INSERT INTO landing_pages (' + cols.join(', ') + ', updated_at) VALUES ('
+      + cols.map(() => '?').join(', ') + ', CURRENT_TIMESTAMP)', cols.map(c => sonuc.fields[c]));
+    console.log('olusturuldu (' + sonuc.fields.status + '): ' + sonuc.fields.slug);
     eklenen++;
   }
   db.close();
-  console.log('\nBitti: ' + eklenen + ' sayfa olusturuldu, ' + atlanan + ' atlandi.');
+  console.log('Bitti: ' + eklenen + ' sayfa olusturuldu, ' + atlanan + ' atlandi.');
   console.log('Yayina almak icin: node scripts/publish-landing-pages.js youtube-abone-satin-al youtube-izlenme-satin-al');
 })().catch(err => { console.error(err); process.exit(1); });

@@ -4265,8 +4265,60 @@ body.neo-app-active .service-editor-step { background: #ffde17; color: #090909; 
 .lp-related .blog-card-ssr { display: flex; flex-direction: column; gap: 8px; }
 .lp-related .blog-card-ssr p { font-size: .9rem; line-height: 1.6; }
 .lp-read-more { color: #1769e8; font-size: .85rem; font-weight: 800; }
-.footer-links-pages { margin-top: 10px; }
+/* --- Alt bilgi: satis sayfasi baglantilari --------------------------------
+   SORUN: bu blok ".neo-footer .footer-links" kuralini miras aliyordu. O kural
+   8 maddelik ana menu icin yazilmis ve "justify-content: flex-end" ile saga
+   yasliyor. Ustelik .neo-footer bir izgara (1fr 1fr 1.4fr) oldugu icin blok
+   ikinci satirin DAR ilk sutununa dusuyordu. 25 baglanti bu dar sutunda saga
+   yaslanip her sarma satiri farkli uzunlukta oldugu icin tirtikli, okunmasi
+   zor bir yigin uretiyordu.
+
+   COZUM: blok tam genislige alinir, sola yaslanir ve okunabilir sutunlara
+   bolunur. Baglantilar KALDIRILMAZ; site geneli ic baglanti akisi korunur.  */
+.neo-footer .footer-links.footer-links-pages {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 2px 22px;
+  justify-content: start;
+  margin-top: 8px;
+  padding-top: 20px;
+  border-top: 1px solid #2a2a2a;
+}
 .footer-links-pages:empty { display: none; }
+
+/* Gorsel baslik: nav zaten aria-label="Hizmet sayfalari" tasiyor (server.js),
+   bu yuzden buradaki metin ekran okuyucu icin tekrar degil, goren kullanici
+   icin baglam saglar. Blok yalnizca baglanti varken basildigi icin bosta
+   asili bir baslik olusmaz. */
+.neo-footer .footer-links.footer-links-pages::before {
+  content: 'Hizmet Sayfaları';
+  grid-column: 1 / -1;
+  margin-bottom: 6px;
+  font: 700 .68rem "IBM Plex Mono", "IBM Plex Mono Fallback", monospace;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #7c7c7c;
+}
+
+/* Ana menuden daha sakin: bu blok gezinme degil, kesif icindir. */
+.neo-footer .footer-links-pages a {
+  font-size: .72rem;
+  line-height: 1.4;
+  color: #c9c9c9;
+}
+.neo-footer .footer-links-pages a:hover { color: #ffde17; }
+
+@media (max-width: 560px) {
+  /* Tek sutunda 25 baglanti x 44px dokunma hedefi cok uzun bir alt bilgi
+     yaratiyordu; dar ekranda iki sutuna zorlanir. Satirlar sarmayla zaten
+     44px uzerinde kaldigi icin dokunma hedefi korunur. */
+  .neo-footer .footer-links.footer-links-pages {
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 14px;
+  }
+  .neo-footer .footer-links-pages a { font-size: .66rem; }
+}
 @media (max-width: 900px) {
   .lp-hero { grid-template-columns: 1fr; gap: 22px; }
   .lp-machine { justify-self: stretch; width: 100%; max-width: 100%; }

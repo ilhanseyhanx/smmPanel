@@ -161,6 +161,11 @@ const API = {
 
   // Admin
   getAdminStats: () => API.request('/admin/stats'),
+
+  // Sistem Sagligi (Faz 1) - salt okunur uclar.
+  getHealthOverview: () => API.request('/admin/health/overview'),
+  getHealthApplication: () => API.request('/admin/health/application'),
+  getHealthScoreExplain: () => API.request('/admin/health/score-explain'),
   getAdminStatistics: () => API.request('/admin/statistics'),
   getAdminProviders: () => API.request('/admin/providers'),
   addAdminProvider: (name, api_url, api_key) => API.request('/admin/providers', { method: 'POST', body: JSON.stringify({ name, api_url, api_key }) }),

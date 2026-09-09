@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260908b">
+  <link rel="stylesheet" href="/css/style.css?v=20260910a">
 </head>
 <body>
 
@@ -1253,6 +1253,7 @@ Canceled     iptal edildi</pre>
 
           <select class="form-control admin-mobile-nav" aria-label="Yönetim bölümü seç" onchange="app.switchAdminTab(this.value)">
             <option value="dashboard">Genel Bakış</option>
+            <option value="health">Sistem Sağlığı</option>
             <option value="statistics">İstatistik</option>
             <option value="orders">Siparişler</option>
             <option value="services">Servisler</option>
@@ -1278,6 +1279,7 @@ Canceled     iptal edildi</pre>
             <button type="button" class="sidebar-item active" data-admin-tab="dashboard" onclick="app.switchAdminTab('dashboard', event)"><i class="fa-solid fa-chart-pie"></i><span>Genel Bakış</span></button>
 
             <div class="admin-nav-label">Operasyon</div>
+            <button type="button" class="sidebar-item" data-admin-tab="health" onclick="app.switchAdminTab('health', event)"><i class="fa-solid fa-heart-pulse"></i><span>Sistem Sağlığı</span></button>
             <button type="button" class="sidebar-item" data-admin-tab="statistics" onclick="app.switchAdminTab('statistics', event)"><i class="fa-solid fa-chart-line"></i><span>İstatistik</span></button>
             <button type="button" class="sidebar-item" data-admin-tab="orders" onclick="app.switchAdminTab('orders', event)"><i class="fa-solid fa-boxes-stacked"></i><span>Siparişler</span></button>
             <button type="button" class="sidebar-item" data-admin-tab="completion" onclick="app.switchAdminTab('completion', event)"><i class="fa-solid fa-stopwatch"></i><span>Tamamlanma Süreleri</span></button>
@@ -1467,6 +1469,36 @@ Canceled     iptal edildi</pre>
 
           <!-- ADMIN TAB: SERVICES MANAGEMENT (ADDED TO SITE) -->
           <!-- ADMIN TAB: ISTATISTIK -->
+          <!-- SISTEM SAGLIGI (Faz 1: Genel Bakis + Uygulama) -->
+          <div id="admin-tab-health" style="display: none;">
+            <div class="flex-between mb-20">
+              <div>
+                <h2>🩺 Sistem Sağlığı</h2>
+                <p style="font-size: 0.88rem; color: var(--text-muted);">Sunucu, uygulama, veritabanı ve yedek durumu. Veriler sunucudan salt okunur olarak toplanır.</p>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" onclick="app.loadHealth(true)"><i class="fa-solid fa-rotate"></i> Yenile</button>
+            </div>
+
+            <!-- Puan seridi -->
+            <div id="health-score-strip" class="glass-card" style="padding: 20px; margin-bottom: 18px;">
+              <p style="color: var(--text-muted);">Yükleniyor…</p>
+            </div>
+
+            <!-- Alt sekmeler: Faz 1'de yalnizca iki bolum aktif -->
+            <div class="settings-subtabs mb-20" id="health-subtabs">
+              <button type="button" class="settings-subtab active" data-health-section="overview" onclick="app.showHealthSection('overview')"><i class="fa-solid fa-gauge-high"></i> Genel Bakış</button>
+              <button type="button" class="settings-subtab" data-health-section="application" onclick="app.showHealthSection('application')"><i class="fa-solid fa-server"></i> Uygulama</button>
+            </div>
+
+            <div id="health-section-overview">
+              <div id="health-overview-body"><p style="color: var(--text-muted);">Yükleniyor…</p></div>
+            </div>
+
+            <div id="health-section-application" style="display: none;">
+              <div id="health-application-body"><p style="color: var(--text-muted);">Yükleniyor…</p></div>
+            </div>
+          </div>
+
           <div id="admin-tab-statistics" style="display: none;">
             <div class="flex-between mb-20">
               <div>
@@ -4173,7 +4205,7 @@ Canceled     iptal edildi</pre>
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260908b" defer></script>
-  <script src="/js/app.js?v=20260908b" defer></script>
+  <script src="/js/api.js?v=20260910a" defer></script>
+  <script src="/js/app.js?v=20260910a" defer></script>
 </body>
 </html>

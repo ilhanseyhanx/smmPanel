@@ -2967,6 +2967,7 @@ class SmmApp {
     if (tabName === 'dashboard') this.loadAdminStats();
     if (tabName === 'providers') this.loadAdminProviders();
     if (tabName === 'services') this.loadAdminAddedServices();
+    if (tabName === 'health') this.loadHealth();
     if (tabName === 'statistics') this.loadAdminStatistics();
     if (tabName === 'deposits') this.loadAdminPaymentNotifications();
     if (tabName === 'payments') this.loadAdminPayments();
@@ -8590,6 +8591,194 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       if (etkin) btn.setAttribute('aria-current', 'true');
       else btn.removeAttribute('aria-current');
     });
+  }
+
+  // ==========================================================================
+  // SISTEM SAGLIGI (Faz 1: Genel Bakis + Uygulama)
+  // Sekmeye girilmeden istek atilmaz. Sunucu tarafi 45 sn onbelleklidir,
+  // bu yuzden sekmeler arasi gecis ek yuk getirmez.
+  // ==========================================================================
+
+  showHealthSection(bolum) {
+    document.querySelectorAll("#health-subtabs .settings-subtab").forEach(b => {
+      b.classList.toggle("active", b.dataset.healthSection === bolum);
+    });
+    ["overview", "application"].forEach(ad => {
+      const el = document.getElementById("health-section-" + ad);
+      if (el) el.style.display = (ad === bolum) ? "block" : "none";
+    });
+  }
+
+  hbyte(n) {
+    if (n == null || !isFinite(n)) return "\u2014";
+    const birim = ["B", "KB", "MB", "GB", "TB"];
+    let i = 0, v = Number(n);
+    while (v >= 1024 && i < birim.length - 1) { v /= 1024; i++; }
+    return v.toFixed(v >= 100 || i === 0 ? 0 : 1) + " " + birim[i];
+  }
+
+  hsure(sn) {
+    if (sn == null || !isFinite(sn)) return "\u2014";
+    const g = Math.floor(sn / 86400);
+    const sa = Math.floor((sn % 86400) / 3600);
+    const dk = Math.floor((sn % 3600) / 60);
+    const p = [];
+    if (g) p.push(g + "g");
+    if (sa) p.push(sa + "sa");
+    if (!g) p.push(dk + "dk");
+    return p.join(" ") || "<1dk";
+  }
+
+  htarih(deger) {
+    if (!deger) return "\u2014";
+    // SQLite CURRENT_TIMESTAMP UTC uretir; yerel saate cevirmek icin Z eklenir.
+    const ham = String(deger);
+    const d = new Date(ham.includes("T") || ham.endsWith("Z") ? ham : ham.replace(" ", "T") + "Z");
+    return isNaN(d.getTime()) ? "\u2014" : d.toLocaleString("tr-TR");
+  }
+
+  hrozet(durum) {
+    if (durum === "critical") return '<span class="badge badge-canceled">Kritik</span>';
+    if (durum === "warning") return '<span class="badge badge-pending">Uyar\u0131</span>';
+    if (durum === "unknown") return '<span class="badge">\u00d6l\u00e7\u00fclemedi</span>';
+    return '<span class="badge badge-completed">Sa\u011fl\u0131kl\u0131</span>';
+  }
+
+  hkart(baslik, deger, alt) {
+    return '<div class="glass-card health-card">' +
+      '<div class="health-card-label">' + this.escapeHtml(baslik) + '</div>' +
+      '<div class="health-card-value">' + deger + '</div>' +
+      '<div class="health-card-sub">' + (alt || "") + '</div></div>';
+  }
+
+  async loadHealth(zorla) {
+    const serit = document.getElementById("health-score-strip");
+    const genel = document.getElementById("health-overview-body");
+    const uyg = document.getElementById("health-application-body");
+    if (!serit) return;
+    if (zorla) serit.innerHTML = '<p style="color: var(--text-muted);">Yenileniyor\u2026</p>';
+    try {
+      const [ozet, uygulama] = await Promise.all([API.getHealthOverview(), API.getHealthApplication()]);
+      this.renderHealthScore(serit, ozet);
+      this.renderHealthOverview(genel, ozet);
+      this.renderHealthApplication(uyg, uygulama);
+    } catch (err) {
+      serit.innerHTML = '<p style="color: var(--accent-magenta);">Sa\u011fl\u0131k bilgisi al\u0131namad\u0131: ' +
+        this.escapeHtml(err.message || "bilinmeyen hata") + '</p>';
+      if (genel) genel.innerHTML = "";
+      if (uyg) uyg.innerHTML = "";
+    }
+  }
+
+  renderHealthScore(el, d) {
+    const sh = d.system_health || {};
+    const renk = sh.status === "critical" ? "var(--accent-magenta)"
+      : sh.status === "warning" ? "#ffb020" : "var(--accent-cyan)";
+    const sorunlar = (sh.issues || []).map(i =>
+      "<li>" + this.hrozet(i.status) + " <strong>" + this.escapeHtml(i.label) + "</strong> \u2014 " +
+      this.escapeHtml(String(i.value == null ? "" : i.value)) +
+      '<br><span style="font-size:.82rem;color:var(--text-muted);">' +
+      this.escapeHtml(i.note || "") + "</span></li>").join("");
+    el.innerHTML =
+      '<div class="health-score-row">' +
+        '<div class="health-score-main">' +
+          '<div class="health-score-label">S\u0130STEM SA\u011eLI\u011eI</div>' +
+          '<div class="health-score-value" style="color:' + renk + ';">' + sh.score + "<span>/100</span></div>" +
+          '<button type="button" class="neo-text-link" onclick="app.toggleHealthScoreExplain()">Nas\u0131l hesaplan\u0131yor? \u2197</button>' +
+        "</div>" +
+        '<div class="health-score-counts">' +
+          '<div class="health-count"><strong>' + sh.critical_count + "</strong><span>Kritik</span></div>" +
+          '<div class="health-count"><strong>' + sh.warning_count + "</strong><span>Uyar\u0131</span></div>" +
+          '<div class="health-count"><strong>' + sh.healthy_count + "</strong><span>Sa\u011fl\u0131kl\u0131</span></div>" +
+        "</div>" +
+      "</div>" +
+      (sorunlar ? '<ul class="health-issues">' + sorunlar + "</ul>"
+        : '<p style="color:var(--text-muted);margin-top:12px;">\u015eu an bir sorun g\u00f6r\u00fcnm\u00fcyor.</p>') +
+      '<div id="health-score-explain" style="display:none;margin-top:16px;"></div>';
+  }
+
+  renderHealthOverview(el, d) {
+    if (!el) return;
+    const s = d.server || {}, a = d.application || {}, dk = d.disk || {},
+          db = d.database || {}, y = d.backup || {};
+    const yuk = (s.load_avg || [])[0];
+    const kartlar = [
+      this.hkart("Uygulama", "\u00c7al\u0131\u015f\u0131yor", this.hsure(a.uptime_sec) + " \u00b7 PID " + a.pid),
+      this.hkart("CPU", s.cpu_percent == null ? "\u2014" : "%" + s.cpu_percent,
+        s.cpu_count + " \u00e7ekirdek \u00b7 y\u00fck " + (yuk == null ? "\u2014" : yuk)),
+      this.hkart("RAM", s.mem_used_percent == null ? "\u2014" : "%" + s.mem_used_percent,
+        this.hbyte(s.mem_used_bytes) + " / " + this.hbyte(s.mem_total_bytes)),
+      this.hkart("Disk", dk.used_percent == null ? "\u2014" : "%" + dk.used_percent,
+        this.hbyte(dk.used_bytes) + " kullan\u0131lan \u00b7 " + this.hbyte(dk.free_bytes) + " bo\u015f"),
+      this.hkart("Veritaban\u0131", db.accessible ? "Eri\u015filebilir" : "Eri\u015filemiyor",
+        this.hbyte(db.size_bytes) + " \u00b7 WAL " + this.hbyte(db.wal_bytes) + " \u00b7 " + this.escapeHtml(db.journal_mode || "\u2014")),
+      this.hkart("Son Yedek", y.found ? y.age_hours + " sa \u00f6nce" : "Bulunamad\u0131",
+        y.found ? this.hbyte(y.size_bytes) : "Tan\u0131ml\u0131 dizinlerde yedek yok")
+    ].join("");
+    el.innerHTML = '<div class="health-grid">' + kartlar + "</div>" +
+      '<p style="font-size:.8rem;color:var(--text-muted);margin-top:14px;">Sunucu ' +
+      this.hsure(s.uptime_sec) + " a\u00e7\u0131k \u00b7 Node " + this.escapeHtml(a.node_version || "\u2014") +
+      " \u00b7 \u00f6l\u00e7\u00fcm " + this.htarih(d.collected_at) + (d.cached ? " (\u00f6nbellek)" : "") + "</p>";
+  }
+
+  renderHealthApplication(el, d) {
+    if (!el) return;
+    const p = d.process || {}, st = d.starts || {};
+    const satirlar = (d.history || []).map(h =>
+      '<tr><td class="cell-nowrap">' + this.htarih(h.started_at) + "</td>" +
+      '<td class="cell-nowrap">' + this.escapeHtml(h.node_version || "\u2014") + "</td>" +
+      '<td class="cell-nowrap">' + this.escapeHtml(h.app_version || "\u2014") + "</td>" +
+      '<td class="cell-nowrap">' + this.escapeHtml(h.git_sha || "\u2014") + "</td>" +
+      '<td class="cell-nowrap">' + this.escapeHtml(h.classified || "\u2014") + "</td></tr>").join("");
+    el.innerHTML =
+      '<div class="health-grid">' +
+        this.hkart("S\u00fcre\u00e7", "PID " + p.pid, this.hsure(p.uptime_sec) + " \u00e7al\u0131\u015f\u0131yor") +
+        this.hkart("Bellek (RSS)", this.hbyte(p.rss_bytes),
+          "Heap " + this.hbyte(p.heap_used_bytes) + " / " + this.hbyte(p.heap_total_bytes)) +
+        this.hkart("Son 24 Saat Ba\u015flang\u0131\u00e7", st.last_24h == null ? "\u2014" : st.last_24h, "\u0130lk a\u00e7\u0131l\u0131\u015f dahildir") +
+        this.hkart("Son 7 G\u00fcn Ba\u015flang\u0131\u00e7", st.last_7d == null ? "\u2014" : st.last_7d,
+          "Kay\u0131t ba\u015flang\u0131c\u0131: " + this.htarih(st.tracking_since)) +
+      "</div>" +
+      '<p style="font-size:.8rem;color:var(--text-muted);margin:14px 0;">' + this.escapeHtml(st.semantics || "") + "</p>" +
+      '<h3 style="margin-bottom:10px;">Ba\u015flang\u0131\u00e7 Ge\u00e7mi\u015fi</h3>' +
+      '<div class="table-responsive"><table class="custom-table">' +
+      "<thead><tr><th>Zaman</th><th>Node</th><th>S\u00fcr\u00fcm</th><th>Git</th><th>S\u0131n\u0131f</th></tr></thead><tbody>" +
+      (satirlar || '<tr><td colspan="5" class="text-center">Kay\u0131t yok.</td></tr>') +
+      "</tbody></table></div>";
+  }
+
+  async toggleHealthScoreExplain() {
+    const kutu = document.getElementById("health-score-explain");
+    if (!kutu) return;
+    if (kutu.style.display !== "none") { kutu.style.display = "none"; return; }
+    kutu.style.display = "block";
+    kutu.innerHTML = '<p style="color:var(--text-muted);">Y\u00fckleniyor\u2026</p>';
+    try {
+      const d = await API.getHealthScoreExplain();
+      const satirlar = (d.components || []).map(c =>
+        "<tr><td>" + this.escapeHtml(c.label) + "</td>" +
+        '<td class="cell-nowrap">' + c.weight + "</td>" +
+        "<td>" + this.escapeHtml(String(c.value == null ? "\u2014" : c.value)) + "</td>" +
+        '<td class="cell-nowrap">' + this.hrozet(c.status) + "</td>" +
+        '<td class="cell-nowrap">' + (c.earned == null ? "\u2014" : c.earned) + "</td>" +
+        '<td class="cell-nowrap">' + (c.lost == null ? "\u2014" : c.lost) + "</td></tr>").join("");
+      const f = d.formula || {};
+      const notlar = (f.excluded || []).map(x => "<li>" + this.escapeHtml(x) + "</li>").join("");
+      kutu.innerHTML =
+        '<div class="glass-card" style="padding:18px;">' +
+        '<h3 style="margin-bottom:10px;">Puan nas\u0131l hesaplan\u0131yor?</h3>' +
+        '<p style="color:var(--text-muted);font-size:.86rem;">Puan, \u00f6l\u00e7\u00fclebilen ' + f.counted_weight +
+        ' a\u011f\u0131rl\u0131k \u00fczerinden hesaplan\u0131r. Sa\u011fl\u0131kl\u0131 bile\u015fen a\u011f\u0131rl\u0131\u011f\u0131n\u0131n tamam\u0131n\u0131, uyar\u0131 yar\u0131s\u0131n\u0131, kritik hi\u00e7birini kazand\u0131r\u0131r.</p>' +
+        '<div class="table-responsive"><table class="custom-table"><thead><tr>' +
+        "<th>Bile\u015fen</th><th>A\u011f\u0131rl\u0131k</th><th>De\u011fer</th><th>Durum</th><th>Kazan\u0131lan</th><th>Kaybedilen</th>" +
+        "</tr></thead><tbody>" + satirlar + "</tbody></table></div>" +
+        '<p style="margin-top:12px;font-size:.86rem;"><strong>Kritik tavan\u0131:</strong> herhangi bir bile\u015fen kritikse toplam puan ' +
+        f.critical_cap + " ile s\u0131n\u0131rlan\u0131r." + (f.critical_cap_applied ? " <em>(\u015fu an uygulan\u0131yor)</em>" : "") + "</p>" +
+        '<p style="margin-top:8px;font-size:.86rem;"><strong>Puana dahil edilmeyenler:</strong></p>' +
+        '<ul style="color:var(--text-muted);font-size:.84rem;">' + notlar + "</ul></div>";
+    } catch (err) {
+      kutu.innerHTML = '<p style="color:var(--accent-magenta);">A\u00e7\u0131klama al\u0131namad\u0131.</p>';
+    }
   }
 
   toggleAuthViewMode() {

@@ -617,6 +617,12 @@ app.use('/api/orders', ordersRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/tickets', ticketsRoutes);
 app.use('/api/blog', blogRoutes);
+// Sistem Sagligi (Faz 1): salt okunur olcum uclari.
+// adminRoutes'tan ONCE mount edilir: aksi halde /api/admin zinciri
+// eslesmeyen yol icin bastan calisip her istekte fazladan bir
+// kullanici sorgusu yapardi. Kimlik + yetki burada acikca uygulanir.
+const { authenticateToken: saglikAuth, requireAdmin: saglikAdmin } = require('./middleware/auth');
+app.use('/api/admin/health', saglikAuth, saglikAdmin, require('./routes/adminHealth'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/account', accountRoutes);
@@ -1363,6 +1369,9 @@ async function startServer() {
   await initDatabase();
   // Engelli IP listesi bellege alinir; 30 gunden eski olaylar temizlenir.
   await securityMonitor.init();
+  // Sistem Sagligi: bu acilis kaydedilir (PM2 okunmadigi icin baslangic
+  // gecmisi buradan uretilir). Kayit basarisiz olursa sunucu yine acilir.
+  await require('./services/appStarts').recordStart();
   return app.listen(PORT, () => {
     console.log(`\n==================================================`);
     console.log(`🚀 SMM Panel Sunucusu Yayında!`);
@@ -1382,6 +1391,9 @@ async function startServer() {
     // Guvenlik olaylari gunde bir temizlenir (30 gunluk pencere korunur).
     const securityPruneTimer = setInterval(() => securityMonitor.pruneOldEvents(), 24 * 60 * 60 * 1000);
     securityPruneTimer.unref?.();
+    // Baslangic kayitlari 90 gun saklanir; tablo sinirsiz buyumesin.
+    const healthPruneTimer = setInterval(() => require('./services/appStarts').prune(), 24 * 60 * 60 * 1000);
+    healthPruneTimer.unref?.();
     // Her aksam 21:00'de (TR) Telegram'a gunun ozeti gider.
     require('./services/telegramNotifier').startDailySummaryScheduler();
   });

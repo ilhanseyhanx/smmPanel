@@ -4317,3 +4317,33 @@ body.neo-app-active .service-editor-step { background: #ffde17; color: #090909; 
 .lp-chip-sel span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
 .lp-chip-sel button { border: 0; background: transparent; font-weight: 900; cursor: pointer; line-height: 1; }
 @media (max-width: 900px) { .lp-pickers-grid { grid-template-columns: 1fr; } }
+
+/* ---------------------------------------------------------------------- */
+/* SISTEM SAGLIGI (Faz 1)                                                  */
+/* Mevcut glass-card / badge / custom-table dili korunur; burada yalnizca  */
+/* yerlesim tanimlanir. Kartlar mobilde tek sutuna iner.                   */
+/* ---------------------------------------------------------------------- */
+.health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.health-card { padding: 16px 18px; }
+.health-card-label { font-size: .78rem; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+.health-card-value { font-size: 1.45rem; font-weight: 800; line-height: 1.2; }
+.health-card-sub { font-size: .8rem; color: var(--text-muted); margin-top: 6px; }
+
+.health-score-row { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: space-between; }
+.health-score-label { font-size: .78rem; letter-spacing: .08em; color: var(--text-muted); }
+.health-score-value { font-size: 2.6rem; font-weight: 900; line-height: 1.1; }
+.health-score-value span { font-size: 1.1rem; font-weight: 700; color: var(--text-muted); }
+.health-score-counts { display: flex; gap: 22px; }
+.health-count { text-align: center; }
+.health-count strong { display: block; font-size: 1.5rem; font-weight: 800; }
+.health-count span { font-size: .76rem; color: var(--text-muted); }
+
+.health-issues { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 10px; }
+.health-issues li { padding: 10px 12px; border-radius: var(--radius-sm); background: rgba(255,255,255,.03); font-size: .88rem; }
+
+@media (max-width: 640px) {
+  .health-grid { grid-template-columns: 1fr; }
+  .health-score-row { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .health-score-counts { gap: 18px; }
+  .health-score-value { font-size: 2.2rem; }
+}

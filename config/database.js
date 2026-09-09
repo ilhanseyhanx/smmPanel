@@ -282,6 +282,24 @@ async function runMigrations() {
     );
   `);
 
+  // Sistem Sagligi (Faz 1): uygulama her acilista buraya tek satir yazar.
+  // PM2 CLI okunmadigi icin (child_process yasak) baslangic gecmisi
+  // uygulamanin kendi kaydindan uretilir. Bu bir BASLANGIC sayacidir;
+  // ilk acilis dahil oldugu icin restart sayisina esit DEGILDIR.
+  // Faz 2/3 tablolari (health_events, health_metrics_* ...) bu fazda
+  // BILEREK olusturulmaz: kullanilmayan tabloyla sema sisirilmez.
+  await dbAsync.exec(`
+    CREATE TABLE IF NOT EXISTS health_app_starts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      node_version TEXT,
+      app_version TEXT,
+      git_sha TEXT,
+      classified TEXT NOT NULL DEFAULT 'unknown'
+    );
+    CREATE INDEX IF NOT EXISTS idx_health_app_starts_at ON health_app_starts(started_at);
+  `);
+
   await dbAsync.exec(`
     UPDATE users SET balance_kurus = CAST(ROUND(balance * 100) AS INTEGER) WHERE balance_kurus = 0 AND balance != 0;
     UPDATE services SET rate_per_1000_kurus = CAST(ROUND(rate_per_1000 * 100) AS INTEGER) WHERE rate_per_1000_kurus = 0 AND rate_per_1000 != 0;

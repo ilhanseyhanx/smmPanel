@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260910a">
+  <link rel="stylesheet" href="/css/style.css?v=20260910b">
 </head>
 <body>
 
@@ -1470,32 +1470,26 @@ Canceled     iptal edildi</pre>
           <!-- ADMIN TAB: SERVICES MANAGEMENT (ADDED TO SITE) -->
           <!-- ADMIN TAB: ISTATISTIK -->
           <!-- SISTEM SAGLIGI (Faz 1: Genel Bakis + Uygulama) -->
+          <!-- SISTEM SAGLIGI (Faz 1: Genel Bakis + Uygulama) -->
+          <!-- Baslik ve Yenile dugmesi hero seridinin icinde cizilir       -->
+          <!-- (app.js renderHealthScore); ayri bir baslik blogu tutulmaz   -->
+          <!-- ki ekranin ustunde gereksiz bosluk olusmasin.                -->
           <div id="admin-tab-health" style="display: none;">
-            <div class="flex-between mb-20">
-              <div>
-                <h2>🩺 Sistem Sağlığı</h2>
-                <p style="font-size: 0.88rem; color: var(--text-muted);">Sunucu, uygulama, veritabanı ve yedek durumu. Veriler sunucudan salt okunur olarak toplanır.</p>
-              </div>
-              <button type="button" class="btn btn-outline btn-sm" onclick="app.loadHealth(true)"><i class="fa-solid fa-rotate"></i> Yenile</button>
+            <div id="health-score-strip" class="glass-card health-hero" aria-live="polite">
+              <p class="health-loading">Yükleniyor…</p>
             </div>
 
-            <!-- Puan seridi -->
-            <div id="health-score-strip" class="glass-card" style="padding: 20px; margin-bottom: 18px;">
-              <p style="color: var(--text-muted);">Yükleniyor…</p>
-            </div>
-
-            <!-- Alt sekmeler: Faz 1'de yalnizca iki bolum aktif -->
-            <div class="settings-subtabs mb-20" id="health-subtabs">
-              <button type="button" class="settings-subtab active" data-health-section="overview" onclick="app.showHealthSection('overview')"><i class="fa-solid fa-gauge-high"></i> Genel Bakış</button>
-              <button type="button" class="settings-subtab" data-health-section="application" onclick="app.showHealthSection('application')"><i class="fa-solid fa-server"></i> Uygulama</button>
+            <div class="settings-subtabs health-subtabs" id="health-subtabs" role="tablist">
+              <button type="button" class="settings-subtab active" role="tab" aria-selected="true" data-health-section="overview" onclick="app.showHealthSection('overview')"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Genel Bakış</button>
+              <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-health-section="application" onclick="app.showHealthSection('application')"><i class="fa-solid fa-server" aria-hidden="true"></i> Uygulama</button>
             </div>
 
             <div id="health-section-overview">
-              <div id="health-overview-body"><p style="color: var(--text-muted);">Yükleniyor…</p></div>
+              <div id="health-overview-body"><p class="health-loading">Yükleniyor…</p></div>
             </div>
 
             <div id="health-section-application" style="display: none;">
-              <div id="health-application-body"><p style="color: var(--text-muted);">Yükleniyor…</p></div>
+              <div id="health-application-body"><p class="health-loading">Yükleniyor…</p></div>
             </div>
           </div>
 
@@ -4205,7 +4199,7 @@ Canceled     iptal edildi</pre>
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260910a" defer></script>
-  <script src="/js/app.js?v=20260910a" defer></script>
+  <script src="/js/api.js?v=20260910b" defer></script>
+  <script src="/js/app.js?v=20260910b" defer></script>
 </body>
 </html>

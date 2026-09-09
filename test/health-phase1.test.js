@@ -312,3 +312,86 @@ test('admin panelinde Sistem Sağlığı sekmesi eksiksiz bağlanmış', () => {
     assert.ok(!html.includes(`id="${erken}"`), `${erken} Faz 1'de eklenmemeliydi`);
   }
 });
+
+// ------------------------------------------------------------ UI POLISH ----
+// Bu testler yalnizca GORUNUM sozlesmesini korur; backend davranisina
+// dokunmazlar. Kaynak dosyalar uzerinden statik dogrulama yapilir.
+
+const appJsKaynak = () => fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app.js'), 'utf8');
+const cssKaynak = () => fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'style.css'), 'utf8');
+
+test('CPU olculemediginde tire degil "Olculuyor" gosterilir', () => {
+  const js = appJsKaynak();
+  assert.ok(/cpuHazir/.test(js), 'CPU hazir kontrolu yok');
+  assert.ok(js.includes('health-pending'), 'bekleme durumu sinifi yok');
+  // Sahte yuzde uretilmemeli: cpu_percent null iken yuzde basilmamali.
+  assert.ok(/cpuHazir \? "%" \+ s\.cpu_percent/.test(js), 'CPU yuzdesi kosulsuz basiliyor');
+});
+
+test('classified=unknown kullaniciya "Siniflandirilmadi" olarak gosterilir', () => {
+  const js = appJsKaynak();
+  assert.ok(/hsinif\(deger\)/.test(js), 'hsinif yardimcisi yok');
+  assert.ok(js.includes('S\\u0131n\\u0131fland\\u0131r\\u0131lmad\\u0131') || js.includes('Sınıflandırılmadı'),
+    'unknown icin okunabilir etiket yok');
+});
+
+test('durum yalnizca renkle degil metinle de anlatilir (erisilebilirlik)', () => {
+  const js = appJsKaynak();
+  // hdurum her durum icin bir label dondurmeli.
+  for (const beklenen of ['Kritik', 'Uyar', 'lemedi', 'Sa']) {
+    assert.ok(js.includes(beklenen), `hdurum etiketi eksik: ${beklenen}`);
+  }
+  assert.ok(js.includes('sr-only'), 'kart durum noktasi icin ekran okuyucu metni yok');
+  assert.ok(js.includes('aria-expanded'), 'aciklama dugmesinde aria-expanded yok');
+});
+
+test('semantik durum renkleri paletten gelir, yeni renk tanimlanmaz', () => {
+  const css = cssKaynak();
+  assert.ok(/\.is-healthy\s*\{\s*--hc:\s*var\(--success\)/.test(css), 'saglikli rengi --success degil');
+  assert.ok(/\.is-warning\s*\{\s*--hc:\s*var\(--warning\)/.test(css), 'uyari rengi --warning degil');
+  assert.ok(/\.is-critical\s*\{\s*--hc:\s*var\(--danger\)/.test(css), 'kritik rengi --danger degil');
+});
+
+test('tanimsiz CSS degiskeni kullanilmaz', () => {
+  const js = appJsKaynak();
+  const css = cssKaynak();
+  const kullanilan = [...js.matchAll(/var\((--[a-z0-9-]+)\)/g)].map(m => m[1]);
+  const eksik = [...new Set(kullanilan)].filter(v => !css.includes(v + ':'));
+  assert.deepEqual(eksik, [], `app.js tanimsiz CSS degiskeni kullaniyor: ${eksik.join(', ')}`);
+});
+
+test('duyarli kirilma noktalari tanimli', () => {
+  const css = cssKaynak();
+  // 6 kart: genis -> 3 -> 2 -> 1 kolon
+  assert.ok(/\.health-grid\s*\{[^}]*repeat\(auto-fit, minmax\(200px, 1fr\)\)/.test(css),
+    'izgara genislige gore dengelenmiyor');
+  for (const bp of ['460px', '820px', '700px']) {
+    assert.ok(css.includes(`max-width: ${bp}`), `kirilma noktasi eksik: ${bp}`);
+  }
+  // Skor aciklamasi mobilde tablo yerine satir kartlari
+  assert.ok(css.includes('.health-explain-rows'), 'mobil aciklama satirlari yok');
+  assert.ok(/max-width: 820px[^}]*\{[\s\S]*?\.health-explain-table \{ display: none/.test(css),
+    'mobilde aciklama tablosu gizlenmiyor');
+});
+
+test('yeni bagimlilik, font veya ikon kutuphanesi eklenmemis', () => {
+  const pkg = require(path.join(__dirname, '..', 'package.json'));
+  const bagimliliklar = Object.keys(pkg.dependencies || {});
+  for (const yasak of ['chart.js', 'chartjs', 'echarts', 'd3', 'apexcharts', 'recharts']) {
+    assert.ok(!bagimliliklar.includes(yasak), `grafik kutuphanesi eklenmis: ${yasak}`);
+  }
+  const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  const cdnler = [...html.matchAll(/https:\/\/cdnjs[^"\s]*\/ajax\/libs\/[^"\s]*/g)].map(m => m[0]);
+  assert.ok(cdnler.every(u => u.includes('font-awesome')),
+    'index.html yeni bir CDN kutuphanesi yukluyor');
+});
+
+test('hero kompakt: ayri baslik blogu kaldirilmis', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  const panel = html.slice(html.indexOf('id="admin-tab-health"'), html.indexOf('id="admin-tab-statistics"'));
+  assert.ok(panel.includes('health-hero'), 'hero sinifi yok');
+  // Yenile dugmesi artik hero icinde ciziliyor; panelde ayri bir kopya olmamali.
+  assert.equal((panel.match(/app\.loadHealth\(true\)/g) || []).length, 0,
+    'Yenile dugmesi hem HTML hem hero icinde tekrarlanmis');
+  assert.ok(!panel.includes('<h2>'), 'panelde hala ayri baslik blogu var');
+});

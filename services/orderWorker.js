@@ -3,6 +3,7 @@ const { dbAsync, withTransaction } = require('../config/database');
 const { toKurus, fromKurus } = require('../utils/money');
 const SmmProviderClient = require('./smmProvider');
 const telegram = require('./telegramNotifier');
+const healthEvents = require('./healthEvents');
 
 let running = false;
 
@@ -109,15 +110,19 @@ async function checkPendingOrders() {
     for (const [providerId, orders] of groups) {
       const provider = await dbAsync.get('SELECT * FROM providers WHERE id = ? AND status = 1', [providerId]);
       if (!provider) continue;
-      const statusMap = await new SmmProviderClient(provider.api_url, provider.api_key).getMultiOrderStatus(orders.map(o => o.provider_order_id));
+      const statusMap = await new SmmProviderClient(provider.api_url, provider.api_key, { id: provider.id }).getMultiOrderStatus(orders.map(o => o.provider_order_id));
       if (!statusMap) continue;
       for (const order of orders) {
         const status = statusMap[String(order.provider_order_id)] || (orders.length === 1 && statusMap.status ? statusMap : null);
         if (status?.status) await applyProviderStatus(order.id, status);
       }
     }
+    // Saglayici hatalari istemcide ayrica olculur; burasi isin kendisinin nabzi.
+    healthEvents.workerBeat('order_worker', true);
   } catch (err) {
     console.error('Order worker error:', err.message);
+    healthEvents.workerBeat('order_worker', false, err);
+    healthEvents.recordError({ category: 'worker_error', source: 'order_worker', error: err });
   } finally {
     running = false;
   }

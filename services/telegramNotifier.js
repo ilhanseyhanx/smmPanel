@@ -61,24 +61,36 @@ function describeApiError(data, httpStatus) {
   return description || `Telegram API ${httpStatus} yanıtı döndürdü.`;
 }
 
+// Saglik telemetrisi: yalnizca altyapi kaynakli hatalar (zaman asimi, ag,
+// 429, 5xx) kaydedilir. Token/URL kayda GIRMEZ; hata akisi degismez.
+const healthEvents = require('./healthEvents');
+
 async function callBotApi(token, method, payload) {
   if (!TOKEN_PATTERN.test(token)) {
     throw new Error('Telegram bot token biçimi geçersiz. BotFather\'ın verdiği "123456789:AA..." değerini yapıştırın.');
   }
-  const response = await axios.post(
-    `https://api.telegram.org/bot${token}/${method}`,
-    payload,
-    safeRequestConfig({
-      timeout: 12000,
-      maxContentLength: 512 * 1024,
-      // 4xx yanitlarda Telegram'in acikladigi hata metnini gorebilmek icin
-      // axios'un kendi hatasini firlatmasi engellenir.
-      validateStatus: () => true
-    })
-  );
+  let response;
+  try {
+    response = await axios.post(
+      `https://api.telegram.org/bot${token}/${method}`,
+      payload,
+      safeRequestConfig({
+        timeout: 12000,
+        maxContentLength: 512 * 1024,
+        // 4xx yanitlarda Telegram'in acikladigi hata metnini gorebilmek icin
+        // axios'un kendi hatasini firlatmasi engellenir.
+        validateStatus: () => true
+      })
+    );
+  } catch (err) {
+    healthEvents.recordTelegramFailure({ method, error: err });
+    throw err;
+  }
   const data = response.data;
   if (!data || data.ok !== true) {
-    throw new Error(describeApiError(data, response.status));
+    const hata = new Error(describeApiError(data, response.status));
+    healthEvents.recordTelegramFailure({ method, error: hata, httpStatus: response.status });
+    throw hata;
   }
   return data.result;
 }

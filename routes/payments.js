@@ -11,6 +11,9 @@ const NowPayments = require('../services/nowpayments');
 const Shopier = require('../services/shopier');
 const telegram = require('../services/telegramNotifier');
 const { activeDepositBonus } = require('../services/campaigns');
+// Saglik telemetrisi: yalnizca kategori + kaynak + maskelenmis kisa neden.
+// Kullanici, tutar, siparis/odeme kimligi ve ham govde KAYDA GIRMEZ.
+const healthEvents = require('../services/healthEvents');
 
 const router = express.Router();
 
@@ -37,7 +40,10 @@ async function applyDepositBonus(tx, userId, amountKurus, sourceLabel) {
 
 router.post('/paytr/callback', async (req, res) => {
   try {
-    if (!PayTR.verifyCallback(req.body)) return res.status(400).type('text').send('PAYTR notification failed: bad hash');
+    if (!PayTR.verifyCallback(req.body)) {
+      healthEvents.recordHealthEvent({ category: 'webhook_error', source: 'paytr_callback', detail: 'İmza (hash) doğrulanamadı' });
+      return res.status(400).type('text').send('PAYTR notification failed: bad hash');
+    }
     const merchantOid = String(req.body.merchant_oid || '').slice(0, 64);
     await withTransaction(async tx => {
       const intent = await tx.get("SELECT * FROM payment_intents WHERE provider = 'paytr' AND merchant_oid = ?", [merchantOid]);
@@ -61,6 +67,7 @@ router.post('/paytr/callback', async (req, res) => {
     return res.type('text').send('OK');
   } catch (err) {
     console.error('PayTR callback error:', err.message);
+    healthEvents.recordError({ category: 'webhook_error', severity: 'critical', source: 'paytr_callback', error: err });
     return res.status(500).type('text').send('ERROR');
   }
 });
@@ -80,6 +87,7 @@ router.post('/paytr/token', authenticateToken, validate(z.object({ amount: z.coe
       ]);
       res.status(201).json({ token, merchant_oid: merchantOid, iframe_url: `https://www.paytr.com/odeme/guvenli/${token}` });
     } catch (err) {
+      healthEvents.recordError({ category: 'payment_error', source: 'paytr_token', error: err });
       await dbAsync.run("UPDATE payment_intents SET status = 'failed', failure_reason = ? WHERE merchant_oid = ?", [normalizePlainText(err.message, 500), merchantOid]);
       throw err;
     }
@@ -127,6 +135,8 @@ async function settleShopierOrder(order, source = 'webhook') {
       const paidKurus = shopierLineAmountKurus(line);
       if (paidKurus == null || paidKurus !== intent.amount_kurus) {
         console.error('Shopier tutar eslesmedi:', { orderId, productId: intent.provider_ref, paidKurus, expectedKurus: intent.amount_kurus });
+        // Tutar ve kimlikler saglik kaydina YAZILMAZ; yalnizca olayin kendisi.
+        healthEvents.recordHealthEvent({ category: 'payment_error', severity: 'critical', source: 'shopier_settle', detail: 'Ödenen tutar ödeme niyetiyle eşleşmedi; bakiye yazılmadı' });
         continue;
       }
       const dedupe = await tx.run(
@@ -178,7 +188,10 @@ async function reconcilePendingShopierPayments(limit = 50) {
     const belongsToPending = order?.lineItems?.some(item => pendingProducts.has(String(item?.productId || '')));
     if (!belongsToPending || String(order?.paymentStatus || '').toLowerCase() !== 'paid') continue;
     try { count += (await settleShopierOrder(order, 'api-reconciliation')).length; }
-    catch (err) { console.error('Shopier mutabakat hatasi:', order?.id, err.message); }
+    catch (err) {
+      console.error('Shopier mutabakat hatasi:', order?.id, err.message);
+      healthEvents.recordError({ category: 'payment_worker_error', source: 'shopier_reconcile', error: err });
+    }
   }
   return count;
 }
@@ -205,6 +218,7 @@ router.post('/shopier/create', authenticateToken, validate(z.object({
       ]);
       res.status(201).json({ merchant_oid: merchantOid, payment_url: product.url, amount: fromKurus(amountKurus) });
     } catch (err) {
+      healthEvents.recordError({ category: 'payment_error', source: 'shopier_create', error: err });
       await dbAsync.run("UPDATE payment_intents SET status = 'failed', failure_reason = ? WHERE id = ?",
         [normalizePlainText(err.message, 500), intent.id]);
       throw err;
@@ -225,7 +239,10 @@ router.get('/shopier/status/:oid', authenticateToken, async (req, res, next) => 
     );
     if (!intent) return res.status(404).json({ error: 'Ödeme kaydı bulunamadı.' });
     if (intent.status === 'pending') {
-      await reconcileShopierIntent(intent).catch(err => console.error('Shopier durum mutabakati:', err.message));
+      await reconcileShopierIntent(intent).catch(err => {
+        console.error('Shopier durum mutabakati:', err.message);
+        healthEvents.recordError({ category: 'payment_worker_error', source: 'shopier_status', error: err });
+      });
       const refreshed = await dbAsync.get('SELECT status, amount_kurus, failure_reason FROM payment_intents WHERE id = ?', [intent.id]);
       return res.json({ status: refreshed.status, amount: fromKurus(refreshed.amount_kurus), failure_reason: refreshed.failure_reason });
     }
@@ -240,6 +257,7 @@ router.post('/shopier/webhook', async (req, res) => {
     const rawBody = req.rawBody;
     if (!rawBody || !await Shopier.verifyWebhook(rawBody, req.headers['shopier-signature'])) {
       console.error('Shopier webhook: imza doğrulanamadı.');
+      healthEvents.recordHealthEvent({ category: 'webhook_error', source: 'shopier_webhook', detail: 'İmza doğrulanamadı' });
       return res.status(400).type('text').send('bad signature');
     }
 
@@ -247,6 +265,7 @@ router.post('/shopier/webhook', async (req, res) => {
     return res.type('text').send('OK');
   } catch (err) {
     console.error('Shopier webhook error:', err.message);
+    healthEvents.recordError({ category: 'webhook_error', severity: 'critical', source: 'shopier_webhook', error: err });
     return res.status(500).type('text').send('ERROR');
   }
 });
@@ -334,6 +353,7 @@ router.post('/nowpayments/create', authenticateToken, validate(z.object({
         qr
       });
     } catch (err) {
+      healthEvents.recordError({ category: 'payment_error', source: 'nowpayments_create', error: err });
       await dbAsync.run("UPDATE payment_intents SET status = 'failed', failure_reason = ? WHERE merchant_oid = ?", [normalizePlainText(err.message, 500), merchantOid]);
       throw err;
     }
@@ -357,6 +377,7 @@ router.post('/nowpayments/callback', async (req, res) => {
   try {
     // Imza dogrulanamayan istekler tamamen yok sayilir.
     if (!await NowPayments.verifyIpnSignature(req.body, req.headers['x-nowpayments-sig'])) {
+      healthEvents.recordHealthEvent({ category: 'webhook_error', source: 'nowpayments_callback', detail: 'İmza doğrulanamadı' });
       return res.status(400).type('text').send('bad signature');
     }
     const merchantOid = String(req.body.order_id || '').slice(0, 64);
@@ -419,6 +440,7 @@ router.post('/nowpayments/callback', async (req, res) => {
     return res.type('text').send('OK');
   } catch (err) {
     console.error('NOWPayments callback error:', err.message);
+    healthEvents.recordError({ category: 'webhook_error', severity: 'critical', source: 'nowpayments_callback', error: err });
     return res.status(500).type('text').send('ERROR');
   }
 });

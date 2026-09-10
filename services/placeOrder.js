@@ -106,7 +106,7 @@ async function placeOrder({
     if (!reserved.service.provider_id) throw new Error('Servise bağlı aktif sağlayıcı bulunmuyor.');
     const provider = await dbAsync.get('SELECT * FROM providers WHERE id = ? AND status = 1', [reserved.service.provider_id]);
     if (!provider) throw new Error('Sağlayıcı aktif değil.');
-    const client = new SmmProviderClient(provider.api_url, provider.api_key);
+    const client = new SmmProviderClient(provider.api_url, provider.api_key, { id: provider.id });
     const response = await client.addOrder(
       reserved.service.provider_service_id, link, quantity,
       { runs: dripRuns, interval: dripIntervalMinutes }

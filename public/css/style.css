@@ -4486,4 +4486,51 @@ body.neo-app-active .service-editor-step { background: #ffde17; color: #090909; 
   .health-hero-meta { width: 100%; justify-content: space-between; }
   .health-tallies { width: 100%; justify-content: space-between; }
 }
+
+/* ---- Faz 2: Servisler / Odemeler / Hatalar ---------------------------- */
+/* Ayni renk kurali gecerli: durum rengi yalnizca nokta, rozet ve sol kenar */
+/* cizgisinde. Yeni renk, font veya kutuphane yok.                          */
+.health-subtabs { flex-wrap: wrap; }
+.health-note { font-size: .8rem; color: var(--text-muted); margin: 0 0 12px; line-height: 1.5; }
+.health-pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.health-pcard { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+  border-left: 3px solid var(--hc, var(--text-dim)); }
+.health-pcard-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 10px; flex-wrap: wrap; }
+.health-pcard-name { font-weight: 800; font-size: .95rem; }
+.health-chip { font-size: .66rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-dim); border: 1px solid rgba(255, 255, 255, .14); border-radius: 999px;
+  padding: 1px 8px; margin-left: 6px; vertical-align: middle; }
+.health-pcard-reason { margin: 0; font-size: .8rem; color: var(--text-muted); }
+.health-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 12px; margin: 0; }
+.health-stats div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.health-stats dt { font-size: .64rem; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+.health-stats dd { margin: 0; font-size: .92rem; font-weight: 700; }
+.health-stats dd small { font-weight: 500; color: var(--text-dim); font-size: .72rem; }
+.health-pcard-foot { margin: 0; font-size: .76rem; color: var(--text-dim); line-height: 1.5; }
+.health-lasterr { margin: 0; font-size: .76rem; color: var(--text-muted); background: var(--bg-glass);
+  border-radius: var(--radius-sm); padding: 7px 9px; overflow-wrap: anywhere; }
+
+.health-winbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.health-winbar .btn[aria-pressed="true"] { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.health-errlist { display: grid; gap: 8px; }
+.health-err { border-radius: var(--radius-sm); background: var(--bg-glass);
+  border-left: 3px solid var(--hc, var(--text-dim)); }
+.health-err summary { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap;
+  padding: 10px 12px; cursor: pointer; list-style: none; }
+.health-err summary::-webkit-details-marker { display: none; }
+.health-err summary::after { content: "\25BE"; margin-left: auto; color: var(--text-dim); }
+.health-err[open] summary::after { content: "\25B4"; }
+.health-err summary:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 2px; }
+.health-err-label { font-weight: 700; font-size: .86rem; }
+.health-err-count { font-weight: 800; font-size: .9rem; }
+.health-err-meta { font-size: .74rem; color: var(--text-dim); flex-basis: 100%; }
+.health-err-body { padding: 0 12px 12px; }
+.health-samples { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.health-samples li { font-size: .76rem; color: var(--text-muted); overflow-wrap: anywhere; }
+.health-samples time { color: var(--text-dim); margin-right: 6px; }
+
+@media (max-width: 460px) {
+  .health-pgrid { grid-template-columns: 1fr; }
+  .health-stats { grid-template-columns: repeat(2, 1fr); }
+}
 

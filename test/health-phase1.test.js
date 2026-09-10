@@ -307,9 +307,11 @@ test('admin panelinde Sistem Sağlığı sekmesi eksiksiz bağlanmış', () => {
   assert.ok(html.includes('id="admin-tab-health"'), 'panel yok');
   assert.ok(/id="health-overview-body"/.test(html), 'genel bakış gövdesi yok');
   assert.ok(/id="health-application-body"/.test(html), 'uygulama gövdesi yok');
-  // Faz 1'de olmayan sekmeler bos/sahte olarak eklenmemeli.
-  for (const erken of ['health-seo', 'health-crawler', 'health-security', 'health-payments', 'health-providers']) {
-    assert.ok(!html.includes(`id="${erken}"`), `${erken} Faz 1'de eklenmemeliydi`);
+  // Servisler / Odemeler Faz 2'de eklendi (test/health-phase2.test.js).
+  // Faz 3 sekmeleri (SEO / crawler / guvenlik) bos veya sahte eklenmemeli.
+  for (const erken of ['health-seo', 'health-crawler', 'health-security',
+    'health-section-seo', 'health-section-crawler', 'health-section-security']) {
+    assert.ok(!html.includes(`id="${erken}"`), `${erken} Faz 3'ten önce eklenmemeli`);
   }
 });
 

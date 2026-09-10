@@ -22,7 +22,8 @@ async function fetchProviderCatalog(provider, options = {}) {
   const cacheKey = `${provider.id || provider.api_url}:${provider.api_url}:${provider.api_key}`;
   const cached = catalogCache.get(cacheKey);
   if (!options.force && cached && cached.expiresAt > Date.now()) return cached.value;
-  const client = new SmmProviderClient(provider.api_url, provider.api_key);
+  // Kayitli saglayicida (id varsa) saglik telemetrisi tutulur.
+  const client = new SmmProviderClient(provider.api_url, provider.api_key, provider.id ? { id: provider.id } : null);
   const [rawServices, balance] = await Promise.all([client.getServices(), client.getBalance()]);
   const value = {
     services: normalizeProviderServices(rawServices),

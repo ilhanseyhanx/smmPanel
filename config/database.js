@@ -298,6 +298,32 @@ async function runMigrations() {
       classified TEXT NOT NULL DEFAULT 'unknown'
     );
     CREATE INDEX IF NOT EXISTS idx_health_app_starts_at ON health_app_starts(started_at);
+
+    -- Sistem Sagligi Faz 2: kategorize olaylar (7 gun saklanir).
+    -- detail YALNIZCA services/healthEvents.js redact() sonrasi yazilir.
+    CREATE TABLE IF NOT EXISTS health_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'warning',
+      source TEXT NOT NULL,
+      detail TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_health_events_at ON health_events(created_at);
+    CREATE INDEX IF NOT EXISTS idx_health_events_cat_at ON health_events(category, created_at);
+    CREATE INDEX IF NOT EXISTS idx_health_events_src_at ON health_events(source, created_at);
+
+    -- Saatlik toplu metrikler (30 gun). bucket = UTC saat basi 'YYYY-MM-DD HH:00:00'.
+    CREATE TABLE IF NOT EXISTS health_metrics_hourly (
+      bucket TEXT NOT NULL,
+      metric TEXT NOT NULL,
+      scope TEXT NOT NULL DEFAULT '',
+      n INTEGER NOT NULL DEFAULT 0,
+      "sum" REAL NOT NULL DEFAULT 0,
+      "min" REAL,
+      "max" REAL,
+      PRIMARY KEY (bucket, metric, scope)
+    );
   `);
 
   await dbAsync.exec(`

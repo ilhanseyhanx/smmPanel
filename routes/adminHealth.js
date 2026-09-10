@@ -104,4 +104,53 @@ router.get('/score-explain', async (req, res) => {
   }
 });
 
+// ------------------------------------------------------------------ FAZ 2
+// Servisler / Odemeler / Hatalar. Yalnizca GET; hepsi SQLite'tan okur,
+// saglayiciya veya odeme sistemine istek ATMAZ (bkz. services/healthReports.js).
+// Istemciden gelen tek girdiler: pencere (beyaz liste) ve saglayici id (tamsayi).
+const healthReports = require('../services/healthReports');
+
+router.get('/providers', async (req, res) => {
+  try {
+    res.json(await healthReports.providerReport());
+  } catch (err) {
+    res.status(500).json({ error: 'Sağlayıcı sağlığı alınamadı.' });
+  }
+});
+
+router.get('/provider/:id', async (req, res) => {
+  const ham = String(req.params.id || '');
+  const id = Number.parseInt(ham, 10);
+  if (!/^\d{1,9}$/.test(ham) || !Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Geçersiz sağlayıcı kimliği.' });
+  }
+  try {
+    const detay = await healthReports.providerDetail(id);
+    if (!detay) return res.status(404).json({ error: 'Sağlayıcı bulunamadı.' });
+    res.json(detay);
+  } catch (err) {
+    res.status(500).json({ error: 'Sağlayıcı ayrıntısı alınamadı.' });
+  }
+});
+
+router.get('/payments', async (req, res) => {
+  try {
+    res.json(await healthReports.paymentReport());
+  } catch (err) {
+    res.status(500).json({ error: 'Ödeme sağlığı alınamadı.' });
+  }
+});
+
+router.get('/errors', async (req, res) => {
+  const pencere = String(req.query.window || '24h');
+  if (!Object.prototype.hasOwnProperty.call(healthReports.PENCERELER, pencere)) {
+    return res.status(400).json({ error: 'Geçersiz pencere. 1h, 24h veya 7d kullanın.' });
+  }
+  try {
+    res.json(await healthReports.errorReport(pencere));
+  } catch (err) {
+    res.status(500).json({ error: 'Hata özeti alınamadı.' });
+  }
+});
+
 module.exports = router;

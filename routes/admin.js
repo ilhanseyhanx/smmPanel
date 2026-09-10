@@ -393,7 +393,7 @@ router.post('/providers/:id/import-services', requireIdParam, validate(importSer
       return res.status(404).json({ error: 'Sağlayıcı bulunamadı.' });
     }
 
-    const client = new SmmProviderClient(provider.api_url, provider.api_key);
+    const client = new SmmProviderClient(provider.api_url, provider.api_key, { id: provider.id });
     let rawServicesData = await client.getServices();
 
     let serviceList = [];
@@ -502,7 +502,7 @@ router.get('/providers/:id/raw-services', requireIdParam, async (req, res) => {
     const provider = await dbAsync.get(`SELECT * FROM providers WHERE id = ?`, [providerId]);
     if (!provider) return res.status(404).json({ error: 'Sağlayıcı bulunamadı.' });
 
-    const client = new SmmProviderClient(provider.api_url, provider.api_key);
+    const client = new SmmProviderClient(provider.api_url, provider.api_key, { id: provider.id });
     let rawServicesData = await client.getServices();
 
     let serviceList = [];
@@ -665,7 +665,7 @@ router.get('/providers/:id/services/export', requireIdParam, async (req, res) =>
     const provider = await dbAsync.get(`SELECT * FROM providers WHERE id = ?`, [req.recordId]);
     if (!provider) return res.status(404).json({ error: 'Sağlayıcı bulunamadı.' });
 
-    const client = new SmmProviderClient(provider.api_url, provider.api_key);
+    const client = new SmmProviderClient(provider.api_url, provider.api_key, { id: provider.id });
     const rawServicesData = await client.getServices();
     let serviceList = [];
     if (Array.isArray(rawServicesData)) serviceList = rawServicesData;
@@ -1213,7 +1213,7 @@ router.post('/users/:id/assign-order', requireIdParam, validate(assignOrderSchem
       if (!reserved.service.provider_id) throw new Error('Servise bağlı aktif sağlayıcı bulunmuyor.');
       const provider = await dbAsync.get('SELECT * FROM providers WHERE id = ? AND status = 1', [reserved.service.provider_id]);
       if (!provider) throw new Error('Sağlayıcı aktif değil.');
-      const client = new SmmProviderClient(provider.api_url, provider.api_key);
+      const client = new SmmProviderClient(provider.api_url, provider.api_key, { id: provider.id });
       const response = await client.addOrder(reserved.service.provider_service_id, link, quantity, {});
       if (!response?.order) throw new Error(response?.error || 'Sağlayıcı sipariş numarası döndürmedi.');
       await dbAsync.run("UPDATE orders SET provider_order_id = ?, status = 'processing' WHERE id = ?", [String(response.order), reserved.orderId]);

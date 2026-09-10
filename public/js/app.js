@@ -8603,13 +8603,18 @@ print(sonuc.get("error") or sonuc.get("order"))`;
   // ==========================================================================
 
   showHealthSection(bolum) {
+    this.healthBolum = bolum;
     document.querySelectorAll("#health-subtabs .settings-subtab").forEach(b => {
-      b.classList.toggle("active", b.dataset.healthSection === bolum);
+      const secili = b.dataset.healthSection === bolum;
+      b.classList.toggle("active", secili);
+      b.setAttribute("aria-selected", secili ? "true" : "false");
     });
-    ["overview", "application"].forEach(ad => {
+    ["overview", "application", "providers", "payments", "errors"].forEach(ad => {
       const el = document.getElementById("health-section-" + ad);
       if (el) el.style.display = (ad === bolum) ? "block" : "none";
     });
+    // Faz 2 sekmeleri ilk acildiginda yuklenir; Genel Bakis ek istek yapmaz.
+    if (["providers", "payments", "errors"].includes(bolum)) this.loadHealthSection(bolum);
   }
 
   hbyte(n) {
@@ -8648,6 +8653,9 @@ print(sonuc.get("error") or sonuc.get("order"))`;
 
   // Durum -> sinif + sembol + metin. Renk tek basina birakilmaz.
   hdurum(durum) {
+    // Faz 2 veri olgunlugu: renk notr kalir, metin durumu acikca soyler.
+    if (durum === "no_data") return { cls: "is-unknown", sym: "○", label: "Veri Yok" };
+    if (durum === "low_sample") return { cls: "is-unknown", sym: "○", label: "Yetersiz Örnek" };
     if (durum === "critical") return { cls: "is-critical", sym: "\u25cf", label: "Kritik" };
     if (durum === "warning") return { cls: "is-warning", sym: "\u26a0", label: "Uyar\u0131" };
     if (durum === "unknown") return { cls: "is-unknown", sym: "\u25cb", label: "\u00d6l\u00e7\u00fclemedi" };
@@ -8697,6 +8705,8 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       this.renderHealthScore(serit, ozet);
       this.renderHealthOverview(genel, ozet);
       this.renderHealthApplication(uyg, uygulama);
+      // Faz 2 sekmesi aciksa o da yenilenir (tek dugme, tek davranis).
+      if (zorla && ["providers", "payments", "errors"].includes(this.healthBolum)) this.loadHealthSection(this.healthBolum, true);
     } catch (err) {
       serit.innerHTML = '<p class="health-error">Sa\u011fl\u0131k bilgisi al\u0131namad\u0131: ' +
         this.escapeHtml(err.message || "bilinmeyen hata") + "</p>";
@@ -8884,6 +8894,236 @@ print(sonuc.get("error") or sonuc.get("order"))`;
     } catch (err) {
       kutu.innerHTML = '<p class="health-error">A\u00e7\u0131klama al\u0131namad\u0131.</p>';
     }
+  }
+
+  // ==========================================================================
+  // SISTEM SAGLIGI - FAZ 2: Servisler / Odemeler / Hatalar
+  // Veriler yalnizca salt okunur uclardan gelir. Sunucudan gelen her metin
+  // escapeHtml ile basilir. Az ornekte oran GOSTERILMEZ (sahte %100 yok);
+  // durum rozeti de "Yetersiz Örnek" olur.
+  // ==========================================================================
+
+  async loadHealthSection(bolum, zorla) {
+    this.healthYuklenme = this.healthYuklenme || {};
+    const son = this.healthYuklenme[bolum] || 0;
+    if (!zorla && Date.now() - son < 30000) return;
+    this.healthYuklenme[bolum] = Date.now();
+    if (bolum === "providers") return this.loadHealthProviders();
+    if (bolum === "payments") return this.loadHealthPayments();
+    if (bolum === "errors") return this.loadHealthErrors(this.healthPencere || "24h");
+  }
+
+  async loadHealthProviders() {
+    const el = document.getElementById("health-providers-body");
+    if (!el) return;
+    try {
+      this.renderHealthProviders(el, await API.getHealthProviders());
+    } catch (err) {
+      if (this.healthYuklenme) this.healthYuklenme.providers = 0;
+      el.innerHTML = '<p class="health-error">Sağlayıcı sağlığı alınamadı: ' +
+        this.escapeHtml(err.message || "bilinmeyen hata") + "</p>";
+    }
+  }
+
+  async loadHealthPayments() {
+    const el = document.getElementById("health-payments-body");
+    if (!el) return;
+    try {
+      this.renderHealthPayments(el, await API.getHealthPayments());
+    } catch (err) {
+      if (this.healthYuklenme) this.healthYuklenme.payments = 0;
+      el.innerHTML = '<p class="health-error">Ödeme sağlığı alınamadı: ' +
+        this.escapeHtml(err.message || "bilinmeyen hata") + "</p>";
+    }
+  }
+
+  async loadHealthErrors(pencere) {
+    const el = document.getElementById("health-errors-body");
+    if (!el) return;
+    this.healthPencere = ["1h", "24h", "7d"].includes(pencere) ? pencere : "24h";
+    try {
+      this.renderHealthErrors(el, await API.getHealthErrors(this.healthPencere));
+    } catch (err) {
+      if (this.healthYuklenme) this.healthYuklenme.errors = 0;
+      el.innerHTML = '<p class="health-error">Hata özeti alınamadı: ' +
+        this.escapeHtml(err.message || "bilinmeyen hata") + "</p>";
+    }
+  }
+
+  hesc(v) {
+    return this.escapeHtml(v == null ? "" : String(v));
+  }
+
+  // "3 dk önce"; tam tarih title ile gösterilir.
+  hgoreli(iso) {
+    if (!iso) return '<span class="health-muted">—</span>';
+    const t = new Date(iso).getTime();
+    if (isNaN(t)) return '<span class="health-muted">—</span>';
+    const sn = Math.max(0, Math.round((Date.now() - t) / 1000));
+    let metin;
+    if (sn < 60) metin = sn + " sn önce";
+    else if (sn < 3600) metin = Math.round(sn / 60) + " dk önce";
+    else if (sn < 172800) metin = Math.round(sn / 3600) + " sa önce";
+    else metin = Math.round(sn / 86400) + " gün önce";
+    return '<span title="' + this.hesc(new Date(t).toLocaleString("tr-TR")) + '">' + metin + "</span>";
+  }
+
+  htelemetri(iso) {
+    return iso
+      ? "Telemetri " + new Date(iso).toLocaleString("tr-TR") + " itibarıyla toplanıyor; öncesi için veri yoktur."
+      : "Telemetri henüz veri toplamadı.";
+  }
+
+  // Oran yalnizca yeterli ornekte gosterilir; aksi halde cagri sayisi.
+  hsaglayiciOran(p, min) {
+    const n = Number(p && p.requests) || 0;
+    if (!n) return '<span class="health-muted">Veri yok</span>';
+    if (n < min) return n + " <small>çağrı · yetersiz</small>";
+    return "%" + this.hesc(p.success_rate) + " <small>/ " + n + " çağrı</small>";
+  }
+
+  hstat(etiket, deger) {
+    return "<div><dt>" + etiket + "</dt><dd>" + deger + "</dd></div>";
+  }
+
+  hsayi(v) {
+    const n = Number(v) || 0;
+    return n ? String(n) : '<span class="health-muted">0</span>';
+  }
+
+  hsonHata(h, zaman) {
+    if (!h) return "";
+    return '<p class="health-lasterr"><strong>' + this.hesc(h.label) + "</strong> · " +
+      this.hgoreli(zaman || h.at) + "<br>" + this.hesc(h.detail) + "</p>";
+  }
+
+  renderHealthProviders(el, d) {
+    const min = (d.thresholds && d.thresholds.min_ornek) || 5;
+    const liste = d.providers || [];
+    const not = '<p class="health-note">' + this.hesc(d.scoring_note) + " Hata sayıları son 24 saattir. " +
+      this.hesc(this.htelemetri(d.telemetry_since)) + "</p>";
+    if (!liste.length) {
+      el.innerHTML = not + '<p class="health-loading">Kayıtlı sağlayıcı yok.</p>';
+      return;
+    }
+    const kartlar = liste.map(p => {
+      const ds = this.hdurum(p.status);
+      const h1 = p.window_1h || {}, h24 = p.window_24h || {};
+      const temel = p.status_basis === "1h" ? "son 1 saat" : "son 24 saat";
+      return '<article class="glass-card health-pcard ' + ds.cls + '">' +
+        '<div class="health-pcard-head"><div><span class="health-pcard-name">' + this.hesc(p.name) + "</span>" +
+          '<span class="health-chip">' + (p.active ? "Aktif" : "Pasif") + "</span></div>" +
+          this.hrozet(p.status) + "</div>" +
+        '<p class="health-pcard-reason">' + this.hesc(p.status_reason) +
+          ' <span class="health-muted">(' + temel + ")</span></p>" +
+        '<dl class="health-stats">' +
+          this.hstat("1 sa başarı", this.hsaglayiciOran(h1, min)) +
+          this.hstat("24 sa başarı", this.hsaglayiciOran(h24, min)) +
+          this.hstat("Ort. yanıt", h24.avg_ms == null ? '<span class="health-muted">—</span>' : this.hesc(h24.avg_ms) + " <small>ms</small>") +
+          this.hstat("Zaman aşımı", this.hsayi(h24.timeouts)) +
+          this.hstat("5xx / 502", this.hsayi(h24.err_5xx)) +
+          this.hstat("Bağlantı", this.hsayi(h24.network)) +
+          this.hstat("Bakiye hatası", this.hsayi(h24.balance_errors)) +
+          this.hstat("Sipariş hatası", this.hsayi(h24.order_errors)) +
+          this.hstat("Durum hatası", this.hsayi(h24.status_errors)) +
+        "</dl>" +
+        '<p class="health-pcard-foot">Son başarı: ' + this.hgoreli(p.last_success_at) +
+          " · Son hata: " + this.hgoreli(p.last_failure_at) + "</p>" +
+        this.hsonHata(p.last_error) +
+        "</article>";
+    }).join("");
+    el.innerHTML = not + '<div class="health-pgrid">' + kartlar + "</div>" +
+      '<p class="health-foot">' + this.hesc(d.window_note) + " Yetersiz örnek eşiği: " + min + " çağrı.</p>";
+  }
+
+  renderHealthPayments(el, d) {
+    const kartlar = (d.providers || []).map(p => {
+      const ds = this.hdurum(p.status);
+      const n = p.intents_24h || {};
+      return '<article class="glass-card health-pcard ' + ds.cls + '">' +
+        '<div class="health-pcard-head"><span class="health-pcard-name">' + this.hesc(p.label) + "</span>" +
+          this.hrozet(p.status) + "</div>" +
+        '<p class="health-pcard-reason">' + this.hesc(p.status_reason) + "</p>" +
+        '<dl class="health-stats">' +
+          this.hstat("Son başarı", this.hgoreli(p.last_success_at)) +
+          this.hstat("24 sa girişim", this.hsayi(n.created)) +
+          this.hstat("Tamamlanan", this.hsayi(n.completed)) +
+          this.hstat("Başarısız / red", this.hsayi(n.failed)) +
+          this.hstat("Bekleyen", this.hsayi(n.pending)) +
+          this.hstat("Sistem hatası", this.hsayi(p.errors_24h)) +
+          this.hstat("Webhook hatası", this.hsayi(p.webhook_errors_24h)) +
+        "</dl>" +
+        this.hsonHata(p.last_error, p.last_error_at) +
+        "</article>";
+    }).join("");
+
+    const isler = (d.workers || []).map(w => {
+      const ds = this.hdurum(w.status);
+      const aralik = w.interval_sec >= 60 ? Math.round(w.interval_sec / 60) + " dk" : w.interval_sec + " sn";
+      return '<article class="glass-card health-pcard ' + ds.cls + '">' +
+        '<div class="health-pcard-head"><div><span class="health-pcard-name">' + this.hesc(w.label) + "</span>" +
+          '<span class="health-chip">' + aralik + "</span></div>" + this.hrozet(w.status) + "</div>" +
+        '<p class="health-pcard-reason">' + this.hesc(w.status_reason) + "</p>" +
+        '<dl class="health-stats">' +
+          this.hstat("Son çalışma", this.hgoreli(w.last_run_at)) +
+          this.hstat("Son başarı", this.hgoreli(w.last_ok_at)) +
+          this.hstat("24 sa tur / hata", this.hsayi(w.runs_24h) + " / " + this.hsayi(w.fails_24h)) +
+        "</dl>" +
+        (w.last_error ? '<p class="health-lasterr"><strong>Son hata</strong> · ' + this.hgoreli(w.last_error_at) +
+          "<br>" + this.hesc(w.last_error) + "</p>" : "") +
+        "</article>";
+    }).join("");
+
+    el.innerHTML =
+      '<p class="health-note">' + this.hesc(d.note) + " " + this.hesc(this.htelemetri(d.telemetry_since)) + "</p>" +
+      '<div class="health-pgrid">' + kartlar + "</div>" +
+      '<h3 class="health-subhead">Arka Plan İşleri</h3>' +
+      '<p class="health-note">' + this.hesc(d.workers_note) + "</p>" +
+      '<div class="health-pgrid">' + isler + "</div>";
+  }
+
+  // Olay onemi -> rozet. "Bilgi" durumu saglik rengi tasimaz.
+  hseviye(s) {
+    if (s === "critical") return { cls: "is-critical", label: "Kritik" };
+    if (s === "warning") return { cls: "is-warning", label: "Uyarı" };
+    return { cls: "is-unknown", label: "Bilgi" };
+  }
+
+  renderHealthErrors(el, d) {
+    const pencereler = [["1h", "Son 1 saat"], ["24h", "Son 24 saat"], ["7d", "Son 7 gün"]];
+    const cubuk = '<div class="health-winbar" role="group" aria-label="Zaman aralığı">' +
+      pencereler.map(([k, ad]) => '<button type="button" class="btn btn-outline btn-sm" aria-pressed="' +
+        (d.window === k ? "true" : "false") + '" onclick="app.loadHealthErrors(\'' + k + '\')">' + ad + "</button>").join("") +
+      '<span class="health-time">' + this.hsayi(d.total) + " olay · " + this.hsayi(d.critical_total) + " kritik</span></div>";
+
+    const kategoriler = d.categories || [];
+    if (!kategoriler.length) {
+      el.innerHTML = cubuk + '<p class="health-loading">Bu pencerede kayıtlı olay yok.</p>' +
+        '<p class="health-foot">' + this.hesc(this.htelemetri(d.telemetry_since)) + "</p>";
+      return;
+    }
+    const liste = kategoriler.map(c => {
+      const sv = this.hseviye(c.severity);
+      const kaynaklar = (c.sources || []).map(s => this.hesc(s.source) + " (" + this.hsayi(s.count) + ")").join(", ");
+      const ornekler = (c.samples || []).map(s =>
+        '<li><time datetime="' + this.hesc(s.at) + '">' + this.hesc(s.at ? new Date(s.at).toLocaleString("tr-TR") : "") + "</time>" +
+        "<strong>" + this.hesc(s.source) + "</strong> — " + this.hesc(s.detail) + "</li>").join("");
+      return '<details class="health-err ' + sv.cls + '">' +
+        "<summary>" +
+          '<span class="health-status ' + sv.cls + '"><span class="health-dot" aria-hidden="true"></span>' + sv.label + "</span>" +
+          '<span class="health-err-label">' + this.hesc(c.label) + "</span>" +
+          '<span class="health-err-count">' + this.hsayi(c.count) + " kez</span>" +
+          '<span class="health-err-meta">Kaynak: ' + kaynaklar + " · Son görülme: " + this.hgoreli(c.last_seen) + "</span>" +
+        "</summary>" +
+        '<div class="health-err-body">' +
+          (ornekler ? '<ul class="health-samples">' + ornekler + "</ul>"
+            : '<p class="health-foot">Bu pencerede örnek satır yok; sayı saatlik sayaçtan gelir.</p>') +
+        "</div></details>";
+    }).join("");
+
+    el.innerHTML = cubuk + '<div class="health-errlist">' + liste + "</div>" +
+      '<p class="health-foot">' + this.hesc(d.window_note) + " Örnekler en fazla 3 satırdır ve maskelenmiştir. " +
+      this.hesc(this.htelemetri(d.telemetry_since)) + "</p>";
   }
 
   toggleAuthViewMode() {

@@ -166,6 +166,11 @@ const API = {
   getHealthOverview: () => API.request('/admin/health/overview'),
   getHealthApplication: () => API.request('/admin/health/application'),
   getHealthScoreExplain: () => API.request('/admin/health/score-explain'),
+  // Faz 2 - yalnizca okuma; saglayiciya/odeme sistemine istek atmaz.
+  getHealthProviders: () => API.request('/admin/health/providers'),
+  getHealthProvider: (id) => API.request(`/admin/health/provider/${encodeURIComponent(id)}`),
+  getHealthPayments: () => API.request('/admin/health/payments'),
+  getHealthErrors: (pencere) => API.request(`/admin/health/errors?window=${encodeURIComponent(pencere || '24h')}`),
   getAdminStatistics: () => API.request('/admin/statistics'),
   getAdminProviders: () => API.request('/admin/providers'),
   addAdminProvider: (name, api_url, api_key) => API.request('/admin/providers', { method: 'POST', body: JSON.stringify({ name, api_url, api_key }) }),

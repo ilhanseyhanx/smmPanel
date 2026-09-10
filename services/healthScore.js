@@ -190,7 +190,7 @@ function systemHealth(snapshot, starts24h) {
       thresholds: ESIKLER,
       excluded: [
         'SEO ve crawler ölçümleri SYSTEM HEALTH puanına dahil edilmez (ayrı SEO HEALTH puanı Faz 3).',
-        'Sağlayıcı ve ödeme sağlığı henüz ölçülmediği için (Faz 2) puana dahil edilmedi.'
+        'Sağlayıcı ve ödeme telemetrisi Servisler / Ödemeler sekmelerinde izlenir; veri olgunlaşana kadar (ilk 24-48 saat) bu puana dahil edilmez.'
       ]
     }
   };

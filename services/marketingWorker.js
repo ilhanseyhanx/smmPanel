@@ -4,6 +4,7 @@ const { fromKurus } = require('../utils/money');
 const telegram = require('./telegramNotifier');
 const { sendMail, isConfigured: mailConfigured } = require('./mailer');
 const SmmProviderClient = require('./smmProvider');
+const healthEvents = require('./healthEvents');
 
 let pollBusy = false;
 
@@ -13,8 +14,12 @@ async function pollTelegramLinks() {
   pollBusy = true;
   try {
     await telegram.processLinkUpdates();
+    healthEvents.workerBeat('telegram_poller', true);
   } catch (err) {
     console.error('Telegram link poller error:', err.message);
+    healthEvents.workerBeat('telegram_poller', false, err);
+    // Zaman asimi/429/5xx zaten callBotApi'de kaydedildi; iki kez sayilmaz.
+    if (!err?.healthRecorded) healthEvents.recordError({ category: 'worker_error', source: 'telegram_poller', error: err });
   } finally {
     pollBusy = false;
   }
@@ -81,7 +86,7 @@ async function checkProviderBalances() {
     for (const provider of providers) {
       let balanceInfo;
       try {
-        balanceInfo = await new SmmProviderClient(provider.api_url, provider.api_key).getBalance();
+        balanceInfo = await new SmmProviderClient(provider.api_url, provider.api_key, { id: provider.id }).getBalance();
       } catch { continue; }
       const balance = Number(balanceInfo?.balance);
       if (!Number.isFinite(balance)) continue;
@@ -116,8 +121,13 @@ async function checkProviderBalances() {
       "INSERT INTO site_settings (key, value) VALUES ('provider_balance_alert_state', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       [JSON.stringify(state)]
     );
+    // Esik tanimli degilse is yukarida erken doner ve nabiz yazilmaz:
+    // panel bunu "calismadi" olarak gosterir, sahte "saglikli" uretilmez.
+    healthEvents.workerBeat('provider_balance', true);
   } catch (err) {
     console.error('Provider balance check error:', err.message);
+    healthEvents.workerBeat('provider_balance', false, err);
+    healthEvents.recordError({ category: 'worker_error', source: 'provider_balance', error: err });
   }
 }
 

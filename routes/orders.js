@@ -91,7 +91,7 @@ router.post('/:id/refill', authenticateToken, async (req, res, next) => {
     if (order.status !== 'completed') return res.status(400).json({ error: 'Yalnızca tamamlanmış siparişler için telafi istenebilir.' });
     if (order.refill_status === 'requested' || order.refill_status === 'processing') return res.status(409).json({ error: 'Bu sipariş için aktif bir telafi talebi var.' });
     if (!order.provider_order_id || !order.api_url) return res.status(400).json({ error: 'Sağlayıcı telafi bağlantısı bulunamadı.' });
-    const response = await new SmmProviderClient(order.api_url, order.api_key).requestRefill(order.provider_order_id);
+    const response = await new SmmProviderClient(order.api_url, order.api_key, { id: order.provider_id }).requestRefill(order.provider_order_id);
     if (response?.error) return res.status(502).json({ error: `Sağlayıcı telafi hatası: ${normalizePlainText(response.error, 300)}` });
     await dbAsync.run("UPDATE orders SET refill_status = 'requested' WHERE id = ? AND refill_status NOT IN ('requested','processing')", [order.id]);
     res.json({ message: 'Telafi talebiniz sağlayıcıya iletildi.', refill: response?.refill || null });

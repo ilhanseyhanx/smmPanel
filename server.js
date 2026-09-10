@@ -1380,9 +1380,16 @@ async function startServer() {
 
     // Start background order status sync worker
     startOrderWorker();
+    // Sistem Sagligi Faz 2: arka plan islerinin nabzi + olay kaydi.
+    const healthEvents = require('./services/healthEvents');
     // Webhook gecikirse/kacarsa Shopier'in siparis API'sinden mutabakat yap.
     const reconcileShopier = () => paymentsRoutes.reconcilePendingShopierPayments?.()
-      .catch(err => console.error('Shopier mutabakat worker:', err.message));
+      .then(() => healthEvents.workerBeat('shopier_reconcile', true))
+      .catch(err => {
+        console.error('Shopier mutabakat worker:', err.message);
+        healthEvents.workerBeat('shopier_reconcile', false, err);
+        healthEvents.recordError({ category: 'payment_worker_error', source: 'shopier_reconcile', error: err });
+      });
     reconcileShopier();
     const shopierReconcileTimer = setInterval(reconcileShopier, 60 * 1000);
     shopierReconcileTimer.unref?.();
@@ -1394,6 +1401,9 @@ async function startServer() {
     // Baslangic kayitlari 90 gun saklanir; tablo sinirsiz buyumesin.
     const healthPruneTimer = setInterval(() => require('./services/appStarts').prune(), 24 * 60 * 60 * 1000);
     healthPruneTimer.unref?.();
+    // Faz 2 telemetri: metrik tamponu 30 sn'de bir yazilir; olaylar 7 gun,
+    // metrikler 30 gun saklanir (gunluk temizlik, node-cron + noOverlap).
+    healthEvents.startHealthTelemetry();
     // Her aksam 21:00'de (TR) Telegram'a gunun ozeti gider.
     require('./services/telegramNotifier').startDailySummaryScheduler();
   });

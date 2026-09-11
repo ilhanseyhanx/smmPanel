@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260911b">
+  <link rel="stylesheet" href="/css/style.css?v=20260911c">
 </head>
 <body>
 
@@ -1498,6 +1498,7 @@ Canceled     iptal edildi</pre>
               <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-health-section="providers" onclick="app.showHealthSection('providers')"><i class="fa-solid fa-plug" aria-hidden="true"></i> Servisler</button>
               <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-health-section="payments" onclick="app.showHealthSection('payments')"><i class="fa-solid fa-credit-card" aria-hidden="true"></i> Ödemeler</button>
               <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-health-section="errors" onclick="app.showHealthSection('errors')"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Hatalar</button>
+              <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-health-section="seo" onclick="app.showHealthSection('seo')"><i class="fa-solid fa-magnifying-glass-chart" aria-hidden="true"></i> SEO &amp; Crawler</button>
             </div>
 
             <div id="health-section-overview">
@@ -1519,6 +1520,11 @@ Canceled     iptal edildi</pre>
 
             <div id="health-section-errors" style="display: none;">
               <div id="health-errors-body"><p class="health-loading">Yükleniyor…</p></div>
+            </div>
+
+            <!-- Faz 3: bot ziyaretleri, sitemap tutarlılığı, IndexNow takibi. -->
+            <div id="health-section-seo" style="display: none;">
+              <div id="health-seo-body"><p class="health-loading">Yükleniyor…</p></div>
             </div>
           </div>
 
@@ -4288,7 +4294,7 @@ Canceled     iptal edildi</pre>
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260911b" defer></script>
-  <script src="/js/app.js?v=20260911b" defer></script>
+  <script src="/js/api.js?v=20260911c" defer></script>
+  <script src="/js/app.js?v=20260911c" defer></script>
 </body>
 </html>

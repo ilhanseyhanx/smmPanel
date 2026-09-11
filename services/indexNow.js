@@ -23,6 +23,11 @@ function indexNowKey() {
  * @param {string[]} urls Mutlak adresler (ayni host'a ait olmali)
  */
 async function submitToIndexNow(urls) {
+  // Saglik telemetrisi (Faz 3): basari/basarisizlik sayilir, panelde gorunur.
+  // healthEvents yuklenemese bile bildirim akisi bozulmaz.
+  let telemetri = null;
+  try { telemetri = require('./healthEvents'); } catch { /* test ortami vb. */ }
+  const an = () => Math.floor(Date.now() / 1000);
   try {
     const base = String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
     // Taban adres yoksa (yerel gelistirme) bildirim anlamsizdir.
@@ -38,11 +43,16 @@ async function submitToIndexNow(urls) {
     // 200/202 basari sayilir; digerleri yalnizca loglanir.
     if (res.status !== 200 && res.status !== 202) {
       console.warn(`IndexNow bildirimi reddedildi: HTTP ${res.status}`);
+      telemetri?.recordMetric('indexnow_fail', '', an());
+      telemetri?.recordHealthEvent({ category: 'indexnow_error', source: 'indexnow', detail: `HTTP ${res.status} (${urls.length} adres)` });
       return false;
     }
+    telemetri?.recordMetric('indexnow_ok', '', an());
     return true;
   } catch (err) {
     console.warn('IndexNow bildirimi gonderilemedi:', err.message);
+    telemetri?.recordMetric('indexnow_fail', '', an());
+    telemetri?.recordHealthEvent({ category: 'indexnow_error', source: 'indexnow', detail: String(err.message || 'bağlantı hatası') });
     return false;
   }
 }

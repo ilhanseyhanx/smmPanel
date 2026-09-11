@@ -143,8 +143,14 @@ test('sağlık modülleri yalnızca sabit yedek yollarını okur', () => {
   const kaynak = fs.readFileSync(path.join(__dirname, '..', 'routes', 'adminHealth.js'), 'utf8');
   assert.ok(!/req\.(query|params|body)\s*\.\s*\w*(path|dir|file|yol)/i.test(kaynak),
     'istekten yol benzeri parametre okunuyor');
-  assert.ok(!/req\.(query|params|body)/.test(kaynak) || !/readdir|readFile|statSync/.test(kaynak),
-    'istek parametresi dosya işlemiyle aynı dosyada birleşmemeli');
+  // Faz 3: /seo ucu SABIT yoldaki public/sitemap.xml'i okur. Kural: her fs
+  // okuma cagrisi yalnizca STATIK_SITEMAP sabitini kullanmali; istemci
+  // girdisi hicbir dosya islemine ulasamamali.
+  const fsOkumalar = kaynak.match(/readFileSync\s*\(([^)]*)\)/g) || [];
+  for (const cagri of fsOkumalar) {
+    assert.ok(cagri.includes('STATIK_SITEMAP'), `sabit olmayan yol ile dosya okunuyor: ${cagri}`);
+  }
+  assert.ok(!/readdir|statSync|createReadStream/.test(kaynak), 'beklenmeyen dosya işlemi var');
 });
 
 // --------------------------------------------------------- puan formulu ----
@@ -307,11 +313,11 @@ test('admin panelinde Sistem Sağlığı sekmesi eksiksiz bağlanmış', () => {
   assert.ok(html.includes('id="admin-tab-health"'), 'panel yok');
   assert.ok(/id="health-overview-body"/.test(html), 'genel bakış gövdesi yok');
   assert.ok(/id="health-application-body"/.test(html), 'uygulama gövdesi yok');
-  // Servisler / Odemeler Faz 2'de eklendi (test/health-phase2.test.js).
-  // Faz 3 sekmeleri (SEO / crawler / guvenlik) bos veya sahte eklenmemeli.
-  for (const erken of ['health-seo', 'health-crawler', 'health-security',
-    'health-section-seo', 'health-section-crawler', 'health-section-security']) {
-    assert.ok(!html.includes(`id="${erken}"`), `${erken} Faz 3'ten önce eklenmemeli`);
+  // Servisler / Odemeler Faz 2'de, SEO & Crawler Faz 3'te eklendi
+  // (test/health-phase2.test.js, test/health-phase3.test.js).
+  // Henuz gelmeyen sekmeler (guvenlik) bos veya sahte eklenmemeli.
+  for (const erken of ['health-security', 'health-section-security']) {
+    assert.ok(!html.includes(`id="${erken}"`), `${erken} kendi fazından önce eklenmemeli`);
   }
 });
 

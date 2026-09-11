@@ -405,6 +405,7 @@ app.get('/blog/:slug', async (req, res) => {
     // ugramadigi icin eskiden hic sayilmiyordu. Yaniti geciktirmez.
     dbAsync.run("UPDATE blog_posts SET views = COALESCE(views, 0) + 1 WHERE slug = ?", [req.params.slug]).catch(() => {});
     require('./services/visitorTracker').recordVisit(req).catch(() => {});
+    require('./services/crawlerTracker').record(req, 200);
 
     const ayarRows = await dbAsync.all("SELECT key, value FROM site_settings WHERE key IN ('site_name', 'blog_author_name', 'blog_author_title', 'blog_author_url')").catch(() => []);
     const ayarlar = {};
@@ -1184,6 +1185,7 @@ app.use(async (req, res, next) => {
 
     dbAsync.run('UPDATE landing_pages SET views = COALESCE(views, 0) + 1 WHERE id = ?', [page.id]).catch(() => {});
     require('./services/visitorTracker').recordVisit(req).catch(() => {});
+    require('./services/crawlerTracker').record(req, 200);
 
     const base = String(process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
     const siteRow = await dbAsync.get("SELECT value FROM site_settings WHERE key = 'site_name'").catch(() => null);
@@ -1259,6 +1261,8 @@ app.use(async (req, res) => {
     // Ziyaret kaydi: yalnizca gercek sayfa acilislarinda calisir (statik dosya
     // ve /api istekleri buraya dusmez). Yanit beklemez, hata firlatmaz.
     require('./services/visitorTracker').recordVisit(req).catch(() => {});
+    // Bot ziyareti (Faz 3): 404 dahil — botun gordugu kirik adresler kaydedilir.
+    require('./services/crawlerTracker').record(req, sayfa.status || 200);
 
     let html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
 
@@ -1415,6 +1419,8 @@ async function startServer() {
     // Faz 2 telemetri: metrik tamponu 30 sn'de bir yazilir; olaylar 7 gun,
     // metrikler 30 gun saklanir (gunluk temizlik, node-cron + noOverlap).
     healthEvents.startHealthTelemetry();
+    // Faz 3: bot ziyaret kovalari 30 gun saklanir (gece temizligi).
+    require('./services/crawlerTracker').startCrawlerTracking();
     // Her aksam 21:00'de (TR) Telegram'a gunun ozeti gider.
     require('./services/telegramNotifier').startDailySummaryScheduler();
   });

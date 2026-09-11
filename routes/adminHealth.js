@@ -141,6 +141,77 @@ router.get('/payments', async (req, res) => {
   }
 });
 
+// ------------------------------------------------------------------ FAZ 3
+// SEO & Crawler: bot ziyaretleri, sitemap tutarliligi, IndexNow takibi.
+// Yalnizca SQLite + SABIT yoldaki public/sitemap.xml okunur; dis istek YOK.
+const fs = require('fs');
+const path = require('path');
+const crawlerTracker = require('../services/crawlerTracker');
+
+// Statik sitemap fosili icin SABIT yol (istemciden yol alinmaz).
+const STATIK_SITEMAP = path.join(__dirname, '..', 'public', 'sitemap.xml');
+// Dinamik sitemap'in sabit cekirdegi (server.js /sitemap.xml ile ayni liste):
+// /, /services, /blog, /about, /smm-panel-api, /terms, /privacy, /refund
+const SITEMAP_CEKIRDEK = 8;
+
+router.get('/seo', async (req, res) => {
+  const pencere = String(req.query.window || '24h');
+  const SAAT = { '24h': 24, '7d': 168 };
+  if (!Object.prototype.hasOwnProperty.call(SAAT, pencere)) {
+    return res.status(400).json({ error: 'Geçersiz pencere. 24h veya 7d kullanın.' });
+  }
+  try {
+    const crawler = await crawlerTracker.report(SAAT[pencere]);
+
+    // Sitemap tutarliligi: beklenen adres sayisi veritabanindan hesaplanir
+    // (dinamik rotayla ayni kaynaklar); sayfa gezilmez, dis istek atilmaz.
+    const blogSayisi = (await dbAsync.get("SELECT COUNT(*) n FROM blog_posts WHERE status = 'published'"))?.n || 0;
+    const satisSayisi = (await dbAsync.get("SELECT COUNT(*) n FROM landing_pages WHERE status = 'published'"))?.n || 0;
+    const beklenen = SITEMAP_CEKIRDEK + blogSayisi + satisSayisi + (satisSayisi ? 1 : 0); // +1: /hizmet-sayfalari vitrini
+
+    // Statik fosil dosya: dinamik rota varken zararsizdir ama hosting
+    // degisirse dinamigin onune gecebilir. Panel bu riski surekli gosterir.
+    let statik = { exists: false, url_count: null };
+    try {
+      const icerik = fs.readFileSync(STATIK_SITEMAP, 'utf8');
+      statik = { exists: true, url_count: (icerik.match(/<loc>/g) || []).length };
+    } catch { /* dosya yoksa risk de yok */ }
+
+    // IndexNow: saatlik metriklerden son basari/basarisizlik ve 7 gunluk sayim.
+    const sinir7g = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+    const inOk = await dbAsync.get("SELECT SUM(n) n, MAX(\"max\") son FROM health_metrics_hourly WHERE metric = 'indexnow_ok' AND bucket >= ?", [sinir7g]);
+    const inFail = await dbAsync.get("SELECT SUM(n) n, MAX(\"max\") son FROM health_metrics_hourly WHERE metric = 'indexnow_fail' AND bucket >= ?", [sinir7g]);
+    const inOlaylar = await dbAsync.all("SELECT severity, source, detail, created_at FROM health_events WHERE category = 'indexnow_error' ORDER BY id DESC LIMIT 5");
+
+    res.json({
+      window: pencere,
+      crawler,
+      sitemap: {
+        expected_urls: beklenen,
+        breakdown: { core: SITEMAP_CEKIRDEK, blog_published: blogSayisi, landing_published: satisSayisi, hub: satisSayisi ? 1 : 0 },
+        static_file: {
+          ...statik,
+          // Dinamik rota Express'te statik servisten ONCE tanimli oldugu ve
+          // Nginx her istegi proxy'ledigi surece fosil dosya sunulmaz.
+          risk: statik.exists && statik.url_count !== null && statik.url_count < beklenen
+            ? 'public/sitemap.xml BAYAT (' + statik.url_count + ' adres, beklenen ' + beklenen + '). Hosting mimarisi değişirse bu dosya dinamik sitemap\'in önüne geçebilir; silinmesi önerilir.'
+            : null
+        },
+        note: 'Beklenen sayı veritabanından hesaplanır; canlı /sitemap.xml çıktısıyla birebir aynı kaynaklardan gelir.'
+      },
+      indexnow: {
+        ok_7d: inOk?.n || 0,
+        fail_7d: inFail?.n || 0,
+        last_ok_epoch: inOk?.son || null,
+        last_fail_epoch: inFail?.son || null,
+        recent_errors: inOlaylar
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'SEO & Crawler raporu alınamadı.' });
+  }
+});
+
 router.get('/errors', async (req, res) => {
   const pencere = String(req.query.window || '24h');
   if (!Object.prototype.hasOwnProperty.call(healthReports.PENCERELER, pencere)) {

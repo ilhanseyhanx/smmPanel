@@ -49,6 +49,8 @@ const KATEGORILER = Object.freeze({
   webhook_error:         { grup: 'payment',  seviye: 'warning',  etiket: 'Webhook / callback hatası' },
   // orderWorker, marketingWorker (bakiye kontrolu, Telegram eslestirme)
   worker_error:          { grup: 'worker',   seviye: 'warning',  etiket: 'Arka plan işi hatası' },
+  // services/indexNow.js — arama motoru bildirimi (Faz 3, SEO grubu)
+  indexnow_error:        { grup: 'seo',      seviye: 'warning',  etiket: 'IndexNow bildirimi başarısız' },
   // Mesajinda/kodunda SQLITE_ gecen her hata (errorHandler dahil)
   sqlite_error:          { grup: 'database', seviye: 'critical', etiket: 'Veritabanı hatası' }
 });
@@ -71,7 +73,9 @@ const METRIKLER = Object.freeze({
   provider_fail: 'zaman',
   event:         'zaman',   // scope = kategori|seviye|kaynak
   worker_run:    'zaman',   // scope = isci adi
-  worker_fail:   'zaman'
+  worker_fail:   'zaman',
+  indexnow_ok:   'zaman',   // son basarili IndexNow bildirimi (Faz 3)
+  indexnow_fail: 'zaman'
 });
 
 const SAGLAYICI_ISLEMLERI = new Set(['getServices', 'addOrder', 'requestRefill', 'getOrderStatus', 'getMultiOrderStatus', 'getBalance']);

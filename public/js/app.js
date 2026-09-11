@@ -8732,12 +8732,12 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       b.classList.toggle("active", secili);
       b.setAttribute("aria-selected", secili ? "true" : "false");
     });
-    ["overview", "application", "providers", "payments", "errors"].forEach(ad => {
+    ["overview", "application", "providers", "payments", "errors", "seo"].forEach(ad => {
       const el = document.getElementById("health-section-" + ad);
       if (el) el.style.display = (ad === bolum) ? "block" : "none";
     });
-    // Faz 2 sekmeleri ilk acildiginda yuklenir; Genel Bakis ek istek yapmaz.
-    if (["providers", "payments", "errors"].includes(bolum)) this.loadHealthSection(bolum);
+    // Faz 2-3 sekmeleri ilk acildiginda yuklenir; Genel Bakis ek istek yapmaz.
+    if (["providers", "payments", "errors", "seo"].includes(bolum)) this.loadHealthSection(bolum);
   }
 
   hbyte(n) {
@@ -8828,8 +8828,8 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       this.renderHealthScore(serit, ozet);
       this.renderHealthOverview(genel, ozet);
       this.renderHealthApplication(uyg, uygulama);
-      // Faz 2 sekmesi aciksa o da yenilenir (tek dugme, tek davranis).
-      if (zorla && ["providers", "payments", "errors"].includes(this.healthBolum)) this.loadHealthSection(this.healthBolum, true);
+      // Faz 2-3 sekmesi aciksa o da yenilenir (tek dugme, tek davranis).
+      if (zorla && ["providers", "payments", "errors", "seo"].includes(this.healthBolum)) this.loadHealthSection(this.healthBolum, true);
     } catch (err) {
       serit.innerHTML = '<p class="health-error">Sa\u011fl\u0131k bilgisi al\u0131namad\u0131: ' +
         this.escapeHtml(err.message || "bilinmeyen hata") + "</p>";
@@ -9033,6 +9033,7 @@ print(sonuc.get("error") or sonuc.get("order"))`;
     this.healthYuklenme[bolum] = Date.now();
     if (bolum === "providers") return this.loadHealthProviders();
     if (bolum === "payments") return this.loadHealthPayments();
+    if (bolum === "seo") return this.loadHealthSeo();
     if (bolum === "errors") return this.loadHealthErrors(this.healthPencere || "24h");
   }
 
@@ -9071,6 +9072,120 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       el.innerHTML = '<p class="health-error">Hata özeti alınamadı: ' +
         this.escapeHtml(err.message || "bilinmeyen hata") + "</p>";
     }
+  }
+
+  // FAZ 3: SEO & Crawler sekmesi. Bot ziyaretleri, sitemap tutarliligi,
+  // IndexNow takibi. Sunucudan gelen her metin escapeHtml ile basilir.
+  async loadHealthSeo(pencere) {
+    const el = document.getElementById("health-seo-body");
+    if (!el) return;
+    this.healthSeoPencere = ["24h", "7d"].includes(pencere) ? pencere : (this.healthSeoPencere || "24h");
+    try {
+      this.renderHealthSeo(el, await API.getHealthSeo(this.healthSeoPencere));
+    } catch (err) {
+      if (this.healthYuklenme) this.healthYuklenme.seo = 0;
+      el.innerHTML = '<p class="health-error">SEO & Crawler raporu alınamadı: ' +
+        this.escapeHtml(err.message || "bilinmeyen hata") + "</p>";
+    }
+  }
+
+  // Epoch saniyesi -> goreli zaman (IndexNow metrikleri epoch tutar).
+  hepoch(sn) {
+    if (!sn) return '<span class="health-muted">—</span>';
+    return this.hgoreli(new Date(Number(sn) * 1000).toISOString());
+  }
+
+  renderHealthSeo(el, d) {
+    const c = d.crawler || {};
+    const pencereBtn = ["24h", "7d"].map(p =>
+      '<button type="button" class="settings-subtab' + (this.healthSeoPencere === p ? " active" : "") +
+      '" onclick="app.loadHealthSeo(\'' + p + '\')">' + (p === "24h" ? "Son 24 Saat" : "Son 7 Gün") + "</button>").join("");
+
+    // Ana motorlarin son gorulmesi: kart seridi. 3 gunden eski = uyari.
+    const motorlar = ["googlebot", "bingbot", "yandexbot"].map(ad => {
+      const kayit = (c.engines_last_seen || []).find(r => r.bot === ad);
+      const son = kayit ? new Date(String(kayit.last_bucket).replace(" ", "T") + "Z").getTime() : null;
+      const eskiMs = son ? Date.now() - son : null;
+      const durum = !son ? "unknown" : (eskiMs > 3 * 86400000 ? "warning" : "healthy");
+      return this.hkart({
+        label: ad, status: durum,
+        value: son ? this.hgoreli(new Date(son).toISOString()) : "Hiç gelmedi",
+        sub: durum === "warning" ? "3 günden uzun süredir uğramadı" : (son ? "son ziyaret" : "30 günlük kayıtta yok")
+      });
+    }).join("");
+
+    const botSatirlari = (c.bots || []).map(b =>
+      "<tr><td>" + this.hesc(b.bot) + "</td><td>" + this.hsayi(b.hits) + "</td><td>" +
+      (b.not_found_hits ? '<span class="is-warning">' + b.not_found_hits + "</span>" : this.hsayi(0)) +
+      "</td><td>" + this.htarih(b.last_bucket) + "</td></tr>").join("");
+
+    const grupSatirlari = (c.path_groups || []).map(g =>
+      "<tr><td>" + this.hesc(g.group) + "</td><td>" + this.hsayi(g.hits) + "</td></tr>").join("");
+
+    const kirikSatirlari = (c.not_found || []).map(k =>
+      "<tr><td><code>" + this.hesc(k.path) + "</code></td><td>" + this.hsayi(k.hits) +
+      "</td><td>" + this.hsayi(k.bots) + "</td></tr>").join("");
+
+    const sm = d.sitemap || {};
+    const b = sm.breakdown || {};
+    const statik = sm.static_file || {};
+    const smRisk = statik.risk
+      ? '<p class="health-lasterr"><strong>⚠ Fosil dosya riski:</strong> ' + this.hesc(statik.risk) + "</p>"
+      : "";
+
+    const inw = d.indexnow || {};
+    const inDurum = inw.fail_7d > 0 && !inw.ok_7d ? "critical" : (inw.fail_7d > 0 ? "warning" : (inw.ok_7d ? "healthy" : "unknown"));
+    const inHatalar = (inw.recent_errors || []).map(e =>
+      '<p class="health-lasterr">' + this.hgoreli(this.htarihIso(e.created_at)) + " · " + this.hesc(e.detail || "") + "</p>").join("");
+
+    el.innerHTML =
+      '<div class="settings-subtabs" style="margin-bottom: 14px;">' + pencereBtn + "</div>" +
+      '<h3 class="health-h3">Arama Motoru Ziyaretleri</h3>' +
+      '<div class="health-grid">' + motorlar + "</div>" +
+      ((c.bots || []).length
+        ? '<div class="health-pgrid">' +
+          '<div class="glass-card"><h4 class="health-h4">Bot Etkinliği</h4><div class="table-responsive"><table class="custom-table health-table">' +
+          "<thead><tr><th>Bot</th><th>İstek</th><th>404</th><th>Son Görülme</th></tr></thead><tbody>" + botSatirlari + "</tbody></table></div></div>" +
+          '<div class="glass-card"><h4 class="health-h4">Gezilen Sayfa Grupları</h4><div class="table-responsive"><table class="custom-table health-table">' +
+          "<thead><tr><th>Grup</th><th>İstek</th></tr></thead><tbody>" + grupSatirlari + "</tbody></table></div></div></div>"
+        : '<p class="health-loading">Bu pencerede bot ziyareti kaydı yok. Kayıt bu sürümle başladı; veriler zamanla birikir.</p>') +
+      (kirikSatirlari
+        ? '<div class="glass-card" style="margin-top: 14px;"><h4 class="health-h4">Botların Gördüğü Kırık Adresler (404)</h4>' +
+          '<p class="health-note">Bir bot bu adreslere istek atıyorsa dışarıda bu adrese verilmiş bağlantı olabilir; yönlendirme fırsatıdır.</p>' +
+          '<div class="table-responsive"><table class="custom-table health-table">' +
+          "<thead><tr><th>Adres</th><th>İstek</th><th>Kaç Bot</th></tr></thead><tbody>" + kirikSatirlari + "</tbody></table></div></div>"
+        : "") +
+      '<h3 class="health-h3" style="margin-top: 20px;">Sitemap Tutarlılığı</h3>' +
+      '<div class="health-grid">' +
+        this.hkart({ label: "Beklenen adres", status: "healthy", value: String(sm.expected_urls ?? "—"), sub: (b.core || 0) + " çekirdek + " + (b.blog_published || 0) + " blog + " + (b.landing_published || 0) + " satış + " + (b.hub || 0) + " vitrin" }) +
+        this.hkart({ label: "Statik sitemap.xml", status: statik.risk ? "warning" : (statik.exists ? "healthy" : "healthy"), value: statik.exists ? (statik.url_count ?? "?") + " adres" : "Dosya yok", sub: statik.exists ? "public/ içinde duruyor" : "risk yok" }) +
+      "</div>" + smRisk +
+      '<p class="health-note">' + this.hesc(sm.note || "") + "</p>" +
+      '<h3 class="health-h3" style="margin-top: 20px;">IndexNow Bildirimleri (7 gün)</h3>' +
+      '<div class="health-grid">' +
+        this.hkart({ label: "Durum", status: inDurum, value: this.hdurum(inDurum).label, sub: "başarı/başarısızlık oranına göre" }) +
+        this.hkart({ label: "Başarılı", status: "healthy", value: String(inw.ok_7d || 0), sub: "son başarı: " + (inw.last_ok_epoch ? "" : "—") }) +
+        this.hkart({ label: "Başarısız", status: inw.fail_7d ? "warning" : "healthy", value: String(inw.fail_7d || 0), sub: "" }) +
+      "</div>" +
+      (inw.last_ok_epoch ? '<p class="health-note">Son başarılı bildirim: ' + this.hepoch(inw.last_ok_epoch) + "</p>" : "") +
+      inHatalar +
+      '<p class="health-foot">' + this.hesc(c.semantics || "") + "</p>";
+  }
+
+  // SQLite 'YYYY-MM-DD HH:MM:SS' -> ISO (hgoreli icin).
+  htarihIso(v) {
+    if (!v) return null;
+    const s = String(v);
+    return s.includes("T") || s.endsWith("Z") ? s : s.replace(" ", "T") + "Z";
+  }
+
+  // Basit sekme karti (renderHealthOverview'daki hkart ile ayni sinif seti).
+  hkart(o) {
+    const dd = this.hdurum(o.status);
+    return '<div class="glass-card health-card ' + dd.cls + '">' +
+      '<span class="health-card-label">' + this.hesc(o.label) + "</span>" +
+      '<span class="health-card-value"><span class="health-dot" aria-hidden="true"></span><span>' + o.value + "</span></span>" +
+      '<span class="health-card-sub">' + (o.sub || "") + "</span></div>";
   }
 
   hesc(v) {

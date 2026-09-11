@@ -324,6 +324,21 @@ async function runMigrations() {
       "max" REAL,
       PRIMARY KEY (bucket, metric, scope)
     );
+
+    -- Sistem Sagligi Faz 3: arama motoru botu ziyaretleri (30 gun, saatlik kova).
+    -- Gizlilik: IP ve ham User-Agent SAKLANMAZ; yalnizca bot adi, sayfa grubu
+    -- ve HTTP durumu. path yalnizca 404'lerde dolar (kirik baglanti tespiti,
+    -- temizlenmis ve kisaltilmis) — bkz. services/crawlerTracker.js
+    CREATE TABLE IF NOT EXISTS crawler_visits (
+      bucket TEXT NOT NULL,
+      bot TEXT NOT NULL,
+      path_group TEXT NOT NULL,
+      status INTEGER NOT NULL DEFAULT 200,
+      path TEXT NOT NULL DEFAULT '',
+      hits INTEGER NOT NULL DEFAULT 1,
+      PRIMARY KEY (bucket, bot, path_group, status, path)
+    );
+    CREATE INDEX IF NOT EXISTS idx_crawler_visits_bucket ON crawler_visits(bucket);
   `);
 
   await dbAsync.exec(`

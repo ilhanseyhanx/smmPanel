@@ -153,6 +153,20 @@ test('sağlık modülleri yalnızca sabit yedek yollarını okur', () => {
   assert.ok(!/readdir|statSync|createReadStream/.test(kaynak), 'beklenmeyen dosya işlemi var');
 });
 
+test('eş zamanlı anlık görüntü istekleri tek ölçümü paylaşır (CPU "Ölçülüyor" takılması)', async () => {
+  // Panel açılışı /overview + /application isteklerini AYNI ANDA atar. Tek
+  // uçuş koruması olmadan ikinci ölçümün CPU deltası ~1ms kalır ve null döner;
+  // önbelleğe son yazan null'lu ölçüm kazanırdı (11 Eyl 2026'da yaşandı).
+  await new Promise(r => setTimeout(r, 50)); // delta için ölçülebilir aralık
+  const [a, b] = await Promise.all([
+    healthMetrics.anlikGoruntu(dbAsync, { taze: true }),
+    healthMetrics.anlikGoruntu(dbAsync, { taze: true })
+  ]);
+  assert.equal(a.collected_at, b.collected_at, 'eş zamanlı istekler iki ayrı ölçüm yaptı');
+  assert.ok(a.server.cpu_percent != null && isFinite(a.server.cpu_percent), 'paralel istekte CPU ölçülemedi (null)');
+  assert.equal(a.server.cpu_percent, b.server.cpu_percent);
+});
+
 // --------------------------------------------------------- puan formulu ----
 
 function ornekSnapshot(over = {}) {

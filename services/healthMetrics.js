@@ -193,11 +193,23 @@ function gitSha() {
 }
 
 // --- Anlik goruntu ---------------------------------------------------------
+// TEK UCUS: panel acilisinda /overview ve /application AYNI ANDA istek atar.
+// Ikisi de onbellegi bos bulup paralel olcum baslatirsa CPU deltasi ikinci
+// okumada ~1ms araliga duser; isletim sistemi sayaclari ~10ms hassasiyetli
+// oldugu icin fark 0 kalir ve CPU null doner ("Olculuyor..." takili kalirdi).
+// Suren bir olcum varsa es zamanli istekler ayni sozu paylasir.
+let olcumSozu = null;
+
 async function anlikGoruntu(dbAsync, { taze = false } = {}) {
   if (!taze && onbellek.veri && Date.now() - onbellek.at < ONBELLEK_MS) {
     return { ...onbellek.veri, cached: true };
   }
+  if (olcumSozu) return olcumSozu;
+  olcumSozu = anlikOlcum(dbAsync).finally(() => { olcumSozu = null; });
+  return olcumSozu;
+}
 
+async function anlikOlcum(dbAsync) {
   const bellek = process.memoryUsage();
   const toplamRam = os.totalmem();
   const bosRam = os.freemem();

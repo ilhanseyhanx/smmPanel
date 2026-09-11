@@ -90,6 +90,27 @@ Kalan kapsam boşluklarından seçildi; kullanıcı ileride kademeli yayınlayac
 - **Birincil:** telegram bot başlatma satın al · **İkincil:** telegram bot start, telegram üye botu, telegram tepki
 - Not: B2B/geliştirici nişi; hacim düşük ama rekabet sıfıra yakın, dönüşüm yüksek olabilir.
 
+## 3. parti: Dijital ürün / oyuncu dikeyi (scripts/seed-landing-pages-dijital.js)
+
+morethanpanel katalog analizinden (morethanpanel-farkli-hizmetler.xlsx) seçilen
+8 yeni dikey. Kategoriler panele eklendikten SONRA script çalıştırılır; her
+sayfa kategorisini adından (regex) kendisi bulur, bulamazsa atlar.
+
+| Sayfa | Birincil kelime | Not |
+|---|---|---|
+| /discord-sunucu-boost-satin-al | discord sunucu boost satın al | Panelde hiç olmayan dikey; TR panellerinde nadir |
+| /twitch-takipci-satin-al | twitch takipçi satın al | Oto-sohbet benzersiz ürün; mevcut Twitch kategorisiyle hemen açılabilir |
+| /pubg-mobile-uc-satin-al | pubg mobile uc satın al | Çok yüksek hacim; teslimat testi şart |
+| /robux-satin-al | robux satın al | Genç kitle; game pass teslim yöntemi sayfada anlatıldı |
+| /canva-pro-satin-al | canva pro satın al | Küçük işletme kitlesiyle çapraz satış |
+| /windows-lisans-satin-al | windows lisans satın al, windows 11 pro key | OEM gri bölge notu sayfada |
+| /steam-oyun-hesabi-satin-al | ucuz steam hesap | Paylaşımlı hesap şeffaflığı sayfada zorunlu tutuldu |
+| /netflix-hesap-satin-al | netflix hesap satın al | En riskli kategori; garanti/kural bloğu sayfada |
+
+NOT: 9. öneri (Google Maps yorumları) için satış sayfası YAZILMADI — sahte
+işletme yorumu tüketici mevzuatına aykırı ve Reklam Kurulu ceza alanı;
+negatif yorum servisleri hiçbir koşulda listelenmemeli.
+
 ## İçerik kuralları (8 Eyl 2026 revizyonundan devam)
 
 - SEO sonucu, sıralama, önerilenlere girme, para kazanma **GARANTİSİ YOK**.

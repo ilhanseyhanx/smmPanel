@@ -1224,7 +1224,10 @@ class SmmApp {
 
     let index = 0;
     const timeAgo = createdAt => {
-      const minutes = Math.max(1, Math.round((Date.now() - new Date(createdAt + 'Z').getTime()) / 60000));
+      const zaman = this.dbDate(createdAt).getTime();
+      // Tarih okunamazsa NaN'li metin ("NaN saat önce") basmak yerine sade kal.
+      if (!Number.isFinite(zaman)) return this.locale === 'en' ? 'just now' : 'az önce';
+      const minutes = Math.max(1, Math.round((Date.now() - zaman) / 60000));
       if (this.locale === 'en') return minutes < 60 ? `${minutes} min ago` : `${Math.round(minutes / 60)} hr ago`;
       return minutes < 60 ? `${minutes} dk önce` : `${Math.round(minutes / 60)} saat önce`;
     };
@@ -5532,7 +5535,7 @@ class SmmApp {
                 <tr>
                   <td style="font-weight: 700;">${this.escapeHtml(u.username)}</td>
                   <td>${this.escapeHtml(u.email)}</td>
-                  <td class="cell-nowrap">${new Date(u.used_at + 'Z').toLocaleString('tr-TR', { dateStyle: 'medium', timeStyle: 'short' })}</td>
+                  <td class="cell-nowrap">${this.dbDate(u.used_at).toLocaleString('tr-TR', { dateStyle: 'medium', timeStyle: 'short' })}</td>
                 </tr>`).join('')}
             </tbody>
           </table>
@@ -5593,7 +5596,7 @@ class SmmApp {
       if (batchesTbody) {
         batchesTbody.innerHTML = stats.batches.length ? stats.batches.map(b => `
           <tr>
-            <td class="cell-nowrap" style="font-size:.82rem;">${new Date(b.started_at + 'Z').toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })}</td>
+            <td class="cell-nowrap" style="font-size:.82rem;">${this.dbDate(b.started_at).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })}</td>
             <td style="font-weight:700;">${this.escapeHtml(b.template_name || '—')}</td>
             <td>${b.total}</td>
             <td style="color: var(--success); font-weight:700;">${b.sent}</td>
@@ -8466,6 +8469,16 @@ print(sonuc.get("error") or sonuc.get("order"))`;
 
   escapeHtml(value) {
     return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+  }
+
+  // Veritabani tarihini Date'e cevirir. API yanitlarindaki "YYYY-MM-DD
+  // HH:MM:SS" metinleri api.js'te zaten ISO-UTC'ye ("...T...Z") cevrilir;
+  // buradaki cagri yerleri eskiden kendisi 'Z' ekliyordu ve cift 'Z'
+  // gecersiz tarih (NaN) uretiyordu. Cevrilmemis ham bicim gelirse yine
+  // UTC kabul edilir.
+  dbDate(value) {
+    const s = String(value || '');
+    return new Date(/^\d{4}-\d{2}-\d{2} /.test(s) ? s.replace(' ', 'T') + 'Z' : s);
   }
 
   // Sipariş hedefi kullanıcı girdisidir: yalnızca http(s) adresleri tıklanabilir yapılır,

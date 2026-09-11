@@ -26,6 +26,14 @@ const SAYFALAR = {
     title: 'Hizmetler ve Güncel Fiyat Listesi | Jet SMM Panel',
     description: 'Tüm sosyal medya hizmetlerinin güncel fiyat listesi. Instagram, TikTok ve YouTube servislerini platform ile ülkeye göre filtrele, birim fiyatları karşılaştır.'
   },
+  // Satis sayfalari vitrini: yayindaki tum landing page'lerin kart listesi.
+  // Sayfalar eskiden tek tek alt bilgiye baglaniyordu (link ciftligi gorunumu);
+  // artik alt bilgiden yalnizca bu sayfaya gecilir.
+  'hizmet-sayfalari': {
+    view: 'view-hizmet-sayfalari',
+    title: 'Hizmet Sayfaları - Platforma Göre Satın Al | Jet SMM Panel',
+    description: 'Instagram, TikTok, YouTube ve diğer platformlar için takipçi, beğeni ve izlenme satın alma sayfaları. Platformunu seç, siparişini dakikalar içinde başlat.'
+  },
   blog: {
     view: 'view-blog',
     title: 'Sosyal Medya Büyüme Rehberi - Blog | Jet SMM Panel',

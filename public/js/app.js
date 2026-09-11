@@ -244,7 +244,7 @@ function promptDialog(message, options = {}) {
 // diye anlasiliyordu; sunucu artik yalnizca aktif gorunumu gonderdigi icin
 // (SEO ayiklamasi) o yontem yaniltici oldu.
 const SPA_ROTALARI = [
-  'landing', 'services', 'blog', 'blog-detail', 'landing-page', 'smm-panel-api',
+  'landing', 'services', 'blog', 'blog-detail', 'landing-page', 'hizmet-sayfalari', 'smm-panel-api',
   'about', 'terms', 'privacy', 'refund', 'register', 'auth', 'tickets',
   'orders', 'new-order', 'add-funds', 'profile', 'admin', 'not-found',
   'payment-success', 'payment-failed', 'reset-password', 'verify-email'
@@ -378,7 +378,7 @@ class SmmApp {
     });
     const english = {
       'Giriş Yap': 'Login', 'Kayıt Ol': 'Register', 'Çıkış Yap': 'Logout', 'Ana Sayfa': 'Home',
-      'Hizmetler': 'Services', 'Sipariş Ver': 'Order Now', 'Siparişlerim': 'My Orders', 'Bakiye Yükle': 'Add Funds',
+      'Hizmetler': 'Services', 'Hizmet Sayfaları': 'Service Pages', 'Sipariş Ver': 'Order Now', 'Siparişlerim': 'My Orders', 'Bakiye Yükle': 'Add Funds',
       'Destek': 'Support', 'Admin Panel': 'Admin Panel', 'Tüm Hizmetler': 'All Services', 'Diğer': 'Other',
       'Servis Adı': 'Service Name', '1000 Adet Fiyatı': 'Price per 1000', 'Min / Max Limit': 'Min / Max Limit',
       'Garantili': 'Guaranteed', 'İşlem': 'Action', 'İşlemler': 'Actions', 'Durum': 'Status', 'Miktar': 'Quantity',

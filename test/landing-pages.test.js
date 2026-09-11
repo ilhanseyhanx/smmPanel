@@ -73,9 +73,24 @@ test('taslak satış sayfası /services adresine yönlenir, yayınlanınca sitem
   assert.match(llms, /\/instagram-takipci-satin-al\)/);
 });
 
-test('satış sayfası bağlantıları alt bilgiye ve hizmet listesine basılır', async () => {
+test('satış sayfası bağlantıları vitrine ve hizmet listesine basılır, alt bilgide tek bağlantı kalır', async () => {
+  // Vitrin sayfası: kartlar sunucu tarafında basılır, kendi meta bilgisi olur.
+  const vitrin = await request(app).get('/hizmet-sayfalari');
+  assert.equal(vitrin.status, 200);
+  assert.match(vitrin.text, /<title>Hizmet Sayfaları - /, 'vitrin başlığı yanlış');
+  assert.match(vitrin.text, /<link rel="canonical" href="https:\/\/jetsmmpanel\.com\/hizmet-sayfalari">/, 'vitrin canonical yanlış');
+  assert.match(vitrin.text, /id="landing-hub-root"[^>]*>[\s\S]*class="lp-hub-card"[^>]*href="\/instagram-takipci-satin-al"/, 'vitrin kartı yok');
+  // Alt bilgi: sayfalar tek tek listelenmez (link çiftliği görünümü), yalnızca
+  // vitrine giden tek bağlantı durur.
   const anaSayfa = (await request(app).get('/')).text;
-  assert.match(anaSayfa, /id="footer-landing-pages"[^>]*>[\s\S]*href="\/instagram-takipci-satin-al"/, 'alt bilgi bağlantısı yok');
+  const altBilgi = anaSayfa.slice(anaSayfa.indexOf('<footer class="neo-footer">'));
+  assert.match(altBilgi, /href="\/hizmet-sayfalari"/, 'alt bilgide vitrin bağlantısı yok');
+  assert.ok(!/id="footer-landing-pages"/.test(anaSayfa), 'eski alt bilgi bloğu kalkmalı');
+  assert.ok(!/href="\/instagram-takipci-satin-al"/.test(altBilgi), 'alt bilgide tekil satış linki kalmamalı');
+  // Vitrin görünümü yalnızca kendi adresinde gönderilir (SEO ayıklaması).
+  assert.ok(!/id="view-hizmet-sayfalari"/.test(anaSayfa), 'vitrin görünümü diğer adreslerden ayıklanmalı');
+  const sitemap = (await request(app).get('/sitemap.xml')).text;
+  assert.match(sitemap, /<loc>https:\/\/jetsmmpanel\.com\/hizmet-sayfalari<\/loc>/, 'vitrin sitemap\'te yok');
   const blog = (await request(app).get('/blog')).text;
   assert.match(blog, /id="blog-landing-aside"[^>]*>[\s\S]*class="blog-aside-btn"[^>]*>[\s\S]*Instagram Takipçi Satın Al/, 'blog sağ sütunu yok');
 });

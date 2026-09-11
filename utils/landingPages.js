@@ -30,7 +30,7 @@ const PLATFORMS = {
 // Kok adresli slug'lar SPA rotalari ve sistem dosyalariyla cakismamali.
 const RESERVED_SLUGS = new Set([
   ...Object.keys(SAYFALAR).filter(Boolean),
-  'blog', 'api', 'admin', 'landing-page', 'not-found', 'unsubscribe', 'sitemap.xml', 'robots.txt',
+  'blog', 'api', 'admin', 'landing-page', 'hizmet-sayfalari', 'not-found', 'unsubscribe', 'sitemap.xml', 'robots.txt',
   'llms.txt', 'llms-full.txt', 'bingsiteauth.xml', 'css', 'js', 'favicon.ico', 'favicon.svg',
   'og-image.png', 'site.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'
 ]);
@@ -411,10 +411,13 @@ function buildLandingJsonLd({ page, services, base, siteName = 'Jet SMM Panel', 
 
 /**
  * Satis sayfasi baglanti listeleri (SSR).
- *  - footer: alt bilgi metin baglantilari
- *  - aside : blog listesinin sag sutunu (baslik + dugme listesi)
+ *  - hub  : /hizmet-sayfalari vitrin sayfasindaki kart listesi. Sayfalar
+ *           eskiden tek tek alt bilgiye basiliyordu; liste buyudukce footer
+ *           bir link ciftligine donustu. Artik alt bilgide yalnizca bu
+ *           vitrine giden TEK baglanti durur, ic baglanti akisi buradan surer.
+ *  - aside: blog listesinin sag sutunu (baslik + dugme listesi)
  */
-function landingLinksHtml(pages, { variant = 'footer' } = {}) {
+function landingLinksHtml(pages, { variant = 'hub' } = {}) {
   if (!pages.length) return '';
   const link = (p, cls) => `<a href="/${esc(p.slug)}"${cls ? ` class="${cls}"` : ''} onclick="app.openLandingPage('${esc(p.slug)}');return false;">`
     + (cls ? `<i class="${esc(p.platform_icon)}" aria-hidden="true"></i> ` : '') + `${esc(p.title)}</a>`;
@@ -443,7 +446,13 @@ function landingLinksHtml(pages, { variant = 'footer' } = {}) {
       + `<p class="blog-aside-lead">Takipçi, beğeni ve izlenme paketlerine platforma göre ulaşın.</p>`
       + listeler + sayfalama;
   }
-  return pages.map(p => link(p)).join('');
+  return pages.map(p =>
+    `<a class="lp-hub-card" href="/${esc(p.slug)}" onclick="app.openLandingPage('${esc(p.slug)}');return false;">`
+    + `<span class="lp-hub-icon"><i class="${esc(p.platform_icon)}" aria-hidden="true"></i></span>`
+    + `<span class="lp-hub-text"><span class="lp-hub-title">${esc(p.title)}</span>`
+    + (p.subtitle ? `<span class="lp-hub-sub">${esc(p.subtitle)}</span>` : '')
+    + '</span>'
+    + `<i class="fa-solid fa-arrow-right lp-hub-arrow" aria-hidden="true"></i></a>`).join('');
 }
 
 /**

@@ -114,7 +114,8 @@ const ICERIK_GORUNUMLERI = [
   'view-terms',     // kullanim sartlari
   'view-privacy',   // gizlilik + KVKK
   'view-refund',    // iade politikasi
-  'view-smm-panel-api'   // API dokumantasyonu (tam teknik metin)
+  'view-smm-panel-api',  // API dokumantasyonu (tam teknik metin)
+  'view-hizmet-sayfalari' // satis sayfalari vitrini (kart listesi yalnizca kendi adresinde)
 ];
 
 /**

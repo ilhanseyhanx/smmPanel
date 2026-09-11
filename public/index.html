@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260911a">
+  <link rel="stylesheet" href="/css/style.css?v=20260911b">
 </head>
 <body>
 
@@ -1112,6 +1112,19 @@ Canceled     iptal edildi</pre>
          /api/landing-pages/:slug ile aynı isaretleme yeniden çizilir. -->
     <section id="view-landing-page" class="app-view" style="display: none;">
       <div class="main-content lp-page" id="landing-page-root"></div>
+    </section>
+
+    <!-- 6.7b. HİZMET SAYFALARI VİTRİNİ (/hizmet-sayfalari): yayındaki satış
+         sayfalarının kart listesi. Kartlar sunucu tarafında basılır
+         (server.js applyLandingLinks); bölüm SEO ayıklaması gereği yalnızca
+         kendi adresinde gönderilir (utils/gatedMarkup.js). Alt bilgi artık
+         sayfaları tek tek değil, yalnızca bu vitrini bağlar. -->
+    <section id="view-hizmet-sayfalari" class="app-view" style="display: none;">
+      <div class="main-content lp-hub" style="max-width: 960px;">
+        <h1>🛒 Hizmet Sayfaları</h1>
+        <p class="lp-hub-lead">Takipçi, beğeni ve izlenme paketlerine platforma göre ulaşın. Sayfayı seçin, güncel fiyatları görün ve siparişinizi dakikalar içinde başlatın.</p>
+        <div class="lp-hub-grid" id="landing-hub-root"></div>
+      </div>
     </section>
 
     <!-- 6.8. SPLIT-SCREEN AUTH VIEW (MATCHING IMAGE DESIGN) -->
@@ -3305,9 +3318,7 @@ Canceled     iptal edildi</pre>
   <footer class="neo-footer">
     <div class="brand-wordmark">SMM<span>JET</span></div>
     <p>Hızlı. Güvenli. Ölçülebilir.<br>Sosyal büyümede yeni standart.</p>
-    <nav class="footer-links" aria-label="Alt bilgi menüsü"><a href="/about" onclick="app.navigate('about');return false;">Hakkımızda</a><a href="/services" onclick="app.navigate('services');return false;">Hizmetler</a><a href="/blog" onclick="app.navigate('blog');return false;">Blog</a><a href="/smm-panel-api" onclick="app.navigate('smm-panel-api');return false;">API</a><a href="/tickets" onclick="app.navigate('tickets');return false;">Destek</a><a href="/terms" onclick="app.navigate('terms');return false;">Kullanım Şartları</a><a href="/privacy" onclick="app.navigate('privacy');return false;">Gizlilik &amp; KVKK</a><a href="/refund" onclick="app.navigate('refund');return false;">İade Politikası</a></nav>
-    <!-- Satış sayfaları bağlantıları: sunucu tarafında doldurulur (server.js applyLandingLinks). -->
-    <nav class="footer-links footer-links-pages" id="footer-landing-pages"></nav>
+    <nav class="footer-links" aria-label="Alt bilgi menüsü"><a href="/about" onclick="app.navigate('about');return false;">Hakkımızda</a><a href="/services" onclick="app.navigate('services');return false;">Hizmetler</a><a href="/hizmet-sayfalari" onclick="app.navigate('hizmet-sayfalari');return false;">Hizmet Sayfaları</a><a href="/blog" onclick="app.navigate('blog');return false;">Blog</a><a href="/smm-panel-api" onclick="app.navigate('smm-panel-api');return false;">API</a><a href="/tickets" onclick="app.navigate('tickets');return false;">Destek</a><a href="/terms" onclick="app.navigate('terms');return false;">Kullanım Şartları</a><a href="/privacy" onclick="app.navigate('privacy');return false;">Gizlilik &amp; KVKK</a><a href="/refund" onclick="app.navigate('refund');return false;">İade Politikası</a></nav>
     <!-- Sosyal profiller: admin panelde adres girilen kanallar app.js
          tarafindan eklenir; Telegram varsayilan olarak burada durur ki
          JavaScript calismadan da (arama motoru botlari) gorunsun. -->
@@ -4215,7 +4226,7 @@ Canceled     iptal edildi</pre>
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260911a" defer></script>
-  <script src="/js/app.js?v=20260911a" defer></script>
+  <script src="/js/api.js?v=20260911b" defer></script>
+  <script src="/js/app.js?v=20260911b" defer></script>
 </body>
 </html>

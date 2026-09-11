@@ -180,6 +180,12 @@ app.get('/sitemap.xml', async (req, res) => {
     for (const sayfa of satisSayfalari) {
       urls.push({ loc: `${base}/${encodeURIComponent(sayfa.slug)}`, priority: '0.9', changefreq: 'weekly', lastmod: sayfa.lastmod || undefined });
     }
+    // Vitrin sayfasi: yayindaki tum satis sayfalarini listeler (alt bilgiden
+    // tek baglantiyla ulasilir); en guncel satis sayfasinin tarihi vekildir.
+    if (satisSayfalari.length) {
+      const sonSatis = satisSayfalari.reduce((max, s) => (s.lastmod > max ? s.lastmod : max), '');
+      urls.push({ loc: `${base}/hizmet-sayfalari`, priority: '0.8', changefreq: 'weekly', lastmod: sonSatis || undefined });
+    }
     // Sik degisen sayfalara lastmod: en guncel yazinin tarihi makul bir
     // vekildir (katalog ve blog listesi en gec o gun degismistir).
     const sonYazi = posts.reduce((max, p) => {
@@ -542,7 +548,7 @@ app.get('/blog/:slug', async (req, res) => {
       .replace('<section id="view-landing" class="app-view neo-landing">', '<section id="view-landing" class="app-view neo-landing" style="display: none;">')
       .replace('<section id="view-blog-detail" class="app-view" style="display: none;">', '<section id="view-blog-detail" class="app-view" style="display: block;">')
       .replace(/(<span class="badge badge-completed mb-15" id="blog-detail-category">)[\s\S]*?(<\/span>)/, `$1${escapeAttr(post.category || 'Blog')}$2`)
-      .replace(/(<h1 id="blog-detail-title"[^>]*>)[\s\S]*?(<\/h1>)/, `$1${escapeAttr(post.title)}$2`)
+      .replace(/(<h1 id="blog-detail-title"[^>]*>)[\s\S]*?(<\/h1>)/, `$1${escapeAttr(post.title)}$2`)
       // Gorunur kirinti yolunun son halkasi (BreadcrumbList semasiyla ayni metin).
       .replace('<span id="blog-detail-crumb">Yazı</span>', `<span id="blog-detail-crumb">${escapeAttr(post.title)}</span>`)
       // tarihMetni parcalari tek tek escape edildi; yazar baglantisi HTML olarak kalmali.
@@ -1121,34 +1127,39 @@ async function buildBlogSsr(base) {
 }
 app.set('invalidateBlogSsrCache', () => { blogSsrCache = { at: 0, cards: '', jsonLd: '' }; });
 
-// SATIS SAYFALARI: alt bilgi ve hizmet listesindeki baglanti seridi her
-// sayfaya sunucu tarafinda basilir (ic baglanti agi — botlar JS beklemeden
-// gorur). 60 sn onbellek; admin kaydedince aninda tazelenir.
-let landingLinksCache = { at: 0, footer: '', aside: '' };
+// SATIS SAYFALARI: baglanti seritleri sunucu tarafinda basilir (ic baglanti
+// agi — botlar JS beklemeden gorur). Sayfalar eskiden tek tek alt bilgiye
+// basiliyordu; liste buyudukce footer bir link ciftligine donustu. Artik
+// alt bilgide yalnizca /hizmet-sayfalari vitrinine giden tek baglanti durur;
+// kart listesi o sayfanin govdesine (landing-hub-root) basilir.
+// 60 sn onbellek; admin kaydedince aninda tazelenir.
+let landingLinksCache = { at: 0, hub: '', aside: '' };
 async function landingLinksParts() {
   if (Date.now() - landingLinksCache.at < 60000) return landingLinksCache;
-  let footer = '';
+  let hub = '';
   let aside = '';
   try {
     const { dbAsync } = require('./config/database');
     const { listPublished, landingLinksHtml } = require('./utils/landingPages');
     const pages = await listPublished(dbAsync);
-    footer = landingLinksHtml(pages, { variant: 'footer' });
+    hub = landingLinksHtml(pages, { variant: 'hub' });
     aside = landingLinksHtml(pages, { variant: 'aside' });
   } catch { /* DB hazir degilse serit bos kalir */ }
-  landingLinksCache = { at: Date.now(), footer, aside };
+  landingLinksCache = { at: Date.now(), hub, aside };
   return landingLinksCache;
 }
 async function applyLandingLinks(html) {
   const parts = await landingLinksParts();
   return html
-    .replace('<nav class="footer-links footer-links-pages" id="footer-landing-pages"></nav>',
-      parts.footer ? `<nav class="footer-links footer-links-pages" id="footer-landing-pages" aria-label="Hizmet sayfaları">${parts.footer}</nav>` : '')
+    // Vitrin sayfasi govdesi: yalnizca /hizmet-sayfalari adresinde bulunur
+    // (SEO ayiklamasi diger adreslerde gorunumu tamamen cikarir).
+    .replace('<div class="lp-hub-grid" id="landing-hub-root"></div>',
+      parts.hub ? `<div class="lp-hub-grid" id="landing-hub-root">${parts.hub}</div>` : '')
     // Blog listesinin sag sutunu: satis sayfalari dugme listesi.
     .replace('<aside class="blog-aside" id="blog-landing-aside"></aside>',
       parts.aside ? `<aside class="blog-aside" id="blog-landing-aside" aria-label="Hizmet sayfaları">${parts.aside}</aside>` : '');
 }
-app.set('invalidateLandingCache', () => { landingLinksCache = { at: 0, footer: '', aside: '' }; });
+app.set('invalidateLandingCache', () => { landingLinksCache = { at: 0, hub: '', aside: '' }; });
 
 // Satis sayfasi SSR: /instagram-takipci-satin-al gibi kok adresler. Bilinen
 // SPA rotalari ve sistem dosyalari yukaridaki tabloda oldugu icin buraya
@@ -1282,7 +1293,7 @@ app.use(async (req, res) => {
 
     // Panel ici sayfalar ve 404: bot gordugu sey bos iskelet oldugu icin
     // indekslenmemeli, yoksa "benzer yinelenen icerik" uyarisi uretirler.
-    if (sayfa.noindex) html = html.replace('</head>', '  <meta name="robots" content="noindex, follow">\n</head>');
+    if (sayfa.noindex) html = html.replace('</head>', '  <meta name="robots" content="noindex, follow">\n</head>');
 
     // 404 sayfasinin canonical'i ana sayfayi gostermemeli: var olmayan bir
     // adres ana sayfanin kopyasi degildir. Etiket tamamen kaldirilir

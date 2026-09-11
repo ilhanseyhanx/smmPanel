@@ -2856,6 +2856,67 @@ Canceled     iptal edildi</pre>
               </div>
               <button class="btn btn-primary btn-sm" onclick="app.showAddLandingPageModal()"><i class="fa-solid fa-plus"></i> Yeni Satış Sayfası</button>
             </div>
+
+            <!-- Özet kartlar: sayfa envanteri tek bakışta -->
+            <div class="stats-grid mb-20">
+              <div class="glass-card stat-card">
+                <div class="stat-icon"><i class="fa-solid fa-store"></i></div>
+                <div>
+                  <div class="stat-val" id="lp-stat-total">0</div>
+                  <div class="stat-lbl">Toplam Sayfa</div>
+                </div>
+              </div>
+              <div class="glass-card stat-card">
+                <div class="stat-icon cyan"><i class="fa-solid fa-globe"></i></div>
+                <div>
+                  <div class="stat-val" id="lp-stat-published">0</div>
+                  <div class="stat-lbl">Yayında / Taslak</div>
+                </div>
+              </div>
+              <div class="glass-card stat-card">
+                <div class="stat-icon"><i class="fa-solid fa-eye"></i></div>
+                <div>
+                  <div class="stat-val" id="lp-stat-views">0</div>
+                  <div class="stat-lbl">Toplam Görüntülenme</div>
+                </div>
+              </div>
+              <div class="glass-card stat-card">
+                <div class="stat-icon cyan"><i class="fa-solid fa-trophy"></i></div>
+                <div>
+                  <div class="stat-val" id="lp-stat-top" style="font-size: 1rem; line-height: 1.3;">—</div>
+                  <div class="stat-lbl">En Çok Görüntülenen</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Kapsam boşlukları: aktif servisi olup hiçbir sayfada listelenmeyen
+                 kategoriler. Yeni sayfa fikri doğrudan buradan açılır. -->
+            <div class="glass-card mb-20" id="lp-admin-gaps" style="display: none;">
+              <h3 style="margin: 0 0 6px; font-size: 1.05rem;">💡 Sayfası Olmayan Kategoriler</h3>
+              <p style="color: var(--text-muted); font-size: .85rem; margin: 0 0 12px;">Aktif servisi olduğu hâlde hiçbir satış sayfasında listelenmeyen kategoriler. Birine tıklarsan o kategori seçili olarak yeni sayfa editörü açılır.</p>
+              <div id="lp-admin-gaps-list" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+            </div>
+
+            <!-- Araç çubuğu: arama + filtre + sıralama -->
+            <div class="glass-card mb-20" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 14px 16px;">
+              <input type="text" id="lp-admin-search" class="form-control" style="max-width: 240px;" placeholder="🔍 Başlık veya adres ara..." oninput="app.renderAdminLandingPages()">
+              <select id="lp-admin-filter-platform" class="form-control" style="max-width: 190px;" onchange="app.renderAdminLandingPages()">
+                <option value="">Tüm Platformlar</option>
+              </select>
+              <select id="lp-admin-filter-status" class="form-control" style="max-width: 150px;" onchange="app.renderAdminLandingPages()">
+                <option value="">Tüm Durumlar</option>
+                <option value="published">Yayında</option>
+                <option value="draft">Taslak</option>
+              </select>
+              <select id="lp-admin-sort" class="form-control" style="max-width: 220px;" onchange="app.renderAdminLandingPages()">
+                <option value="newest">Sıralama: En Yeni</option>
+                <option value="views">Sıralama: Görüntülenme</option>
+                <option value="title">Sıralama: Başlık (A→Z)</option>
+                <option value="updated">Sıralama: Son Güncellenen</option>
+              </select>
+              <small id="lp-admin-count" style="color: var(--text-dim); margin-left: auto;"></small>
+            </div>
+
             <div class="glass-card">
               <div class="table-responsive">
                 <table class="custom-table">
@@ -2868,6 +2929,7 @@ Canceled     iptal edildi</pre>
                       <th scope="col">Kategori</th>
                       <th scope="col">Durum</th>
                       <th scope="col">Görüntülenme</th>
+                      <th scope="col">Güncellendi</th>
                       <th scope="col" style="text-align: right;">İşlem</th>
                     </tr>
                   </thead>

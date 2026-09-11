@@ -7999,28 +7999,126 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       const res = await API.getAdminLandingPages();
       this.adminLandingPages = res.pages || [];
       this.lpPlatforms = res.platforms || {};
-      if (!this.adminLandingPages.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center" style="padding: 28px; color: var(--text-dim);">Henüz satış sayfası yok. "Yeni Satış Sayfası" ile ilkini oluştur.</td></tr>';
-        return;
-      }
-      tbody.innerHTML = this.adminLandingPages.map(p => {
-        const platform = this.lpPlatforms[p.platform_key] || { label: p.platform_key, icon: 'fa-solid fa-layer-group' };
-        const catNames = (p.category_ids || []).map(id => this.localizedName((this.allCategories || []).find(c => c.id === id)) || `#${id}`);
-        return `<tr>
-          <td>#${p.id}</td>
-          <td style="font-weight: 600;">${this.escapeHtml(p.title_tr)}<small style="display: block; color: var(--text-dim);">${this.escapeHtml(p.title_en || '')}</small></td>
-          <td><code style="font-size: .8rem;">/${this.escapeHtml(p.slug)}</code></td>
-          <td><i class="${this.escapeHtml(platform.icon)}"></i> ${this.escapeHtml(platform.label)}</td>
-          <td style="font-size: .8rem; max-width: 220px;" title="${this.escapeHtml(catNames.join(', '))}">${this.escapeHtml(catNames.slice(0, 2).join(', '))}${catNames.length > 2 ? ` +${catNames.length - 2}` : ''}</td>
-          <td><span class="badge ${p.status === 'published' ? 'badge-completed' : 'badge-pending'}">${p.status === 'published' ? 'Yayında' : 'Taslak'}</span></td>
-          <td>${Number(p.views || 0).toLocaleString('tr-TR')}</td>
-          <td style="text-align: right; white-space: nowrap;">
-            ${p.status === 'published' ? `<a class="btn btn-outline btn-sm" href="/${this.escapeHtml(p.slug)}" target="_blank" rel="noopener" title="Sayfayı aç"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>` : ''}
-            <button class="btn btn-cyan btn-sm" onclick="app.showEditLandingPageModal(${p.id})"><i class="fa-solid fa-pen"></i> Düzenle</button>
-            <button class="btn btn-outline btn-sm" style="color: var(--danger);" onclick="app.deleteAdminLandingPage(${p.id})"><i class="fa-solid fa-trash"></i></button>
-          </td>
-        </tr>`;
-      }).join('');
+      // Katalog yuklu degilse kategori adlari ve bosluk analizi bos kalirdi.
+      if (!this.allCategories?.length) { try { await this.loadServicesData(); } catch {} }
+      this.renderLpAdminPlatformFilter();
+      this.renderLpAdminStats();
+      this.renderLpAdminGaps();
+      this.renderAdminLandingPages();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  // Platform filtresi: yalnizca en az bir sayfada kullanilan platformlar listelenir.
+  renderLpAdminPlatformFilter() {
+    const select = document.getElementById('lp-admin-filter-platform');
+    if (!select) return;
+    const secili = select.value;
+    const kullanilan = [...new Set((this.adminLandingPages || []).map(p => p.platform_key))];
+    select.innerHTML = '<option value="">Tüm Platformlar</option>' + kullanilan.map(key => {
+      const p = this.lpPlatforms[key] || { label: key };
+      return `<option value="${this.escapeHtml(key)}" ${key === secili ? 'selected' : ''}>${this.escapeHtml(p.label)}</option>`;
+    }).join('');
+  }
+
+  renderLpAdminStats() {
+    const pages = this.adminLandingPages || [];
+    const yayinda = pages.filter(p => p.status === 'published');
+    const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+    set('lp-stat-total', pages.length.toLocaleString('tr-TR'));
+    set('lp-stat-published', `${yayinda.length} / ${pages.length - yayinda.length}`);
+    set('lp-stat-views', pages.reduce((sum, p) => sum + Number(p.views || 0), 0).toLocaleString('tr-TR'));
+    const top = [...pages].sort((a, b) => Number(b.views || 0) - Number(a.views || 0))[0];
+    set('lp-stat-top', top ? `${top.title_tr} (${Number(top.views || 0).toLocaleString('tr-TR')})` : '—');
+  }
+
+  // Kapsam boslugu: aktif servisi olan ama hicbir sayfada listelenmeyen
+  // kategoriler. Yeni sayfa fikirleri buradan tek tikla editore tasinir.
+  renderLpAdminGaps() {
+    const card = document.getElementById('lp-admin-gaps');
+    const list = document.getElementById('lp-admin-gaps-list');
+    if (!card || !list) return;
+    const kapsanan = new Set((this.adminLandingPages || []).flatMap(p => p.category_ids || []));
+    const acik = (this.allCategories || []).filter(c =>
+      !kapsanan.has(c.id) && (this.allServices || []).some(s => s.category_id === c.id));
+    if (!acik.length) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+    list.innerHTML = acik.map(c => {
+      const adet = (this.allServices || []).filter(s => s.category_id === c.id).length;
+      const grup = this.lpPlatformGroupOf(`${c.name_tr || ''} ${c.name_en || ''} ${c.name || ''}`);
+      return `<button type="button" class="btn btn-outline btn-sm" onclick="app.showAddLandingPageModal(${c.id})" title="Bu kategori seçili yeni sayfa aç">
+        <i class="${this.escapeHtml(grup.icon)}"></i> ${this.escapeHtml(c.name_tr || c.name)} <small style="opacity:.7;">(${adet} servis)</small></button>`;
+    }).join('');
+  }
+
+  renderAdminLandingPages() {
+    const tbody = document.getElementById('admin-landing-pages-tbody');
+    if (!tbody) return;
+    const pages = this.adminLandingPages || [];
+    if (!pages.length) {
+      tbody.innerHTML = '<tr><td colspan="9" class="text-center" style="padding: 28px; color: var(--text-dim);">Henüz satış sayfası yok. "Yeni Satış Sayfası" ile ilkini oluştur.</td></tr>';
+      const countEl0 = document.getElementById('lp-admin-count');
+      if (countEl0) countEl0.textContent = '';
+      return;
+    }
+
+    const q = (document.getElementById('lp-admin-search')?.value || '').trim().toLowerCase();
+    const platform = document.getElementById('lp-admin-filter-platform')?.value || '';
+    const durum = document.getElementById('lp-admin-filter-status')?.value || '';
+    const sirala = document.getElementById('lp-admin-sort')?.value || 'newest';
+
+    let liste = pages.filter(p =>
+      (!q || `${p.title_tr || ''} ${p.title_en || ''} ${p.slug}`.toLowerCase().includes(q))
+      && (!platform || p.platform_key === platform)
+      && (!durum || p.status === durum));
+    liste = [...liste].sort((a, b) => {
+      if (sirala === 'views') return Number(b.views || 0) - Number(a.views || 0);
+      if (sirala === 'title') return String(a.title_tr || '').localeCompare(String(b.title_tr || ''), 'tr');
+      if (sirala === 'updated') return String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
+      return b.id - a.id; // newest
+    });
+
+    const countEl = document.getElementById('lp-admin-count');
+    if (countEl) countEl.textContent = liste.length === pages.length ? `${pages.length} sayfa` : `${liste.length} / ${pages.length} sayfa`;
+
+    if (!liste.length) {
+      tbody.innerHTML = '<tr><td colspan="9" class="text-center" style="padding: 28px; color: var(--text-dim);">Filtrelere uyan sayfa yok.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = liste.map(p => {
+      const platformBilgi = this.lpPlatforms[p.platform_key] || { label: p.platform_key, icon: 'fa-solid fa-layer-group' };
+      const catNames = (p.category_ids || []).map(id => this.localizedName((this.allCategories || []).find(c => c.id === id)) || `#${id}`);
+      const guncel = p.updated_at ? this.dbDate(p.updated_at).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' }) : '—';
+      const yayinda = p.status === 'published';
+      return `<tr>
+        <td>#${p.id}</td>
+        <td style="font-weight: 600;">${this.escapeHtml(p.title_tr)}<small style="display: block; color: var(--text-dim);">${this.escapeHtml(p.title_en || '')}</small></td>
+        <td><code style="font-size: .8rem;">/${this.escapeHtml(p.slug)}</code></td>
+        <td><i class="${this.escapeHtml(platformBilgi.icon)}"></i> ${this.escapeHtml(platformBilgi.label)}</td>
+        <td style="font-size: .8rem; max-width: 220px;" title="${this.escapeHtml(catNames.join(', '))}">${this.escapeHtml(catNames.slice(0, 2).join(', '))}${catNames.length > 2 ? ` +${catNames.length - 2}` : ''}</td>
+        <td><span class="badge ${yayinda ? 'badge-completed' : 'badge-pending'}">${yayinda ? 'Yayında' : 'Taslak'}</span></td>
+        <td>${Number(p.views || 0).toLocaleString('tr-TR')}</td>
+        <td style="font-size: .8rem; white-space: nowrap;">${guncel}</td>
+        <td style="text-align: right; white-space: nowrap;">
+          ${yayinda ? `<a class="btn btn-outline btn-sm" href="/${this.escapeHtml(p.slug)}" target="_blank" rel="noopener" title="Sayfayı aç"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>` : ''}
+          <button class="btn btn-outline btn-sm" onclick="app.quickToggleLandingPageStatus(${p.id})" title="${yayinda ? 'Taslağa çek' : 'Yayına al'}"><i class="fa-solid ${yayinda ? 'fa-box-archive' : 'fa-rocket'}"></i></button>
+          <button class="btn btn-cyan btn-sm" onclick="app.showEditLandingPageModal(${p.id})"><i class="fa-solid fa-pen"></i> Düzenle</button>
+          <button class="btn btn-outline btn-sm" style="color: var(--danger);" onclick="app.deleteAdminLandingPage(${p.id})"><i class="fa-solid fa-trash"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Editoru acmadan tek tikla yayina alma / taslaga cekme.
+  async quickToggleLandingPageStatus(id) {
+    const page = (this.adminLandingPages || []).find(p => p.id === id);
+    if (!page) return;
+    const yeni = page.status === 'published' ? 'draft' : 'published';
+    try {
+      await API.updateAdminLandingPage(id, { status: yeni });
+      showToast(yeni === 'published' ? `"${page.title_tr}" yayına alındı.` : `"${page.title_tr}" taslağa çekildi.`, 'success');
+      await this.loadAdminLandingPages();
     } catch (err) {
       showToast(err.message, 'error');
     }
@@ -8140,14 +8238,26 @@ print(sonuc.get("error") or sonuc.get("order"))`;
     try { this.currentAdminBlogPosts = (await API.getAdminBlogPosts()).posts || []; } catch {}
   }
 
-  async showAddLandingPageModal() {
+  // presetCategoryId: "Sayfası Olmayan Kategoriler" cipinden gelindiyse o
+  // kategori seçili, platform da kategori adından tahmin edilmiş açılır.
+  async showAddLandingPageModal(presetCategoryId = null) {
     await this.refreshLpPickerSources();
     document.querySelector('#modal-landing-page form')?.reset();
     document.getElementById('lp-input-id').value = '';
-    document.getElementById('lp-input-platform').innerHTML = this.lpPlatformOptionsHtml('instagram');
+    let platform = 'instagram';
+    this.lpSelectedCategoryIds = new Set();
+    if (presetCategoryId) {
+      const kategori = (this.allCategories || []).find(c => c.id === presetCategoryId);
+      if (kategori) {
+        this.lpSelectedCategoryIds.add(kategori.id);
+        const grup = this.lpPlatformGroupOf(`${kategori.name_tr || ''} ${kategori.name_en || ''} ${kategori.name || ''}`);
+        // Grup anahtarlari platform anahtarlariyla ayni degil (twitter -> x-twitter).
+        platform = { twitter: 'x-twitter', other: 'social-media' }[grup.key] || (this.lpPlatforms?.[grup.key] ? grup.key : 'social-media');
+      }
+    }
+    document.getElementById('lp-input-platform').innerHTML = this.lpPlatformOptionsHtml(platform);
     document.getElementById('lp-input-status').value = 'draft';
     document.getElementById('lp-editor-title').innerHTML = '<i class="fa-solid fa-store"></i> Yeni Satış Sayfası';
-    this.lpSelectedCategoryIds = new Set();
     this.lpSelectedBlogSlugs = new Set();
     this.renderLpCategoryPicker();
     await this.renderLpBlogPicker();

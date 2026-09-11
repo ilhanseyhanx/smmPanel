@@ -66,6 +66,30 @@ Bu doküman, jetsmmpanel.com için yapılan anahtar kelime araştırmasının ve
 - **Uzun kuyruk:** tiktok videoyla ilgili yorum, tiktok etkileşim paketi, tiktok hikaye izlenme
 - Katalog dayanağı: %100 gerçek kullanıcılardan gönderiyle ilgili yorumlar (emoji+metin, sabit paketler), sınırsız paylaşım/kaydetme, hikaye görüntülenme.
 
+## 2. parti: 5 sayfa daha (taslak rezervi — scripts/seed-landing-pages-2026-09b.js)
+
+Kalan kapsam boşluklarından seçildi; kullanıcı ileride kademeli yayınlayacak.
+
+### 6. /instagram-kaydetme-satin-al (kategori 191 + 193)
+- **Birincil:** instagram kaydetme satın al · **İkincil:** instagram paylaşım satın al, instagram save
+- Not: Niş ama rekabet çok zayıf; beğeni-ötesi etkileşim sayaçları teması.
+
+### 7. /instagram-kanal-uye-satin-al (kategori 190)
+- **Birincil:** instagram kanal üyesi satın al · **İkincil:** instagram yayın kanalı üye, broadcast channel
+- Not: Yükselen özellik (broadcast channel); erken sayfa açmak konumlanma avantajı.
+
+### 8. /facebook-grup-uye-satin-al (kategori 172)
+- **Birincil:** facebook grup üyesi satın al · **İkincil:** fb grup üye, facebook grup büyütme
+- Not: Yerleşik gerçek kelime; alışveriş/topluluk grubu yöneticileri arar.
+
+### 9. /facebook-yorum-satin-al (kategori 180 + 181 + 167)
+- **Birincil:** facebook yorum satın al · **İkincil:** facebook emoji tepki satın al, facebook beğeni tepkisi
+- Not: Rastgele yorum + Love/Wow tepkileri tek sayfada; "rastgele" niteliği sayfada dürüstçe açıklanır.
+
+### 10. /telegram-bot-baslatma-satin-al (kategori 214 + 220 + 218)
+- **Birincil:** telegram bot başlatma satın al · **İkincil:** telegram bot start, telegram üye botu, telegram tepki
+- Not: B2B/geliştirici nişi; hacim düşük ama rekabet sıfıra yakın, dönüşüm yüksek olabilir.
+
 ## İçerik kuralları (8 Eyl 2026 revizyonundan devam)
 
 - SEO sonucu, sıralama, önerilenlere girme, para kazanma **GARANTİSİ YOK**.

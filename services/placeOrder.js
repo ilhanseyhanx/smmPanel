@@ -1,22 +1,28 @@
 'use strict';
 
-// Siparis olusturmanin TEK dogru yolu.
-//
-// Onceden iki ayri yol vardi: panel siparisi burada yapilan her seyi yapiyordu,
-// /api/v2 "add" ise yalnizca bakiyeyi dusup siparisi 'pending' olarak kaydedip
-// birakiyordu. Saglayiciya hic gonderilmedigi ve arka plan isleyicisi de
-// yalnizca provider_order_id'si olan siparisleri takip ettigi icin API ile
-// verilen siparisler parasi alinmis halde sonsuza kadar bekliyordu.
-// Iki yol da artik bu fonksiyonu kullanir.
-
+// Panel ve bayi API siparisleri bu tek akis uzerinden gecer.
 const { dbAsync, withTransaction } = require('../config/database');
-const { toKurus, fromKurus, calculateChargeKurus } = require('../utils/money');
-const { normalizePlainText, isSafeHttpUrl } = require('../utils/security');
+const { toKurus, fromKurus } = require('../utils/money');
+const {
+  normalizePlainText,
+  isSafeHttpUrl,
+  encryptSecret,
+  createOpaqueToken,
+  tokenHash
+} = require('../utils/security');
 const { activeServiceDiscount, applyDiscountKurus } = require('./campaigns');
 const { validateOrderLink } = require('../utils/linkValidator');
 const { friendlyProviderReason } = require('../utils/providerErrors');
 const SmmProviderClient = require('./smmProvider');
 const telegram = require('./telegramNotifier');
+const {
+  normalizeOrderInputType,
+  normalizeComments,
+  isEmail,
+  calculateServiceChargeKurus,
+  providerQuantityFor,
+  relayAddressFromToken
+} = require('./orderTypes');
 
 function validTarget(value) {
   if (/^(javascript|data|file):/i.test(value)) return false;
@@ -30,13 +36,6 @@ function fail(message, status, messageEn) {
   return err;
 }
 
-/**
- * Bakiyeyi duser, siparisi olusturur ve saglayiciya iletir.
- * Saglayici kabul etmezse tutar ayni istekte iade edilir.
- *
- * @returns {Promise<{orderId:number, providerOrderId:string|null, status:string,
- *   chargeKurus:number, serviceName:string, newBalanceKurus:number}>}
- */
 async function placeOrder({
   user,
   serviceId,
@@ -45,38 +44,68 @@ async function placeOrder({
   dripRuns = 1,
   dripIntervalMinutes = null,
   lang = 'tr',
+  comments = '',
+  termsAccepted = false,
   notify = true
 }) {
   const link = normalizePlainText(rawLink, 2048);
-  if (!validTarget(link)) {
-    throw fail('Geçerli bir bağlantı veya kullanıcı adı girin.', 400, 'Enter a valid link or username.');
-  }
-
-  // Aktif kampanya indirimi sunucu tarafinda uygulanir; popup'taki vaat ile
-  // tahsil edilen tutar birebir ayni olur.
+  const commentLines = normalizeComments(comments);
   const discount = await activeServiceDiscount(serviceId);
 
   const reserved = await withTransaction(async tx => {
     const service = await tx.get(
       `SELECT s.*, c.name AS category_name, c.name_en AS category_name_en
          FROM services s LEFT JOIN categories c ON c.id = s.category_id
-        WHERE s.id = ? AND s.status = 1`, [serviceId]);
+        WHERE s.id = ? AND s.status = 1`, [serviceId]
+    );
     if (!service) throw fail('Seçilen servis aktif değil veya bulunamadı.', 404, 'The selected service is not active or was not found.');
-    if (quantity < service.min_quantity || quantity > service.max_quantity) {
+
+    const inputType = normalizeOrderInputType(service.order_input_type);
+    const requestedQuantity = inputType === 'custom_comments' ? commentLines.length : Number(quantity);
+    if (!Number.isSafeInteger(requestedQuantity) || requestedQuantity <= 0) {
+      throw fail('Geçerli bir miktar girin.', 400, 'Enter a valid quantity.');
+    }
+    if (inputType === 'custom_comments' && !commentLines.length) {
+      throw fail('Her satıra bir yorum gelecek şekilde en az bir yorum girin.', 400, 'Enter at least one comment, one per line.');
+    }
+    if (requestedQuantity < service.min_quantity || requestedQuantity > service.max_quantity) {
       throw fail(
         `Miktar ${service.min_quantity} ile ${service.max_quantity} arasında olmalıdır.`, 400,
         `Quantity must be between ${service.min_quantity} and ${service.max_quantity}.`
       );
     }
-    // Link tipi servise uymuyorsa siparis saglayiciya HIC gitmesin: bakiye
-    // dusulmeden burada durur. Yanlis link = odenmis ama bosa giden siparis.
-    const linkCheck = validateOrderLink(link, service, lang);
-    if (!linkCheck.ok) throw fail(linkCheck.message, 400, validateOrderLink(link, service, 'en').message);
+
+    if (inputType === 'email_delivery' || inputType === 'email_invite') {
+      if (!isEmail(link)) throw fail('Geçerli bir teslimat e-posta adresi girin.', 400, 'Enter a valid delivery email address.');
+    } else {
+      if (!validTarget(link)) {
+        throw fail('Geçerli bir bağlantı, kullanıcı adı veya oyuncu kimliği girin.', 400, 'Enter a valid link, username, or player ID.');
+      }
+      if (inputType !== 'player_id') {
+        const linkCheck = validateOrderLink(link, service, lang);
+        if (!linkCheck.ok) throw fail(linkCheck.message, 400, validateOrderLink(link, service, 'en').message);
+      }
+    }
+    if (Number(service.terms_required) === 1 && !termsAccepted) {
+      throw fail('Teslimat, garanti ve iade koşullarını kabul etmelisiniz.', 400, 'You must accept the delivery, warranty, and refund terms.');
+    }
+    if (inputType !== 'link' && dripRuns > 1) {
+      throw fail('Bu servis türünde kademeli gönderim kullanılamaz.', 400, 'Drip-feed is not available for this service type.');
+    }
 
     let rateKurus = service.rate_per_1000_kurus || toKurus(service.rate_per_1000);
     if (discount) rateKurus = applyDiscountKurus(rateKurus, discount.discount_percent);
-    const chargeKurus = calculateChargeKurus(rateKurus, quantity) * dripRuns;
+    const chargeKurus = calculateServiceChargeKurus(rateKurus, requestedQuantity, service.pricing_model) * dripRuns;
     if (chargeKurus <= 0) throw fail('Hesaplanan sipariş tutarı geçersiz.', 400, 'The calculated order amount is invalid.');
+
+    const providerQuantity = providerQuantityFor(service, requestedQuantity);
+    // E-posta altyapilari yerel kismi kucuk harfe cevirebilir. Tokeni bastan
+    // kucuk harfli tutarak RCPT TO normalizasyonunda siparis eslesmesini koruruz.
+    const relayToken = inputType === 'email_delivery' ? createOpaqueToken().toLowerCase() : null;
+    const providerTarget = relayToken ? relayAddressFromToken(relayToken) : link;
+    const securePayload = inputType === 'custom_comments'
+      ? encryptSecret(JSON.stringify({ comments: commentLines }))
+      : null;
 
     const debit = await tx.run(
       `UPDATE users
@@ -90,14 +119,33 @@ async function placeOrder({
         `Not enough balance. Required amount: ${fromKurus(chargeKurus).toFixed(2)} TRY.`
       );
     }
+
     const order = await tx.run(
       `INSERT INTO orders
-         (user_id, service_id, provider_id, link, quantity, charge, charge_kurus, status, drip_runs, drip_interval_minutes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
-      [user.id, service.id, service.provider_id, link, quantity, fromKurus(chargeKurus), chargeKurus,
-        dripRuns, dripRuns > 1 ? dripIntervalMinutes : null]
+         (user_id, service_id, provider_id, link, quantity, provider_quantity, charge, charge_kurus, status,
+          drip_runs, drip_interval_minutes, order_input_type, secure_payload, delivery_email,
+          delivery_token_hash, delivery_status, terms_accepted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        user.id, service.id, service.provider_id, link, requestedQuantity, providerQuantity,
+        fromKurus(chargeKurus), chargeKurus, dripRuns, dripRuns > 1 ? dripIntervalMinutes : null,
+        inputType, securePayload,
+        inputType === 'email_delivery' || inputType === 'email_invite' ? link : null,
+        relayToken ? tokenHash(relayToken) : null,
+        inputType === 'email_delivery' ? 'waiting' : 'none',
+        Number(service.terms_required) === 1 ? new Date().toISOString() : null
+      ]
     );
-    return { service, chargeKurus, orderId: order.id };
+    return {
+      service,
+      chargeKurus,
+      orderId: order.id,
+      quantity: requestedQuantity,
+      providerQuantity,
+      providerTarget,
+      inputType,
+      commentLines
+    };
   });
 
   let providerOrderId = null;
@@ -108,8 +156,14 @@ async function placeOrder({
     if (!provider) throw new Error('Sağlayıcı aktif değil.');
     const client = new SmmProviderClient(provider.api_url, provider.api_key, { id: provider.id });
     const response = await client.addOrder(
-      reserved.service.provider_service_id, link, quantity,
-      { runs: dripRuns, interval: dripIntervalMinutes }
+      reserved.service.provider_service_id,
+      reserved.providerTarget,
+      reserved.providerQuantity,
+      {
+        runs: dripRuns,
+        interval: dripIntervalMinutes,
+        comments: reserved.inputType === 'custom_comments' ? reserved.commentLines.join('\n') : undefined
+      }
     );
     if (!response?.order) throw new Error(response?.error || 'Sağlayıcı sipariş numarası döndürmedi.');
     providerOrderId = String(response.order);
@@ -120,11 +174,14 @@ async function placeOrder({
     await withTransaction(async tx => {
       const order = await tx.get('SELECT status, refunded_kurus FROM orders WHERE id = ?', [reserved.orderId]);
       if (order && order.refunded_kurus === 0) {
-        await tx.run('UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?',
-          [reserved.chargeKurus, reserved.chargeKurus, user.id]);
-        // Admin panelde hem anlasilir sebep hem ham saglayici mesaji gorunur.
-        await tx.run("UPDATE orders SET status = 'failed', refunded_kurus = ?, failure_reason = ? WHERE id = ?",
-          [reserved.chargeKurus, normalizePlainText(`${friendly} [Sağlayıcı: ${providerError.message}]`, 500), reserved.orderId]);
+        await tx.run(
+          'UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?',
+          [reserved.chargeKurus, reserved.chargeKurus, user.id]
+        );
+        await tx.run(
+          "UPDATE orders SET status = 'failed', refunded_kurus = ?, failure_reason = ? WHERE id = ?",
+          [reserved.chargeKurus, normalizePlainText(`${friendly} [Sağlayıcı: ${providerError.message}]`, 500), reserved.orderId]
+        );
       }
     });
     throw fail(
@@ -134,17 +191,17 @@ async function placeOrder({
   }
 
   const updatedUser = await dbAsync.get('SELECT balance_kurus FROM users WHERE id = ?', [user.id]);
-
   if (notify) {
-    // Bildirimler beklenmez; hatalari servis icinde yutulur.
     telegram.notifyOrderOwner(user.id, 'processing', {
-      id: reserved.orderId, service_name: reserved.service.name, quantity
+      id: reserved.orderId,
+      service_name: reserved.service.name,
+      quantity: reserved.quantity
     });
     telegram.notifyNewOrder({
       orderId: reserved.orderId,
       username: user.username,
       serviceName: reserved.service.name,
-      quantity,
+      quantity: reserved.quantity,
       charge: fromKurus(reserved.chargeKurus),
       link,
       status,
@@ -158,6 +215,7 @@ async function placeOrder({
     status,
     chargeKurus: reserved.chargeKurus,
     serviceName: reserved.service.name,
+    quantity: reserved.quantity,
     newBalanceKurus: updatedUser.balance_kurus
   };
 }

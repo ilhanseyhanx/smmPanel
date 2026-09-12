@@ -17,7 +17,7 @@ process.env.PUBLIC_BASE_URL = 'https://jetsmmpanel.com';
 const { app } = require('../server');
 const { initDatabase, db } = require('../config/database');
 const { SAYFALAR, NOT_FOUND, pageForPath } = require('../utils/pageMeta');
-const { stripGatedMarkup } = require('../utils/gatedMarkup');
+const { stripGatedMarkup, stripInactiveViews } = require('../utils/gatedMarkup');
 
 test.before(async () => { await initDatabase(); });
 test.after(async () => {
@@ -171,6 +171,32 @@ test('işaretler bozuksa HTML olduğu gibi kalır (veri kaybı olmaz)', () => {
   const bozuk = '<div>bir</div><!--ADMIN-ONLY-START--><div>iki</div>'; // kapanış yok
   assert.equal(stripGatedMarkup(bozuk, {}), bozuk);
   assert.equal(stripGatedMarkup('<p>işaretsiz</p>', {}), '<p>işaretsiz</p>');
+});
+
+test('indekslenebilir sayfaların HTML kaynağında şifre formu bulunmaz', async () => {
+  for (const url of ['/', '/services', '/blog', '/hizmet-sayfalari', '/terms', '/boyle-bir-sayfa-yok']) {
+    const html = (await sayfa(url)).text;
+    assert.ok(!/type="password"/i.test(html), `${url} kaynağında şifre alanı var`);
+    assert.ok(!html.includes('id="view-auth"'), `${url} kaynağında kimlik görünümü var`);
+    assert.ok(!html.includes('id="modal-auth"'), `${url} kaynağında kimlik modalı var`);
+  }
+
+  // Dinamik blog ve satış sayfası yolları da aynı ayıklayıcıdan geçer.
+  const kaynak = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  const ziyaretci = stripGatedMarkup(kaynak, { admin: false, authenticated: false });
+  for (const gorunum of ['view-blog-detail', 'view-landing-page']) {
+    const html = stripInactiveViews(ziyaretci, gorunum);
+    assert.ok(!/type="password"/i.test(html), `${gorunum} kaynağında şifre alanı var`);
+  }
+});
+
+test('kimlik rotaları formu korur ve noindex kalır', async () => {
+  for (const url of ['/auth', '/register', '/reset-password']) {
+    const html = (await sayfa(url)).text;
+    assert.match(html, /id="view-auth-form"/, `${url} kimlik formunu kaybetti`);
+    assert.match(html, /type="password"/i, `${url} şifre alanını kaybetti`);
+    assert.match(html, /<meta name="robots" content="noindex/, `${url} indekslenmeye açıldı`);
+  }
 });
 
 // ---------------------------------------------------------------

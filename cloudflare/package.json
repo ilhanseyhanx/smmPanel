@@ -1,0 +1,11 @@
+{
+  "name": "smmjet-email-worker",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "wrangler": "^4.131.1"
+  },
+  "dependencies": {
+    "postal-mime": "^2.7.6"
+  }
+}

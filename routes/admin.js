@@ -127,6 +127,14 @@ const serviceCreateSchema = z.object({
   speed_en: z.string().max(200).optional(),
   features_tr: z.string().max(3000).optional(),
   features_en: z.string().max(3000).optional(),
+  order_input_type: z.enum(['link', 'custom_comments', 'email_delivery', 'email_invite', 'player_id']).optional(),
+  provider_service_type: z.string().trim().max(80).optional(),
+  pricing_model: z.enum(['per_1000', 'per_item']).optional(),
+  provider_quantity_multiplier: z.coerce.number().int().min(1).max(1_000_000).optional(),
+  warranty_hours: z.coerce.number().int().min(0).max(87600).optional(),
+  refund_policy_tr: z.string().max(3000).optional(),
+  refund_policy_en: z.string().max(3000).optional(),
+  terms_required: z.union([z.boolean(), z.string(), z.number()]).optional(),
   refill: z.union([z.boolean(), z.string(), z.number()]).optional()
 });
 
@@ -442,6 +450,8 @@ router.post('/providers/:id/import-services', requireIdParam, validate(importSer
       const minQty = parseInt(pService.min || 100);
       const maxQty = parseInt(pService.max || 10000);
       const serviceName = normalizePlainText(pService.name || `Servis #${pServiceId}`, 220);
+      const providerServiceType = normalizePlainText(pService.type || 'Default', 80);
+      const orderInputType = /custom\s*comments?/i.test(providerServiceType) ? 'custom_comments' : 'link';
 
       // Check if service already imported
       const existing = await dbAsync.get(
@@ -461,8 +471,9 @@ router.post('/providers/:id/import-services', requireIdParam, validate(importSer
       if (!existing) {
         await dbAsync.run(
           `INSERT INTO services (category_id, provider_id, provider_service_id, name, rate_per_1000, rate_per_1000_kurus,
-           provider_cost_rate, provider_cost_currency, provider_cost_updated_at, min_quantity, max_quantity, description, status, refill)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, 1, ?)`,
+           provider_cost_rate, provider_cost_currency, provider_cost_updated_at, min_quantity, max_quantity, description, status, refill,
+           order_input_type, provider_service_type)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, 1, ?, ?, ?)`,
           [
             category.id,
             providerId,
@@ -477,7 +488,9 @@ router.post('/providers/:id/import-services', requireIdParam, validate(importSer
             minQty,
             maxQty,
             pService.description || `${catName} için kaliteli servis.`,
-            isRefill
+            isRefill,
+            orderInputType,
+            providerServiceType
           ]
         );
         importedCount++;
@@ -851,7 +864,9 @@ router.post('/services', validate(serviceCreateSchema), async (req, res) => {
     const { category_name, category_name_en, provider_id, provider_service_id, name, name_tr, name_en,
       rate_per_1000, rate_per_1000_usd, provider_cost_rate, provider_cost_currency,
       min_quantity, max_quantity, description, description_tr, description_en, refill,
-      start_time_tr, start_time_en, speed_tr, speed_en, features_tr, features_en } = req.body;
+      start_time_tr, start_time_en, speed_tr, speed_en, features_tr, features_en,
+      order_input_type, provider_service_type, pricing_model, provider_quantity_multiplier,
+      warranty_hours, refund_policy_tr, refund_policy_en, terms_required } = req.body;
     const safeNameTr = normalizePlainText(name_tr || name, 220);
     const safeNameEn = normalizePlainText(name_en || name_tr || name, 220);
 
@@ -886,13 +901,17 @@ router.post('/services', validate(serviceCreateSchema), async (req, res) => {
       refill == 1 || refill === "1" || refill === true || refill === "true" ||
       /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün/i.test(`${safeNameTr} ${safeNameEn} ${category_name}`)
     ) ? 1 : 0;
+    const safeProviderType = normalizePlainText(provider_service_type || '', 80);
+    const inputType = order_input_type || (/custom\s*comments?/i.test(safeProviderType) ? 'custom_comments' : 'link');
 
     const result = await dbAsync.run(
       `INSERT INTO services (category_id, provider_id, provider_service_id, name, name_tr, name_en, rate_per_1000,
        rate_per_1000_kurus, rate_per_1000_usd_cents, provider_cost_rate, provider_cost_currency, provider_cost_updated_at,
        min_quantity, max_quantity, description, description_tr, description_en, status, refill,
-       start_time_tr, start_time_en, speed_tr, speed_en, features_tr, features_en)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${Number(provider_cost_rate) > 0 ? 'CURRENT_TIMESTAMP' : 'NULL'}, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`,
+       start_time_tr, start_time_en, speed_tr, speed_en, features_tr, features_en,
+       order_input_type, provider_service_type, pricing_model, provider_quantity_multiplier,
+       warranty_hours, refund_policy_tr, refund_policy_en, terms_required)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${Number(provider_cost_rate) > 0 ? 'CURRENT_TIMESTAMP' : 'NULL'}, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         category.id,
         provider_id || null,
@@ -916,7 +935,15 @@ router.post('/services', validate(serviceCreateSchema), async (req, res) => {
         normalizePlainText(speed_tr || '', 200),
         normalizePlainText(speed_en || '', 200),
         normalizeFeatureList(features_tr),
-        normalizeFeatureList(features_en)
+        normalizeFeatureList(features_en),
+        inputType,
+        safeProviderType,
+        pricing_model || 'per_1000',
+        Math.max(1, parseInt(provider_quantity_multiplier || 1)),
+        Math.max(0, parseInt(warranty_hours || 0)),
+        normalizePlainText(refund_policy_tr || '', 3000),
+        normalizePlainText(refund_policy_en || '', 3000),
+        terms_required == 1 || terms_required === '1' || terms_required === true || terms_required === 'true' ? 1 : 0
       ]
     );
 
@@ -933,7 +960,9 @@ router.put('/services/:id', requireIdParam, validate(serviceUpdateSchema), async
     if (!current) return res.status(404).json({ error: 'Servis bulunamadı.' });
     const { category_name, category_name_en, name, name_tr, name_en, rate_per_1000, rate_per_1000_usd,
       min_quantity, max_quantity, status, refill, description_tr, description_en,
-      start_time_tr, start_time_en, speed_tr, speed_en, features_tr, features_en } = req.body;
+      start_time_tr, start_time_en, speed_tr, speed_en, features_tr, features_en,
+      order_input_type, provider_service_type, pricing_model, provider_quantity_multiplier,
+      warranty_hours, refund_policy_tr, refund_policy_en, terms_required } = req.body;
     let categoryId = current.category_id;
     if (category_name && category_name !== current.category_name) {
       let category = await dbAsync.get('SELECT id FROM categories WHERE name = ? OR name_tr = ? LIMIT 1', [category_name, category_name]);
@@ -949,7 +978,9 @@ router.put('/services/:id', requireIdParam, validate(serviceUpdateSchema), async
     await dbAsync.run(`UPDATE services SET category_id = ?, name = ?, name_tr = ?, name_en = ?, description = ?,
       description_tr = ?, description_en = ?, rate_per_1000 = ?, rate_per_1000_kurus = ?, rate_per_1000_usd_cents = ?,
       min_quantity = ?, max_quantity = ?, status = ?, refill = ?,
-      start_time_tr = ?, start_time_en = ?, speed_tr = ?, speed_en = ?, features_tr = ?, features_en = ? WHERE id = ?`, [
+      start_time_tr = ?, start_time_en = ?, speed_tr = ?, speed_en = ?, features_tr = ?, features_en = ?,
+      order_input_type = ?, provider_service_type = ?, pricing_model = ?, provider_quantity_multiplier = ?,
+      warranty_hours = ?, refund_policy_tr = ?, refund_policy_en = ?, terms_required = ? WHERE id = ?`, [
       categoryId, safeNameTr, safeNameTr, safeNameEn,
       normalizePlainText(description_tr ?? current.description_tr ?? current.description ?? '', 1000),
       normalizePlainText(description_tr ?? current.description_tr ?? current.description ?? '', 1000),
@@ -964,6 +995,15 @@ router.put('/services/:id', requireIdParam, validate(serviceUpdateSchema), async
       normalizePlainText(speed_en ?? current.speed_en ?? '', 200),
       normalizeFeatureList(features_tr, current.features_tr ?? ''),
       normalizeFeatureList(features_en, current.features_en ?? ''),
+      order_input_type ?? current.order_input_type ?? 'link',
+      normalizePlainText(provider_service_type ?? current.provider_service_type ?? '', 80),
+      pricing_model ?? current.pricing_model ?? 'per_1000',
+      Math.max(1, parseInt(provider_quantity_multiplier ?? current.provider_quantity_multiplier ?? 1)),
+      Math.max(0, parseInt(warranty_hours ?? current.warranty_hours ?? 0)),
+      normalizePlainText(refund_policy_tr ?? current.refund_policy_tr ?? '', 3000),
+      normalizePlainText(refund_policy_en ?? current.refund_policy_en ?? '', 3000),
+      terms_required === undefined ? Number(current.terms_required || 0)
+        : (terms_required == 1 || terms_required === '1' || terms_required === true || terms_required === 'true' ? 1 : 0),
       serviceId
     ]);
 

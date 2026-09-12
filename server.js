@@ -15,6 +15,7 @@ const securityMonitor = require('./services/securityMonitor');
 const authRoutes = require('./routes/auth');
 const servicesRoutes = require('./routes/services');
 const ordersRoutes = require('./routes/orders');
+const inboundDeliveryRoutes = require('./routes/inboundDelivery');
 const paymentsRoutes = require('./routes/payments');
 const ticketsRoutes = require('./routes/tickets');
 const adminRoutes = require('./routes/admin');
@@ -107,7 +108,10 @@ app.use(compression());
 app.use(express.json({
   limit: '512kb',
   verify(req, res, buf) {
-    if (req.originalUrl && req.originalUrl.split('?')[0] === '/api/payments/shopier/webhook') req.rawBody = buf;
+    if (req.originalUrl && [
+      '/api/payments/shopier/webhook',
+      '/api/inbound-delivery/cloudflare'
+    ].includes(req.originalUrl.split('?')[0])) req.rawBody = buf;
   }
 }));
 app.use(express.urlencoded({ extended: false, limit: '512kb' }));
@@ -621,6 +625,7 @@ const aiRoutes = require('./routes/ai');
 app.use('/api/auth', authRoutes);
 app.use('/api/services', servicesRoutes);
 app.use('/api/orders', ordersRoutes);
+app.use('/api/inbound-delivery', inboundDeliveryRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/tickets', ticketsRoutes);
 app.use('/api/blog', blogRoutes);
@@ -640,7 +645,7 @@ app.use('/api/landing-pages', require('./routes/landingPages'));
 // RESELLER API V2 (Standard SMM API Endpoint)
 // ----------------------------------------------------
 app.post('/api/v2', async (req, res) => {
-  const { key, action, service, link, quantity, order, orders } = req.body;
+  const { key, action, service, link, quantity, comments, order, orders } = req.body;
   const { dbAsync, withTransaction } = require('./config/database');
   const { calculateChargeKurus, fromKurus, toKurus } = require('./utils/money');
   const { normalizePlainText } = require('./utils/security');
@@ -658,6 +663,7 @@ app.post('/api/v2', async (req, res) => {
     // Bayi API'si Ingilizce oncelikli: EN alani bossa TR'ye duser.
     const list = await dbAsync.all(`SELECT id as service, COALESCE(NULLIF(name_en, ''), name) as name, rate_per_1000_kurus,
       min_quantity as min, max_quantity as max, category_id as category, refill,
+      order_input_type, pricing_model,
       COALESCE(NULLIF(description_en, ''), description, '') as description,
       COALESCE(NULLIF(start_time_en, ''), start_time_tr, '') as start_time,
       COALESCE(NULLIF(speed_en, ''), speed_tr, '') as speed,
@@ -667,6 +673,7 @@ app.post('/api/v2', async (req, res) => {
       ...item,
       rate: fromKurus(item.rate_per_1000_kurus).toFixed(2),
       refill: Number(item.refill) === 1,
+      type: item.order_input_type === 'custom_comments' ? 'Custom Comments' : 'Default',
       // Ozellikler satir satir saklanir; API'de dizi olarak verilir.
       features: String(item.features || '').split(/\r?\n/).filter(Boolean),
       rate_per_1000_kurus: undefined
@@ -678,8 +685,8 @@ app.post('/api/v2', async (req, res) => {
   }
 
   if (action === 'add') {
-    const qty = Number(quantity);
-    if (!Number.isSafeInteger(qty) || !link) return res.json({ error: 'Invalid parameters' });
+    const qty = quantity === undefined || quantity === '' ? undefined : Number(quantity);
+    if ((qty !== undefined && !Number.isSafeInteger(qty)) || !link) return res.json({ error: 'Invalid parameters' });
     try {
       // Panel siparisiyle AYNI yoldan gecer: link dogrulamasi, kampanya
       // indirimi, bakiye dusumu, saglayiciya iletim ve basarisizlikta iade.
@@ -687,7 +694,7 @@ app.post('/api/v2', async (req, res) => {
       // saglayiciya hic gonderilmiyordu.
       const { placeOrder } = require('./services/placeOrder');
       const result = await placeOrder({
-        user, serviceId: service, link, quantity: qty, lang: 'en'
+        user, serviceId: service, link, quantity: qty, comments, termsAccepted: true, lang: 'en'
       });
       return res.json({ order: result.orderId });
     } catch (err) {

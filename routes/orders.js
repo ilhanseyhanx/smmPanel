@@ -3,7 +3,7 @@ const { z } = require('zod');
 const { dbAsync } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
-const { normalizePlainText } = require('../utils/security');
+const { normalizePlainText, decryptSecret } = require('../utils/security');
 const { fromKurus } = require('../utils/money');
 const SmmProviderClient = require('../services/smmProvider');
 
@@ -11,7 +11,11 @@ const router = express.Router();
 const createSchema = z.object({
   service_id: z.coerce.number().int().positive(),
   link: z.string().trim().min(3).max(2048),
-  quantity: z.coerce.number().int().positive(),
+  // Custom Comments servisinde asil miktar bos olmayan yorum satirlarindan
+  // hesaplanir; quantity bu nedenle API tarafinda istege baglidir.
+  quantity: z.coerce.number().int().positive().optional(),
+  comments: z.string().max(200000).optional().default(''),
+  terms_accepted: z.boolean().optional().default(false),
   drip_runs: z.coerce.number().int().min(1).max(100).default(1),
   drip_interval_minutes: z.coerce.number().int().min(5).max(10080).nullable().optional(),
   // Link uyari mesajinin dili; musterinin panelde secili dili gonderilir.
@@ -22,7 +26,7 @@ const { placeOrder } = require('../services/placeOrder');
 
 router.post('/', authenticateToken, validate(createSchema), async (req, res, next) => {
   try {
-    const { service_id, quantity, drip_runs, drip_interval_minutes, lang } = req.body;
+    const { service_id, quantity, drip_runs, drip_interval_minutes, lang, comments, terms_accepted } = req.body;
     // Siparis olusturmanin tum adimlari services/placeOrder.js icinde:
     // panel ve /api/v2 ayni yoldan gecsin diye oraya tasindi.
     const result = await placeOrder({
@@ -32,14 +36,16 @@ router.post('/', authenticateToken, validate(createSchema), async (req, res, nex
       quantity,
       dripRuns: drip_runs,
       dripIntervalMinutes: drip_interval_minutes,
-      lang
+      lang,
+      comments,
+      termsAccepted: terms_accepted
     });
     res.status(201).json({
       message: 'Siparişiniz alındı ve sağlayıcıya iletildi.',
       order: {
         id: result.orderId,
         service_name: result.serviceName,
-        quantity,
+        quantity: result.quantity,
         charge: fromKurus(result.chargeKurus),
         status: result.status,
         provider_order_id: result.providerOrderId,
@@ -73,7 +79,43 @@ router.get('/', authenticateToken, async (req, res, next) => {
        WHERE o.user_id = ? AND o.status != 'failed' ORDER BY o.id DESC LIMIT ? OFFSET ?`,
       [req.user.id, limit, offset]
     );
-    res.json({ orders: orders.map(o => ({ ...o, charge: fromKurus(o.charge_kurus) })), pagination: { page, limit, total: total.count, pages: Math.ceil(total.count / limit) } });
+    res.json({
+      orders: orders.map(o => {
+        // Yorumlar ve urun teslimat icerigi sifreli olsa da liste ucundan
+        // istemciye ham ciphertext olarak dahi cikmaz.
+        const { secure_payload, delivery_token_hash, ...safeOrder } = o;
+        return { ...safeOrder, charge: fromKurus(o.charge_kurus) };
+      }),
+      pagination: { page, limit, total: total.count, pages: Math.ceil(total.count / limit) }
+    });
+  } catch (err) { next(err); }
+});
+
+// E-posta ile gelen dijital urun bilgisi sadece siparis sahibine acilir.
+router.get('/:id/delivery', authenticateToken, async (req, res, next) => {
+  try {
+    const orderId = Number(req.params.id);
+    if (!Number.isSafeInteger(orderId) || orderId <= 0) return res.status(400).json({ error: 'Geçersiz sipariş numarası.' });
+    const row = await dbAsync.get(
+      `SELECT d.*, o.user_id, o.delivery_status, s.name service_name
+         FROM orders o JOIN services s ON s.id = o.service_id
+         LEFT JOIN email_deliveries d ON d.id = (
+           SELECT id FROM email_deliveries WHERE order_id = o.id ORDER BY id DESC LIMIT 1
+         )
+        WHERE o.id = ? AND o.user_id = ?`,
+      [orderId, req.user.id]
+    );
+    if (!row) return res.status(404).json({ error: 'Sipariş bulunamadı.' });
+    if (!row.content_encrypted) return res.status(404).json({ error: 'Teslimat bilgisi henüz ulaşmadı.' });
+    const content = JSON.parse(decryptSecret(row.content_encrypted));
+    res.json({
+      order_id: orderId,
+      service_name: row.service_name,
+      subject: row.subject,
+      sender: row.sender,
+      received_at: row.created_at,
+      content
+    });
   } catch (err) { next(err); }
 });
 

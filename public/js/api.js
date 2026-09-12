@@ -132,8 +132,9 @@ const API = {
   getServices: (lang = 'tr') => API.request(`/services?lang=${encodeURIComponent(lang)}`),
 
   // Orders
-  createOrder: (service_id, link, quantity, drip_runs = 1, drip_interval_minutes = null, lang = 'tr') => API.request('/orders', { method: 'POST', body: JSON.stringify({ service_id, link, quantity, drip_runs, drip_interval_minutes, lang }) }),
+  createOrder: (service_id, link, quantity, drip_runs = 1, drip_interval_minutes = null, lang = 'tr', comments = '', terms_accepted = false) => API.request('/orders', { method: 'POST', body: JSON.stringify({ service_id, link, quantity, drip_runs, drip_interval_minutes, lang, comments, terms_accepted }) }),
   getOrders: (lang = 'tr') => API.request(`/orders?lang=${encodeURIComponent(lang)}`),
+  getOrderDelivery: id => API.request(`/orders/${id}/delivery`),
   requestRefill: (orderId) => API.request(`/orders/${orderId}/refill`, { method: 'POST' }),
 
   // Payments & Coupons

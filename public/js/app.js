@@ -1669,7 +1669,9 @@ class SmmApp {
       speed: pick(service.speed_tr, service.speed_en),
       description: String(service.description || '').trim(),
       features,
-      guaranteed
+      guaranteed,
+      warrantyHours: Number(service.warranty_hours || 0),
+      refundPolicy: pick(service.refund_policy_tr, service.refund_policy_en)
     };
   }
 
@@ -1701,6 +1703,10 @@ class SmmApp {
       html += `<div class="service-info-block"><div class="service-info-block-title"><i class="fa-solid fa-align-left"></i> ${this.t('info.description')}</div>
         <p class="service-info-desc-text">${this.escapeHtml(info.description)}</p></div>`;
     }
+    if (info.refundPolicy || info.warrantyHours > 0) {
+      html += `<div class="service-info-block"><div class="service-info-block-title"><i class="fa-solid fa-shield-halved"></i> ${this.ui('Garanti & İade Koşulları', 'Warranty & Refund Terms')}</div>
+        <p class="service-info-desc-text">${info.warrantyHours > 0 ? `<strong>${this.ui('Garanti', 'Warranty')}: ${info.warrantyHours} ${this.ui('saat', 'hours')}</strong><br>` : ''}${this.escapeHtml(info.refundPolicy)}</p></div>`;
+    }
     return html;
   }
 
@@ -1711,7 +1717,8 @@ class SmmApp {
     document.getElementById('service-info-category').textContent = service.category_name || '';
     document.getElementById('service-info-title').textContent = `#${service.id} · ${service.name}`;
     document.getElementById('service-info-modal-body').innerHTML = this.renderServiceInfoDetails(service, { withDescription: true, withLimits: true });
-    document.getElementById('service-info-price-label').textContent = this.t('info.price_1000');
+    document.getElementById('service-info-price-label').textContent = service.pricing_model === 'per_item'
+      ? this.ui('1 Ürün', 'Per Item') : this.t('info.price_1000');
     document.getElementById('service-info-price').innerHTML = service.discount_percent ? this.renderPriceHtml(service) : this.formatServicePrice(service);
     const buyBtn = document.getElementById('service-info-buy-btn');
     if (buyBtn) buyBtn.innerHTML = `<i class="fa-solid fa-cart-shopping"></i> ${this.t('info.buy')}`;
@@ -1767,6 +1774,7 @@ class SmmApp {
       const extraEmpty = document.getElementById('service-info-extra');
       if (extraEmpty) extraEmpty.innerHTML = '';
       this.updateOrderLinkHint(null);
+      this.configureOrderFormForService(null);
       return;
     }
 
@@ -1777,7 +1785,97 @@ class SmmApp {
     const extra = document.getElementById('service-info-extra');
     if (extra) extra.innerHTML = this.renderServiceInfoDetails(service, { withDescription: false });
 
+    this.configureOrderFormForService(service);
     this.updateOrderLinkHint(service);
+    this.calculateOrderCharge();
+  }
+
+  configureOrderFormForService(service) {
+    const inputType = service?.order_input_type || 'link';
+    const targetLabel = document.getElementById('order-target-label');
+    const target = document.getElementById('order-link-input');
+    const commentsGroup = document.getElementById('order-comments-group');
+    const quantity = document.getElementById('order-qty-input');
+    const quantityLabel = document.getElementById('order-quantity-label');
+    const dripBox = document.getElementById('order-drip-box');
+    const dripCheck = document.getElementById('drip-feed-checkbox');
+    const termsBox = document.getElementById('order-terms-box');
+    const termsText = document.getElementById('order-terms-text');
+    const termsCheck = document.getElementById('order-terms-checkbox');
+    const rateUnit = document.getElementById('service-rate-unit-label');
+    if (!service) {
+      if (commentsGroup) commentsGroup.style.display = 'none';
+      if (termsBox) termsBox.style.display = 'none';
+      return;
+    }
+
+    const customComments = inputType === 'custom_comments';
+    const emailInput = inputType === 'email_delivery' || inputType === 'email_invite';
+    if (commentsGroup) commentsGroup.style.display = customComments ? 'block' : 'none';
+    if (quantity) {
+      quantity.min = service.min_quantity;
+      quantity.max = service.max_quantity;
+      quantity.readOnly = customComments;
+      if (customComments) quantity.value = this.orderCommentLines().length || '';
+      else if (!quantity.value || Number(quantity.value) < Number(service.min_quantity) || Number(quantity.value) > Number(service.max_quantity)) quantity.value = service.min_quantity;
+    }
+    if (quantityLabel) quantityLabel.innerHTML = `<i class="fa-solid fa-arrow-up-1-9"></i> ${customComments ? this.ui('Yorum Sayısı', 'Comment Count') : service.pricing_model === 'per_item' ? this.ui('Ürün Adedi', 'Item Quantity') : this.ui('Miktar', 'Quantity')}`;
+    if (target) {
+      target.type = emailInput ? 'email' : 'text';
+      if (emailInput && (!target.value || target.value.includes('://'))) target.value = this.currentUser?.email || '';
+      if (!emailInput && target.type === 'text' && target.value === this.currentUser?.email) target.value = '';
+      const placeholders = {
+        link: this.ui('https://instagram.com/kullaniciadi veya post linki', 'Profile, post, or video URL'),
+        custom_comments: this.ui('Yorum yapılacak gönderinin bağlantısı', 'Post URL to receive comments'),
+        email_delivery: this.ui('Ürünün gönderileceği e-posta adresi', 'Email address for delivery'),
+        email_invite: this.ui('Davetin gönderileceği gerçek e-posta adresi', 'Actual email address for the invitation'),
+        player_id: this.ui('Player ID / User ID', 'Player ID / User ID')
+      };
+      target.placeholder = placeholders[inputType] || placeholders.link;
+    }
+    if (targetLabel) {
+      const labels = {
+        link: this.ui('Bağlantı (Link / Kullanıcı Adı)', 'Link / Username'),
+        custom_comments: this.ui('Gönderi Bağlantısı', 'Post URL'),
+        email_delivery: this.ui('Teslimat E-posta Adresi', 'Delivery Email'),
+        email_invite: this.ui('Davet E-posta Adresi', 'Invitation Email'),
+        player_id: this.ui('Player / User ID', 'Player / User ID')
+      };
+      targetLabel.innerHTML = `<i class="fa-solid ${emailInput ? 'fa-envelope' : inputType === 'player_id' ? 'fa-gamepad' : 'fa-link'}"></i> ${labels[inputType] || labels.link}`;
+    }
+    if (dripBox) dripBox.style.display = inputType === 'link' ? 'block' : 'none';
+    if (inputType !== 'link' && dripCheck?.checked) {
+      dripCheck.checked = false;
+      this.toggleDripFeed(false);
+    }
+    if (rateUnit) rateUnit.textContent = service.pricing_model === 'per_item'
+      ? this.ui('1 Ürün', 'Per Item')
+      : this.ui('1000 Adet', 'Per 1000');
+
+    const policy = this.locale === 'en'
+      ? (service.refund_policy_en || service.refund_policy_tr || '')
+      : (service.refund_policy_tr || service.refund_policy_en || '');
+    const warranty = Number(service.warranty_hours || 0);
+    const showTerms = Number(service.terms_required) === 1 || Boolean(policy) || warranty > 0;
+    if (termsBox) termsBox.style.display = showTerms ? 'block' : 'none';
+    if (termsCheck) { termsCheck.required = Number(service.terms_required) === 1; termsCheck.checked = false; }
+    if (termsText) {
+      const warrantyText = warranty > 0 ? `${this.ui('Garanti süresi', 'Warranty period')}: <strong>${warranty} ${this.ui('saat', 'hours')}</strong><br>` : '';
+      termsText.innerHTML = `${warrantyText}${this.escapeHtml(policy)}`;
+    }
+  }
+
+  orderCommentLines() {
+    return String(document.getElementById('order-comments-input')?.value || '')
+      .split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  }
+
+  onOrderCommentsInput() {
+    const count = this.orderCommentLines().length;
+    const quantity = document.getElementById('order-qty-input');
+    const counter = document.getElementById('order-comments-count');
+    if (quantity) quantity.value = count || '';
+    if (counter) counter.textContent = `${count} ${this.ui('yorum', 'comments')}`;
     this.calculateOrderCharge();
   }
 
@@ -1789,6 +1887,10 @@ class SmmApp {
     const input = document.getElementById('order-link-input');
     if (!hint) return;
     if (!service) { hint.style.display = 'none'; return; }
+    if (['email_delivery', 'email_invite', 'player_id'].includes(service.order_input_type)) {
+      hint.style.display = 'none';
+      return;
+    }
 
     const text = `${service.name || ''} ${service.category_name || ''}`
       .replace(/İ/g, 'I').replace(/ı/g, 'i').toLowerCase();
@@ -1831,7 +1933,9 @@ class SmmApp {
 
     // Kampanya indirimi varsa siparis formu da indirimli fiyati kullanir
     // (sunucu tarafi hesapla birebir ayni).
-    let charge = (this.effectiveRate(service) / 1000) * qty;
+    let charge = service.pricing_model === 'per_item'
+      ? this.effectiveRate(service) * qty
+      : (this.effectiveRate(service) / 1000) * qty;
 
     const isDrip = document.getElementById('drip-feed-checkbox')?.checked;
     if (isDrip) {
@@ -1839,7 +1943,9 @@ class SmmApp {
       charge = charge * runs;
     }
 
-    const usdCharge = (Number(service.rate_per_1000_usd_cents || 0) / 100000) * qty * (isDrip ? (parseInt(document.getElementById('drip-runs-input')?.value, 10) || 1) : 1);
+    const usdRate = Number(service.rate_per_1000_usd_cents || 0) / 100;
+    const usdCharge = (service.pricing_model === 'per_item' ? usdRate * qty : (usdRate / 1000) * qty)
+      * (isDrip ? (parseInt(document.getElementById('drip-runs-input')?.value, 10) || 1) : 1);
     document.getElementById('order-calculated-charge').innerText = this.locale === 'en' && usdCharge > 0
       ? `$${usdCharge.toFixed(2)} / ₺${charge.toFixed(2)}`
       : `₺${charge.toFixed(2)}`;
@@ -1850,12 +1956,14 @@ class SmmApp {
     const service_id = parseInt(document.getElementById('order-service-select').value);
     const link = document.getElementById('order-link-input').value.trim();
     const quantity = parseInt(document.getElementById('order-qty-input').value);
+    const comments = document.getElementById('order-comments-input')?.value || '';
+    const termsAccepted = Boolean(document.getElementById('order-terms-checkbox')?.checked);
     const isDrip = document.getElementById('drip-feed-checkbox')?.checked;
     const dripRuns = isDrip ? parseInt(document.getElementById('drip-runs-input').value, 10) : 1;
     const dripInterval = isDrip ? parseInt(document.getElementById('drip-interval-input').value, 10) : null;
 
     try {
-      const res = await API.createOrder(service_id, link, quantity, dripRuns, dripInterval, this.locale === 'en' ? 'en' : 'tr');
+      const res = await API.createOrder(service_id, link, quantity, dripRuns, dripInterval, this.locale === 'en' ? 'en' : 'tr', comments, termsAccepted);
       showToast(res.message, 'success');
       this.currentUser.balance = res.new_balance;
       this.updateUserHeader();
@@ -2020,13 +2128,32 @@ class SmmApp {
             <td><span class="badge ${badgeClass}">${statusText}</span></td>
             <td style="font-size: 0.8rem; color: var(--text-dim);">${new Date(o.created_at).toLocaleString(this.locale === 'en' ? 'en-US' : 'tr-TR')}</td>
             <td>
-              ${o.status === 'completed' ? `<button class="btn btn-cyan btn-sm" onclick="app.requestRefill(${o.id})"><i class="fa-solid fa-shield-check"></i> ${this.ui('Telafi İste', 'Request Refill')}</button>` : '-'}
+              ${o.delivery_status === 'delivered' ? `<button class="btn btn-primary btn-sm" onclick="app.viewOrderDelivery(${o.id})"><i class="fa-solid fa-key"></i> ${this.ui('Teslimatı Aç', 'Open Delivery')}</button>` : ''}
+              ${o.delivery_status === 'waiting' ? `<span class="badge badge-pending">${this.ui('E-posta bekleniyor', 'Awaiting email')}</span>` : ''}
+              ${o.status === 'completed' && Number(o.refill) === 1 ? `<button class="btn btn-cyan btn-sm" onclick="app.requestRefill(${o.id})"><i class="fa-solid fa-shield-check"></i> ${this.ui('Telafi İste', 'Request Refill')}</button>` : ''}
+              ${o.delivery_status !== 'delivered' && o.delivery_status !== 'waiting' && !(o.status === 'completed' && Number(o.refill) === 1) ? '-' : ''}
             </td>
           </tr>
         `;
       }).join('');
     } catch (err) {
       tbody.innerHTML = `<tr><td colspan="8" class="text-center" style="color: var(--danger);">${this.ui('Siparişler yüklenemedi.', 'Orders could not be loaded.')}</td></tr>`;
+    }
+  }
+
+  async viewOrderDelivery(orderId) {
+    try {
+      const data = await API.getOrderDelivery(orderId);
+      const meta = document.getElementById('order-delivery-meta');
+      const content = document.getElementById('order-delivery-content');
+      if (meta) meta.textContent = `#${data.order_id} · ${data.service_name} · ${new Date(data.received_at).toLocaleString(this.locale === 'en' ? 'en-US' : 'tr-TR')}`;
+      if (content) {
+        content.innerHTML = data.content?.html
+          || `<pre style="white-space:pre-wrap;margin:0;font:inherit;">${this.escapeHtml(data.content?.text || '')}</pre>`;
+      }
+      document.getElementById('modal-order-delivery')?.classList.add('active');
+    } catch (err) {
+      showToast(err.message, 'error');
     }
   }
 
@@ -3601,6 +3728,7 @@ class SmmApp {
           _max: parseInt(s.max || 10000),
           _cat: s.category || 'Genel',
           _name: s.name || `Servis #${sId}`,
+          _providerType: s.type || 'Default',
           _searchIndex: `${sId} ${s.name || ''} ${s.category || ''}`.toLowerCase()
         };
       });
@@ -3904,6 +4032,30 @@ class SmmApp {
     }
   }
 
+  onServiceTypeEditorChange(prefix) {
+    const inputId = prefix === 'single' ? 'single-order-input-type' : 'edit-service-order-input-type';
+    const pricingId = prefix === 'single' ? 'single-pricing-model' : 'edit-service-pricing-model';
+    const helpId = prefix === 'single' ? 'single-order-type-help' : 'edit-order-type-help';
+    const inputType = document.getElementById(inputId)?.value || 'link';
+    const pricing = document.getElementById(pricingId)?.value || 'per_1000';
+    const tryLabel = document.getElementById(prefix === 'single' ? 'single-sell-price-label' : 'edit-service-price-label');
+    const usdLabel = document.getElementById(prefix === 'single' ? 'single-sell-price-usd-label' : 'edit-service-price-usd-label');
+    if (tryLabel) tryLabel.textContent = pricing === 'per_item' ? 'Satış Fiyatı (₺ / 1 Ürün)' : 'Satış Fiyatı (₺ / 1000 Adet)';
+    if (usdLabel) usdLabel.textContent = pricing === 'per_item' ? 'USD Satış Fiyatı ($ / 1 Ürün)' : 'USD Satış Fiyatı ($ / 1000 Adet)';
+    const help = {
+      link: 'Müşteri link/kullanıcı adı girer; sağlayıcıya link + miktar gönderilir.',
+      custom_comments: 'Müşteri gönderi linkini ve yorumları girer. Boş olmayan her satır 1 adet sayılır; sağlayıcıya quantity değil comments alanı gönderilir.',
+      email_delivery: 'Sağlayıcıya order-* ile başlayan tek kullanımlık jetsmmpanel.com adresi gider. Gelen ürün bilgisi sistemden müşteriye şablonlu mail olarak iletilir.',
+      email_invite: 'Canva gibi davet servislerinde sağlayıcının müşterinin gerçek adresini görmesi zorunludur; e-posta doğrudan sağlayıcıya gider.',
+      player_id: 'Oyun içi yüklemelerde müşteriden Player ID / User ID istenir ve sağlayıcıya bu değer gönderilir.'
+    };
+    const suffix = pricing === 'per_item'
+      ? ' Fiyat alanı 1 ürün fiyatıdır.'
+      : ' Fiyat alanı 1000 adet fiyatıdır.';
+    const target = document.getElementById(helpId);
+    if (target) target.textContent = (help[inputType] || help.link) + suffix;
+  }
+
   openAddSingleServiceModal(sId, encCat, encName, costRate, minQty, maxQty) {
     // Ayni saglayici servisi ikinci kez eklenemez.
     if (this.explorerAddedIds?.has(String(sId))) {
@@ -3912,6 +4064,8 @@ class SmmApp {
     }
     const cat = decodeURIComponent(encCat);
     const name = decodeURIComponent(encName);
+    const providerItem = (this.currentExplorerServices || []).find(item => String(item._sId) === String(sId));
+    const providerType = String(providerItem?._providerType || 'Default');
 
     document.getElementById('single-provider-id').value = this.currentExplorerProviderId;
     document.getElementById('single-provider-service-id').value = sId;
@@ -3938,8 +4092,28 @@ class SmmApp {
     document.getElementById('single-sell-price').value = Number(suggestedSellPrice) > 0 ? suggestedSellPrice : 15.00;
     document.getElementById('single-sell-price-usd').value = ((costInTry / usdTry) * 1.5).toFixed(4);
 
-    document.getElementById('single-min-qty').value = minQty;
-    document.getElementById('single-max-qty').value = maxQty;
+    const isCustomComments = /custom\s*comments?/i.test(providerType);
+    const isInvite = /canva/i.test(`${name} ${cat}`) && /student|education|invite|davet/i.test(`${name} ${cat}`);
+    const isPlayerId = /oyun para|game currenc|uc\b|top\s*up|topup/i.test(`${name} ${cat}`);
+    const isDigitalProduct = /lisans|license|hesap|account|movies|membership|üyelik|uyelik|tasarım|design|e-?pin|windows|nitro|steam key|chatgpt|adobe/i.test(`${name} ${cat}`);
+    const inferredType = isCustomComments ? 'custom_comments'
+      : isInvite ? 'email_invite'
+        : isPlayerId ? 'player_id'
+          : isDigitalProduct ? 'email_delivery' : 'link';
+    const perItem = ['email_delivery', 'email_invite'].includes(inferredType);
+    document.getElementById('single-order-input-type').value = inferredType;
+    document.getElementById('single-pricing-model').value = perItem ? 'per_item' : 'per_1000';
+    document.getElementById('single-provider-multiplier').value = perItem ? 1000 : 1;
+    document.getElementById('single-warranty-hours').value = perItem ? 24 : 0;
+    document.getElementById('single-terms-required').checked = perItem;
+    document.getElementById('single-refund-policy-tr').value = perItem
+      ? 'İlk kullanımda geçersiz bilgi teslim edilirse 24 saat içinde destek kaydı açın. Teslim edilmiş ve kullanılan dijital ürünlerde keyfi iade yapılamaz.' : '';
+    document.getElementById('single-refund-policy-en').value = perItem
+      ? 'Open a support ticket within 24 hours if the delivered details are invalid on first use. Used digital products are not eligible for discretionary returns.' : '';
+    document.getElementById('single-min-qty').value = perItem ? Math.max(1, Math.ceil(Number(minQty) / 1000)) : minQty;
+    document.getElementById('single-max-qty').value = perItem ? Math.max(1, Math.floor(Number(maxQty) / 1000)) : maxQty;
+    this.singleProviderServiceType = providerType;
+    this.onServiceTypeEditorChange('single');
 
     // Bilgi penceresi alanlari her acilista temizlenir (onceki servisten kalmasin).
     ['single-start-time-tr', 'single-start-time-en', 'single-speed-tr', 'single-speed-en',
@@ -3976,6 +4150,14 @@ class SmmApp {
       speed_en: document.getElementById('single-speed-en').value,
       features_tr: document.getElementById('single-features-tr').value,
       features_en: document.getElementById('single-features-en').value,
+      order_input_type: document.getElementById('single-order-input-type').value,
+      provider_service_type: this.singleProviderServiceType || 'Default',
+      pricing_model: document.getElementById('single-pricing-model').value,
+      provider_quantity_multiplier: document.getElementById('single-provider-multiplier').value,
+      warranty_hours: document.getElementById('single-warranty-hours').value,
+      refund_policy_tr: document.getElementById('single-refund-policy-tr').value,
+      refund_policy_en: document.getElementById('single-refund-policy-en').value,
+      terms_required: document.getElementById('single-terms-required').checked,
       min_quantity: document.getElementById('single-min-qty').value,
       max_quantity: document.getElementById('single-max-qty').value,
       refill: document.getElementById('single-refill-select')?.value || 0
@@ -4650,6 +4832,14 @@ class SmmApp {
     document.getElementById('edit-service-max').value = service.max_quantity;
     document.getElementById('edit-service-refill').value = service.refill ? "1" : "0";
     document.getElementById('edit-service-status').value = service.status ? "1" : "0";
+    document.getElementById('edit-service-order-input-type').value = service.order_input_type || 'link';
+    document.getElementById('edit-service-pricing-model').value = service.pricing_model || 'per_1000';
+    document.getElementById('edit-service-provider-multiplier').value = service.provider_quantity_multiplier || 1;
+    document.getElementById('edit-service-warranty-hours').value = service.warranty_hours || 0;
+    document.getElementById('edit-service-refund-policy-tr').value = service.refund_policy_tr || '';
+    document.getElementById('edit-service-refund-policy-en').value = service.refund_policy_en || '';
+    document.getElementById('edit-service-terms-required').checked = Number(service.terms_required) === 1;
+    this.onServiceTypeEditorChange('edit');
 
     document.getElementById('modal-edit-service-details').classList.add('active');
   }
@@ -4673,6 +4863,13 @@ class SmmApp {
       speed_en: document.getElementById('edit-service-speed-en').value,
       features_tr: document.getElementById('edit-service-features-tr').value,
       features_en: document.getElementById('edit-service-features-en').value,
+      order_input_type: document.getElementById('edit-service-order-input-type').value,
+      pricing_model: document.getElementById('edit-service-pricing-model').value,
+      provider_quantity_multiplier: document.getElementById('edit-service-provider-multiplier').value,
+      warranty_hours: document.getElementById('edit-service-warranty-hours').value,
+      refund_policy_tr: document.getElementById('edit-service-refund-policy-tr').value,
+      refund_policy_en: document.getElementById('edit-service-refund-policy-en').value,
+      terms_required: document.getElementById('edit-service-terms-required').checked,
       min_quantity: document.getElementById('edit-service-min').value,
       max_quantity: document.getElementById('edit-service-max').value,
       refill: document.getElementById('edit-service-refill').value,
@@ -5314,6 +5511,10 @@ class SmmApp {
 
   // --- AUTH MODAL SYSTEM ---
   showAuthModal(mode) {
+    if (!document.getElementById('modal-auth')) {
+      this.showAuthPage(mode);
+      return;
+    }
     this.authMode = mode;
     const title = document.getElementById('modal-auth-title');
     const submitBtn = document.getElementById('auth-submit-btn');
@@ -8613,6 +8814,10 @@ print(sonuc.get("error") or sonuc.get("order"))`;
 
   // --- AUTH SYSTEM (MATCHING IMAGE DESIGN) ---
   showAuthModal(mode = 'login') {
+    if (!document.getElementById('modal-auth')) {
+      this.showAuthPage(mode);
+      return;
+    }
     this.authMode = mode;
     const title = document.getElementById('modal-auth-title');
     const subtitle = document.getElementById('modal-auth-subtitle');
@@ -8671,6 +8876,13 @@ print(sonuc.get("error") or sonuc.get("order"))`;
   }
 
   showAuthPage(mode = 'register') {
+    // Indekslenebilir sayfalarda kimlik formlari HTML'den ayiklanir. Boyle
+    // bir sayfadan giris/kayit istenirse formu ayni DOM'da acmak yerine
+    // yalnizca kimlik formunu tasiyan noindex rotaya tam gecis yapilir.
+    if (!document.getElementById('view-auth-form')) {
+      window.location.assign(mode === 'register' ? '/register' : '/auth');
+      return;
+    }
     this.authMode = mode;
     const title = document.getElementById('auth-page-title');
     const subtitle = document.getElementById('auth-page-subtitle');

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const request = require('supertest');
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'smmpanel-apiv2-'));
@@ -11,6 +12,7 @@ process.env.DATABASE_PATH = path.join(tempDir, 'test.sqlite');
 process.env.JWT_SECRET = 'test-secret-that-is-long-enough-and-not-production';
 process.env.ENABLE_DEMO_PAYMENTS = 'false';
 process.env.PUBLIC_BASE_URL = 'http://localhost:3000';
+process.env.INBOUND_EMAIL_WEBHOOK_SECRET = 'inbound-test-secret-that-is-long-enough';
 
 const { app } = require('../server');
 const { initDatabase, dbAsync, db } = require('../config/database');
@@ -18,6 +20,8 @@ const { initDatabase, dbAsync, db } = require('../config/database');
 const SIFRE = 'ApiTestSifresi_2026';
 let apiKey;
 let servisId;
+let yorumServisId;
+let dijitalServisId;
 let kullaniciId;
 
 // Saglayici cagrisini taklit et: gercek HTTP istegi atilmasin ama siparisin
@@ -25,8 +29,8 @@ let kullaniciId;
 const SmmProviderClient = require('../services/smmProvider');
 let saglayiciyaGidenler = [];
 let saglayiciKabulEtsin = true;
-SmmProviderClient.prototype.addOrder = async function (providerServiceId, link, quantity) {
-  saglayiciyaGidenler.push({ providerServiceId, link, quantity });
+SmmProviderClient.prototype.addOrder = async function (providerServiceId, link, quantity, options = {}) {
+  saglayiciyaGidenler.push({ providerServiceId, link, quantity, options });
   if (!saglayiciKabulEtsin) return { error: 'Provider rejected' };
   return { order: 500000 + saglayiciyaGidenler.length };
 };
@@ -53,6 +57,20 @@ test.before(async () => {
     [kategori.id, saglayici.id]
   );
   servisId = servis.id;
+  yorumServisId = (await dbAsync.run(
+    `INSERT INTO services (category_id, provider_id, provider_service_id, name, name_tr, rate_per_1000,
+       rate_per_1000_kurus, min_quantity, max_quantity, status, order_input_type, provider_service_type)
+     VALUES (?, ?, '9002', 'Instagram Custom Comments', 'Instagram Özel Yorum', 10, 1000, 1, 100, 1, 'custom_comments', 'Custom Comments')`,
+    [kategori.id, saglayici.id]
+  )).id;
+  dijitalServisId = (await dbAsync.run(
+    `INSERT INTO services (category_id, provider_id, provider_service_id, name, name_tr, rate_per_1000,
+       rate_per_1000_kurus, min_quantity, max_quantity, status, order_input_type, pricing_model,
+       provider_quantity_multiplier, terms_required)
+     VALUES (?, ?, '9003', 'Windows License', 'Windows Lisansı', 50, 5000, 1, 10, 1,
+       'email_delivery', 'per_item', 1000, 1)`,
+    [kategori.id, saglayici.id]
+  )).id;
 });
 
 test.after(async () => {
@@ -132,6 +150,63 @@ test('add komutu bakiyeyi doğru tutarda düşer', async () => {
   const sonra = (await dbAsync.get('SELECT balance_kurus FROM users WHERE id = ?', [kullaniciId])).balance_kurus;
   // 1000 adet x 1250 kurus/1000 = 1250 kurus
   assert.equal(once - sonra, 1250, `düşülen tutar yanlış: ${once - sonra}`);
+});
+
+test('Custom Comments: boş olmayan her satır bir adettir ve sağlayıcıya comments alanı gider', async () => {
+  const once = (await dbAsync.get('SELECT balance_kurus FROM users WHERE id = ?', [kullaniciId])).balance_kurus;
+  const res = await v2({
+    key: apiKey, action: 'add', service: yorumServisId,
+    link: 'https://instagram.com/p/Cxxxxxxxxxx/',
+    comments: 'Birinci yorum\n\nİkinci yorum\nÜçüncü yorum'
+  });
+  assert.ok(res.body.order, res.body.error);
+  const giden = saglayiciyaGidenler[0];
+  assert.equal(giden.quantity, 3);
+  assert.equal(giden.options.comments, 'Birinci yorum\nİkinci yorum\nÜçüncü yorum');
+  const siparis = await dbAsync.get('SELECT * FROM orders WHERE id = ?', [res.body.order]);
+  assert.equal(siparis.quantity, 3);
+  assert.ok(siparis.secure_payload, 'yorumlar şifreli saklanmadı');
+  assert.equal(once - (await dbAsync.get('SELECT balance_kurus FROM users WHERE id = ?', [kullaniciId])).balance_kurus, 3);
+});
+
+test('dijital ürün: ürün başına fiyatlanır, sağlayıcı çarpanı ve tek kullanımlık e-posta uygulanır', async () => {
+  const once = (await dbAsync.get('SELECT balance_kurus FROM users WHERE id = ?', [kullaniciId])).balance_kurus;
+  const res = await v2({
+    key: apiKey, action: 'add', service: dijitalServisId,
+    link: 'musteri@example.com', quantity: 2
+  });
+  assert.ok(res.body.order, res.body.error);
+  const giden = saglayiciyaGidenler[0];
+  assert.equal(giden.quantity, 2000);
+  assert.match(giden.link, /^order-[A-Za-z0-9_-]+@jetsmmpanel\.com$/);
+  const siparis = await dbAsync.get('SELECT * FROM orders WHERE id = ?', [res.body.order]);
+  assert.equal(siparis.link, 'musteri@example.com');
+  assert.equal(siparis.provider_quantity, 2000);
+  assert.equal(siparis.delivery_status, 'waiting');
+  assert.ok(siparis.delivery_token_hash);
+  assert.equal(once - (await dbAsync.get('SELECT balance_kurus FROM users WHERE id = ?', [kullaniciId])).balance_kurus, 10000);
+
+  const inbound = JSON.stringify({
+    recipient: giden.link,
+    sender: 'provider@example.com',
+    subject: 'Windows key',
+    text: 'AAAAA-BBBBB-CCCCC-DDDDD',
+    html: '<p><strong>AAAAA-BBBBB-CCCCC-DDDDD</strong><script>alert(1)</script></p>',
+    message_id: `test-${res.body.order}`
+  });
+  const signature = crypto.createHmac('sha256', process.env.INBOUND_EMAIL_WEBHOOK_SECRET).update(inbound).digest('hex');
+  const delivered = await request(app).post('/api/inbound-delivery/cloudflare')
+    .set('content-type', 'application/json')
+    .set('x-smmjet-signature', signature)
+    .send(inbound);
+  assert.equal(delivered.status, 200, JSON.stringify(delivered.body));
+
+  const agent = request.agent(app);
+  await agent.post('/api/auth/login').send({ username: 'api_musteri', password: SIFRE });
+  const detail = await agent.get(`/api/orders/${res.body.order}/delivery`);
+  assert.equal(detail.status, 200);
+  assert.match(detail.body.content.text, /AAAAA-BBBBB/);
+  assert.doesNotMatch(detail.body.content.html, /script/i);
 });
 
 test('API siparişi panelde de görünür (aynı hesabın sipariş listesinde)', async () => {

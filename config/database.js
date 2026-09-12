@@ -200,6 +200,16 @@ async function runMigrations() {
   await addColumnIfMissing('services', 'provider_cost_rate', 'REAL');
   await addColumnIfMissing('services', 'provider_cost_currency', "TEXT DEFAULT 'USD'");
   await addColumnIfMissing('services', 'provider_cost_updated_at', 'DATETIME');
+  // Farkli siparis akislari: standart link, satir bazli ozel yorum, e-posta
+  // teslimati, dogrudan e-posta daveti ve oyuncu/kullanici kimligi.
+  await addColumnIfMissing('services', 'order_input_type', "TEXT NOT NULL DEFAULT 'link'");
+  await addColumnIfMissing('services', 'provider_service_type', 'TEXT');
+  await addColumnIfMissing('services', 'pricing_model', "TEXT NOT NULL DEFAULT 'per_1000'");
+  await addColumnIfMissing('services', 'provider_quantity_multiplier', 'INTEGER NOT NULL DEFAULT 1');
+  await addColumnIfMissing('services', 'warranty_hours', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumnIfMissing('services', 'refund_policy_tr', 'TEXT');
+  await addColumnIfMissing('services', 'refund_policy_en', 'TEXT');
+  await addColumnIfMissing('services', 'terms_required', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing('categories', 'name_tr', 'TEXT');
   await addColumnIfMissing('categories', 'name_en', 'TEXT');
   await addColumnIfMissing('blog_posts', 'title_tr', 'TEXT');
@@ -224,6 +234,32 @@ async function runMigrations() {
   await addColumnIfMissing('orders', 'drip_runs', 'INTEGER NOT NULL DEFAULT 1');
   await addColumnIfMissing('orders', 'drip_interval_minutes', 'INTEGER');
   await addColumnIfMissing('orders', 'failure_reason', 'TEXT');
+  // Siparis verildigi andaki tur ve birim bilgisi sonradan servis degisse bile
+  // siparis gecmisinin dogru yorumlanmasi icin sipariste de tutulur.
+  await addColumnIfMissing('orders', 'order_input_type', "TEXT NOT NULL DEFAULT 'link'");
+  await addColumnIfMissing('orders', 'provider_quantity', 'INTEGER');
+  await addColumnIfMissing('orders', 'secure_payload', 'TEXT');
+  await addColumnIfMissing('orders', 'delivery_email', 'TEXT');
+  await addColumnIfMissing('orders', 'delivery_token_hash', 'TEXT');
+  await addColumnIfMissing('orders', 'delivery_status', "TEXT NOT NULL DEFAULT 'none'");
+  await addColumnIfMissing('orders', 'delivery_received_at', 'DATETIME');
+  await addColumnIfMissing('orders', 'terms_accepted_at', 'DATETIME');
+  await dbAsync.exec(`
+    CREATE TABLE IF NOT EXISTS email_deliveries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES orders(id),
+      message_id TEXT UNIQUE,
+      sender TEXT,
+      subject TEXT,
+      content_encrypted TEXT NOT NULL,
+      forward_status TEXT NOT NULL DEFAULT 'pending',
+      forward_error TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      forwarded_at DATETIME
+    );
+    CREATE INDEX IF NOT EXISTS idx_email_deliveries_order ON email_deliveries(order_id, id DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_delivery_token ON orders(delivery_token_hash) WHERE delivery_token_hash IS NOT NULL;
+  `);
   // Yorum daveti maili gonderildiyse zamani tutulur (cift gonderimi onlemek icin).
   await addColumnIfMissing('orders', 'review_mail_sent_at', 'DATETIME');
   // Siparisin bitis ani (tamamlandi/iptal/basarisiz/kismi). Kod yolu fark

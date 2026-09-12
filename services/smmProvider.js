@@ -52,20 +52,27 @@ class SmmProviderClient {
     }
   }
 
-  async addOrder(serviceId, link, quantity, drip = {}) {
+  async addOrder(serviceId, link, quantity, options = {}) {
     const baslangic = Date.now();
     try {
       await assertPublicProviderUrl(this.apiUrl);
+      const fields = {
+        key: this.apiKey,
+        action: 'add',
+        service: serviceId.toString(),
+        link
+      };
+      // Standart SMM API'de "Custom Comments" servisleri quantity yerine
+      // comments (her satir bir yorum) bekler. Diger servislerde quantity gider.
+      if (options.comments) fields.comments = String(options.comments);
+      else fields.quantity = quantity.toString();
+      if (!options.comments && options.runs > 1) {
+        fields.runs = String(options.runs);
+        fields.interval = String(options.interval);
+      }
       const response = await axios.post(
         this.apiUrl,
-        new URLSearchParams({
-          key: this.apiKey,
-          action: 'add',
-          service: serviceId.toString(),
-          link: link,
-          quantity: quantity.toString(),
-          ...(drip.runs > 1 ? { runs: String(drip.runs), interval: String(drip.interval) } : {})
-        }).toString(),
+        new URLSearchParams(fields).toString(),
         safeRequestConfig({ headers: this.headers, timeout: 15000 })
       );
       this._telemetri('addOrder', baslangic, null, response.data);

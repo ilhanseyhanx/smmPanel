@@ -115,8 +115,18 @@ const ICERIK_GORUNUMLERI = [
   'view-privacy',   // gizlilik + KVKK
   'view-refund',    // iade politikasi
   'view-smm-panel-api',  // API dokumantasyonu (tam teknik metin)
-  'view-hizmet-sayfalari' // satis sayfalari vitrini (kart listesi yalnizca kendi adresinde)
+  'view-hizmet-sayfalari', // satis sayfalari vitrini (kart listesi yalnizca kendi adresinde)
+  // Kimlik formu markali satis sayfalarinin HTML'inde bulunmamali. Google
+  // Safe Browsing; or. "WhatsApp ... satin al" metniyle sifre alanini ayni
+  // dokumanda gorurse sayfayi sahte giris/phishing olarak yorumlayabilir.
+  'view-auth'
 ];
+
+const AUTH_MODAL = {
+  bas: '<!--PUBLIC-AUTH-MODAL-START-->',
+  son: '<!--PUBLIC-AUTH-MODAL-END-->',
+  yerTutucu: ''
+};
 
 /**
  * <section id="..."> blogunun bitis konumunu ic ice section'lari sayarak bulur.
@@ -155,6 +165,9 @@ function stripInactiveViews(html, aktifGorunum) {
     // Gorunum yoksa navigate() dogru sayfayi sunucudan ister (tam yukleme).
     sonuc = sonuc.slice(0, sinir.bas) + sonuc.slice(sinir.son);
   }
+  // Modal, <section> olmadigi icin yukaridaki gorunum ayiklayicisi onu
+  // kapsamaz. Yalnizca noindex kimlik rotalarinda form olarak gonderilir.
+  if (aktifGorunum !== 'view-auth') sonuc = blokSil(sonuc, AUTH_MODAL);
   return sonuc;
 }
 

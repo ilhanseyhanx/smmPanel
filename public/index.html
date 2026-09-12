@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260911c">
+  <link rel="stylesheet" href="/css/style.css?v=20260912a">
 </head>
 <body>
 
@@ -337,7 +337,7 @@
               <div id="service-info-box" class="service-info-card">
                 <div id="service-desc" class="service-info-desc">Servis açıklaması burada görünecektir.</div>
                 <div class="service-info-stats">
-                  <span><i class="fa-solid fa-tag"></i> <span data-i18n="info.price_1000">1000 Adet</span>: <span id="service-rate" style="color: var(--accent-cyan);">₺0.00</span></span>
+                  <span><i class="fa-solid fa-tag"></i> <span id="service-rate-unit-label" data-i18n="info.price_1000">1000 Adet</span>: <span id="service-rate" style="color: var(--accent-cyan);">₺0.00</span></span>
                   <span><i class="fa-solid fa-arrows-left-right"></i> <span data-i18n="info.limits">Limit</span>: <span id="service-limits">0 - 0</span></span>
                 </div>
                 <!-- Baslama suresi / hiz / ozellikler: admin doldurduysa JS burada kartlari basar. -->
@@ -345,20 +345,26 @@
               </div>
 
               <div class="form-group">
-                <label for="order-link-input" class="form-label"><i class="fa-solid fa-link"></i> Bağlantı (Link / Kullanıcı Adı)</label>
+                <label for="order-link-input" id="order-target-label" class="form-label"><i class="fa-solid fa-link"></i> Bağlantı (Link / Kullanıcı Adı)</label>
                 <input type="text" id="order-link-input" class="form-control" placeholder="https://instagram.com/kullaniciadi veya post linki" required>
                 <!-- Secilen servise gore "profil mi gonderi mi" ipucu; yanlis link
                      yuzunden bosa giden siparisleri onlemek icin. -->
                 <small id="order-link-hint" style="display:none; margin-top:6px; padding:8px 10px; border-radius:var(--radius-sm); background:rgba(6,182,212,0.1); border:1px solid rgba(6,182,212,0.25); color:var(--accent-cyan); font-size:.82rem;"></small>
               </div>
 
-              <div class="form-group">
-                <label for="order-qty-input" class="form-label"><i class="fa-solid fa-arrow-up-1-9"></i> Miktar</label>
+              <div class="form-group" id="order-comments-group" style="display:none;">
+                <label for="order-comments-input" class="form-label"><i class="fa-solid fa-comments"></i> Yorumlar <small style="color:var(--text-muted);">(her satır bir yorum)</small></label>
+                <textarea id="order-comments-input" class="form-control" rows="7" maxlength="200000" placeholder="Harika bir paylaşım!&#10;Çok faydalı olmuş.&#10;Tebrikler 👏" oninput="app.onOrderCommentsInput()"></textarea>
+                <small id="order-comments-count" style="display:block;margin-top:6px;color:var(--accent-cyan);">0 yorum</small>
+              </div>
+
+              <div class="form-group" id="order-quantity-group">
+                <label for="order-qty-input" id="order-quantity-label" class="form-label"><i class="fa-solid fa-arrow-up-1-9"></i> Miktar</label>
                 <input type="number" id="order-qty-input" class="form-control" placeholder="Örn: 1000" oninput="app.calculateOrderCharge()" required>
               </div>
 
               <!-- DRIP-FEED OPTIONS -->
-              <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--border-glass);">
+              <div id="order-drip-box" style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--border-glass);">
                 <label style="cursor: pointer; display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--accent-cyan);">
                   <input type="checkbox" id="drip-feed-checkbox" onchange="app.toggleDripFeed(this.checked)" style="width: 16px; height: 16px;">
                   ⚡ Kademeli Gönderim (Drip-Feed)
@@ -373,6 +379,14 @@
                     <input type="number" id="drip-interval-input" class="form-control" value="60" min="5">
                   </div>
                 </div>
+              </div>
+
+              <div id="order-terms-box" style="display:none;margin-bottom:16px;padding:14px;border-radius:var(--radius-md);background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.28);">
+                <div id="order-terms-text" style="font-size:.86rem;color:var(--text-muted);margin-bottom:10px;"></div>
+                <label style="display:flex;gap:9px;align-items:flex-start;cursor:pointer;font-size:.88rem;font-weight:600;">
+                  <input type="checkbox" id="order-terms-checkbox" style="margin-top:3px;">
+                  <span id="order-terms-label">Teslimat, garanti ve iade koşullarını okudum ve kabul ediyorum.</span>
+                </label>
               </div>
 
               <!-- Charge Box -->
@@ -973,6 +987,16 @@ Content-Type: application/json
   "service": 101,
   "link": "https://instagram.com/kullaniciadi",
   "quantity": 1000
+}</pre>
+
+          <h4 style="color:var(--accent-cyan);margin:0 0 8px;">Özel yorum servisi</h4>
+          <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:8px;">Servis listesindeki <code>type</code> değeri <code>Custom Comments</code> ise <code>quantity</code> yerine her satırı bir yorum olan <code>comments</code> alanını gönderin.</p>
+          <pre style="background: rgba(7,10,18,0.6); padding: 14px; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 0.85rem; overflow-x: auto;" class="mb-20">{
+  "key": "YOUR_API_KEY",
+  "action": "add",
+  "service": 202,
+  "link": "https://instagram.com/p/POST_ID/",
+  "comments": "Harika olmuş!\nÇok faydalı bir paylaşım."
 }</pre>
 
           <h3 style="color: #fff; margin-bottom: 10px;">3. Sipariş Durumu Sorgulama</h3>
@@ -3474,7 +3498,8 @@ Canceled     iptal edildi</pre>
     </div>
   </div>
 
-  <!-- AUTH MODAL -->
+  <!-- AUTH MODAL: Sunucu bunu yalnizca noindex kimlik rotalarinda gonderir. -->
+  <!--PUBLIC-AUTH-MODAL-START-->
   <div class="modal-backdrop" id="modal-auth">
     <div class="modal-body glass-card" style="max-width: 440px; padding: 0; overflow: hidden; border-radius: 20px;">
       <div class="auth-form-card" style="box-shadow: none;">
@@ -3530,6 +3555,7 @@ Canceled     iptal edildi</pre>
       </div>
     </div>
   </div>
+  <!--PUBLIC-AUTH-MODAL-END-->
 
   <!--ADMIN-ONLY-START-->
   <!-- IMPORT SERVICES MODAL (ADMIN) -->
@@ -3710,15 +3736,15 @@ Canceled     iptal edildi</pre>
           <div class="service-editor-section-title"><span class="service-editor-step">2</span> Fiyat & Miktar</div>
           <div class="service-editor-grid-3">
             <div class="form-group">
-              <label for="single-cost-price" class="form-label">Geliş Fiyatı (1000 Adet)</label>
+              <label for="single-cost-price" class="form-label">Sağlayıcı Liste Fiyatı</label>
               <input type="text" id="single-cost-price" class="form-control" readonly style="opacity: 0.7;">
             </div>
             <div class="form-group">
-              <label for="single-sell-price" class="form-label">Satış Fiyatı (₺ / 1000)</label>
+              <label for="single-sell-price" id="single-sell-price-label" class="form-label">Satış Fiyatı (₺ / 1000)</label>
               <input type="number" id="single-sell-price" class="form-control" step="0.01" required>
             </div>
             <div class="form-group">
-              <label for="single-sell-price-usd" class="form-label">USD Satış Fiyatı ($ / 1000)</label>
+              <label for="single-sell-price-usd" id="single-sell-price-usd-label" class="form-label">USD Satış Fiyatı ($ / 1000)</label>
               <input type="number" id="single-sell-price-usd" class="form-control" step="0.0001" min="0" value="0">
             </div>
           </div>
@@ -3741,9 +3767,47 @@ Canceled     iptal edildi</pre>
           </div>
         </div>
 
-        <!-- 3. Bilgi penceresi -->
+        <!-- 3. Siparis yapisi -->
         <div class="service-editor-section">
-          <div class="service-editor-section-title"><span class="service-editor-step">3</span> Bilgi Penceresi <small style="font-weight:500;color:var(--text-muted);">— müşteri, servis satırındaki <i class="fa-solid fa-circle-info"></i> butonuna basınca ve sipariş sayfasında görür</small></div>
+          <div class="service-editor-section-title"><span class="service-editor-step">3</span> Sipariş Türü & Teslimat</div>
+          <div class="service-editor-grid-3">
+            <div class="form-group">
+              <label for="single-order-input-type" class="form-label">Müşteriden İstenecek Bilgi</label>
+              <select id="single-order-input-type" class="form-control" onchange="app.onServiceTypeEditorChange('single')">
+                <option value="link">🔗 Standart link / kullanıcı adı</option>
+                <option value="custom_comments">💬 Özel yorum (her satır bir yorum)</option>
+                <option value="email_delivery">📨 E-posta teslimatı (bizim sistemimiz iletir)</option>
+                <option value="email_invite">✉️ Doğrudan e-posta daveti (Canva vb.)</option>
+                <option value="player_id">🎮 Player / User ID</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="single-pricing-model" class="form-label">Müşteri Fiyatlandırması</label>
+              <select id="single-pricing-model" class="form-control" onchange="app.onServiceTypeEditorChange('single')">
+                <option value="per_1000">1000 adet başına</option>
+                <option value="per_item">Ürün / hesap başına</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="single-provider-multiplier" class="form-label">Sağlayıcı Miktar Çarpanı</label>
+              <input type="number" id="single-provider-multiplier" class="form-control" min="1" max="1000000" value="1">
+              <small style="color:var(--text-muted);">MoreThanPanel ürünlerinde çoğunlukla 1000.</small>
+            </div>
+          </div>
+          <div class="service-editor-grid-2">
+            <div class="form-group"><label for="single-warranty-hours" class="form-label">Garanti Süresi (saat, yoksa 0)</label><input type="number" id="single-warranty-hours" class="form-control" min="0" max="87600" value="0"></div>
+            <div class="form-group"><label class="form-label">Koşul Onayı</label><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="single-terms-required"> Satın almadan önce müşteriye koşulları onaylat</label></div>
+          </div>
+          <div class="bilingual-editor-grid compact-grid">
+            <div class="language-editor-card"><div class="language-editor-title">🇹🇷 Türkçe</div><label for="single-refund-policy-tr" class="form-label">Garanti / İade Notu</label><textarea id="single-refund-policy-tr" class="form-control" rows="3" placeholder="Örn: İlk girişte geçersizse 24 saat içinde destek kaydı açın. Teslim edilmiş ve kullanılan kodlarda keyfi iade yapılamaz."></textarea></div>
+            <div class="language-editor-card"><div class="language-editor-title">🇬🇧 English</div><label for="single-refund-policy-en" class="form-label">Warranty / Refund Note</label><textarea id="single-refund-policy-en" class="form-control" rows="3"></textarea></div>
+          </div>
+          <div id="single-order-type-help" style="margin-top:10px;color:var(--accent-cyan);font-size:.85rem;"></div>
+        </div>
+
+        <!-- 4. Bilgi penceresi -->
+        <div class="service-editor-section">
+          <div class="service-editor-section-title"><span class="service-editor-step">4</span> Bilgi Penceresi <small style="font-weight:500;color:var(--text-muted);">— müşteri, servis satırındaki <i class="fa-solid fa-circle-info"></i> butonuna basınca ve sipariş sayfasında görür</small></div>
           <div class="bilingual-editor-grid compact-grid">
             <div class="language-editor-card">
               <div class="language-editor-title">🇹🇷 Türkçe</div>
@@ -3798,7 +3862,7 @@ Canceled     iptal edildi</pre>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
           <div class="form-group">
-            <label for="edit-service-price" class="form-label">Satış Fiyatı (₺ / 1000 Adet)</label>
+            <label for="edit-service-price" id="edit-service-price-label" class="form-label">Satış Fiyatı (₺ / 1000 Adet)</label>
             <input type="number" id="edit-service-price" class="form-control" step="0.01" required>
           </div>
           <div class="form-group">
@@ -3809,7 +3873,18 @@ Canceled     iptal edildi</pre>
             </select>
           </div>
         </div>
-        <div class="form-group"><label for="edit-service-price-usd" class="form-label">USD Satış Fiyatı ($ / 1000)</label><input type="number" id="edit-service-price-usd" class="form-control" step="0.0001" min="0"></div>
+        <div class="form-group"><label for="edit-service-price-usd" id="edit-service-price-usd-label" class="form-label">USD Satış Fiyatı ($ / 1000)</label><input type="number" id="edit-service-price-usd" class="form-control" step="0.0001" min="0"></div>
+        <div class="service-editor-section">
+          <div class="service-editor-section-title"><i class="fa-solid fa-box-open"></i> Sipariş Türü & Teslimat</div>
+          <div class="service-editor-grid-3">
+            <div class="form-group"><label for="edit-service-order-input-type" class="form-label">Müşteriden İstenecek Bilgi</label><select id="edit-service-order-input-type" class="form-control" onchange="app.onServiceTypeEditorChange('edit')"><option value="link">🔗 Standart link / kullanıcı adı</option><option value="custom_comments">💬 Özel yorum</option><option value="email_delivery">📨 E-posta teslimatı (biz iletiriz)</option><option value="email_invite">✉️ Doğrudan e-posta daveti</option><option value="player_id">🎮 Player / User ID</option></select></div>
+            <div class="form-group"><label for="edit-service-pricing-model" class="form-label">Müşteri Fiyatlandırması</label><select id="edit-service-pricing-model" class="form-control" onchange="app.onServiceTypeEditorChange('edit')"><option value="per_1000">1000 adet başına</option><option value="per_item">Ürün / hesap başına</option></select></div>
+            <div class="form-group"><label for="edit-service-provider-multiplier" class="form-label">Sağlayıcı Miktar Çarpanı</label><input type="number" id="edit-service-provider-multiplier" class="form-control" min="1" max="1000000" value="1"></div>
+          </div>
+          <div class="service-editor-grid-2"><div class="form-group"><label for="edit-service-warranty-hours" class="form-label">Garanti Süresi (saat)</label><input type="number" id="edit-service-warranty-hours" class="form-control" min="0" max="87600"></div><div class="form-group"><label class="form-label">Koşul Onayı</label><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="edit-service-terms-required"> Müşteriye koşulları onaylat</label></div></div>
+          <div class="bilingual-editor-grid compact-grid"><div class="language-editor-card"><div class="language-editor-title">🇹🇷 Türkçe</div><label for="edit-service-refund-policy-tr" class="form-label">Garanti / İade Notu</label><textarea id="edit-service-refund-policy-tr" class="form-control" rows="3"></textarea></div><div class="language-editor-card"><div class="language-editor-title">🇬🇧 English</div><label for="edit-service-refund-policy-en" class="form-label">Warranty / Refund Note</label><textarea id="edit-service-refund-policy-en" class="form-control" rows="3"></textarea></div></div>
+          <div id="edit-order-type-help" style="margin-top:10px;color:var(--accent-cyan);font-size:.85rem;"></div>
+        </div>
         <div class="service-editor-section">
           <div class="service-editor-section-title"><i class="fa-solid fa-circle-info"></i> Bilgi Penceresi <small style="font-weight:500;color:var(--text-muted);">— müşteri, servis satırındaki bilgi butonunda ve sipariş sayfasında görür</small></div>
           <div class="bilingual-editor-grid compact-grid">
@@ -3863,6 +3938,18 @@ Canceled     iptal edildi</pre>
   <!--ADMIN-ONLY-END-->
 
   <!--AUTH-ONLY-START-->
+  <div class="modal-backdrop" id="modal-order-delivery">
+    <div class="modal-body glass-card" role="dialog" aria-modal="true" aria-labelledby="order-delivery-title">
+      <div class="flex-between mb-20">
+        <h3 id="order-delivery-title"><i class="fa-solid fa-key"></i> Dijital Ürün Teslimatı</h3>
+        <button aria-label="Kapat" onclick="app.closeModal('modal-order-delivery')" style="background:none;border:0;color:var(--text-muted);cursor:pointer;font-size:1.2rem;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div id="order-delivery-meta" style="color:var(--text-muted);font-size:.85rem;margin-bottom:12px;"></div>
+      <div id="order-delivery-content" style="padding:16px;border-radius:var(--radius-md);background:rgba(255,255,255,.04);border:1px solid var(--border-glass);word-break:break-word;"></div>
+      <p style="margin:14px 0 0;color:var(--warning);font-size:.82rem;"><i class="fa-solid fa-shield-halved"></i> Hesap, lisans ve kod bilgilerini kimseyle paylaşmayın.</p>
+    </div>
+  </div>
+
   <!-- CREATE TICKET MODAL -->
   <div class="modal-backdrop" id="modal-create-ticket">
     <div class="modal-body glass-card">
@@ -4294,7 +4381,7 @@ Canceled     iptal edildi</pre>
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260911c" defer></script>
-  <script src="/js/app.js?v=20260911c" defer></script>
+  <script src="/js/api.js?v=20260912a" defer></script>
+  <script src="/js/app.js?v=20260912a" defer></script>
 </body>
 </html>

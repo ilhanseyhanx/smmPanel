@@ -11,10 +11,13 @@ function normalizeProviderServices(raw) {
     name: normalizePlainText(item?.name || '', 220),
     category: normalizePlainText(item?.category || 'Genel', 120),
     description: normalizePlainText(item?.description || '', 1000),
+    service_type: normalizePlainText(item?.type || 'Default', 80),
     cost_rate: Number(item?.rate ?? item?.price ?? item?.cost),
     min_quantity: Math.max(1, parseInt(item?.min || 100)),
     max_quantity: Math.max(1, parseInt(item?.max || 10000)),
-    refill: item?.refill === true || item?.refill === 1 || item?.refill === '1' || item?.refill === 'true'
+    refill: item?.refill === true || item?.refill === 1 || item?.refill === '1' || item?.refill === 'true',
+    cancel: item?.cancel === true || item?.cancel === 1 || item?.cancel === '1' || item?.cancel === 'true',
+    dripfeed: item?.dripfeed === true || item?.dripfeed === 1 || item?.dripfeed === '1' || item?.dripfeed === 'true'
   })).filter(item => item.provider_service_id && item.name && Number.isFinite(item.cost_rate) && item.cost_rate >= 0);
 }
 

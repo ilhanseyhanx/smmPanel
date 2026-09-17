@@ -33,7 +33,8 @@ const PLATFORMS = {
     profile: [/^\/[\w.](?:[\w.]){0,29}\/?$/],
     reserved: ['p', 'reel', 'reels', 'tv', 'stories', 'explore', 'accounts', 'direct', 'about'],
     ornekMedya: 'https://www.instagram.com/p/Cxxxxxxxxxx/',
-    ornekProfil: 'https://www.instagram.com/kullaniciadi'
+    ornekProfil: 'https://www.instagram.com/kullaniciadi',
+    ornekHikaye: 'https://www.instagram.com/stories/kullaniciadi/123...'
   },
   tiktok: {
     label: 'TikTok',
@@ -332,4 +333,25 @@ function validateOrderLink(link, service, lang = 'tr') {
   return { ok: true };
 }
 
-module.exports = { validateOrderLink, detectPlatform, detectTarget, PLATFORMS };
+/**
+ * Siparis formu icin platforma ozel ornek baglantilar. Vitrin/istemci bunu
+ * kullanarak "YouTube abone" servisinde Instagram degil YouTube ornegi gosterir.
+ * Platform cozulemezse null doner; istemci genel metne duser.
+ */
+function linkExamplesFor(service) {
+  const serviceText = [service?.name, service?.name_tr, service?.name_en,
+    service?.category_name, service?.category_name_en].filter(Boolean).join(' ');
+  const platform = detectPlatform(serviceText);
+  const target = detectTarget(serviceText);
+  if (!platform) return { link_platform: null, link_target: target, link_example_profile: null, link_example_media: null, link_example_story: null };
+  const def = PLATFORMS[platform];
+  return {
+    link_platform: def.label,
+    link_target: target,
+    link_example_profile: def.ornekProfil || null,
+    link_example_media: def.ornekMedya || null,
+    link_example_story: def.ornekHikaye || null
+  };
+}
+
+module.exports = { validateOrderLink, detectPlatform, detectTarget, linkExamplesFor, PLATFORMS };

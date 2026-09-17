@@ -131,6 +131,11 @@ async function runMigrations() {
   // API anahtarinin ne zaman uretildigi: panelde "en son ne zaman yenilendi"
   // bilgisi gosterilir.
   await addColumnIfMissing('users', 'api_key_created_at', 'DATETIME');
+  // Admin "Kullanici Detayi" sayfasi: son giris, son gorulme ve giris sayisi.
+  await addColumnIfMissing('users', 'last_login_at', 'DATETIME');
+  await addColumnIfMissing('users', 'last_login_ip', 'TEXT');
+  await addColumnIfMissing('users', 'last_seen_at', 'DATETIME');
+  await addColumnIfMissing('users', 'login_count', 'INTEGER NOT NULL DEFAULT 0');
 
   // E-posta pazarlama: sablonlar ve gonderim kayitlari (istatistik icin).
   await dbAsync.run(`
@@ -206,6 +211,10 @@ async function runMigrations() {
   await addColumnIfMissing('services', 'provider_service_type', 'TEXT');
   await addColumnIfMissing('services', 'pricing_model', "TEXT NOT NULL DEFAULT 'per_1000'");
   await addColumnIfMissing('services', 'provider_quantity_multiplier', 'INTEGER NOT NULL DEFAULT 1');
+  // Eksik teslim eden saglayicilar icin servis bazli "fazla gonderim" yuzdesi:
+  // musteri 400 ister, saglayiciya 400 * (1 + yuzde/100) gider; musteri
+  // yalnizca 400 icin odeme yapar, fark panel sahibinin maliyetidir.
+  await addColumnIfMissing('services', 'provider_overage_percent', 'REAL NOT NULL DEFAULT 0');
   await addColumnIfMissing('services', 'warranty_hours', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing('services', 'refund_policy_tr', 'TEXT');
   await addColumnIfMissing('services', 'refund_policy_en', 'TEXT');

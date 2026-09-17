@@ -39,6 +39,19 @@ function setSessionCookie(res, token) {
   });
 }
 
+// "Son gorulme": her istekte degil, kullanici basina en fazla 5 dakikada bir
+// yazilir (admin Kullanici Detayi sayfasi icin). Yanit beklenmez.
+const LAST_SEEN_INTERVAL_MS = 5 * 60 * 1000;
+const lastSeenWrites = new Map();
+function touchLastSeen(userId) {
+  const now = Date.now();
+  const prev = lastSeenWrites.get(userId);
+  if (prev && now - prev < LAST_SEEN_INTERVAL_MS) return;
+  lastSeenWrites.set(userId, now);
+  if (lastSeenWrites.size > 10000) lastSeenWrites.clear();
+  dbAsync.run('UPDATE users SET last_seen_at = CURRENT_TIMESTAMP WHERE id = ?', [userId]).catch(() => {});
+}
+
 async function authenticateToken(req, res, next) {
   const token = getRequestToken(req);
   if (!token) return res.status(401).json({ error: 'Lütfen giriş yapın.' });
@@ -57,6 +70,7 @@ async function authenticateToken(req, res, next) {
     if (user.banned) return res.status(403).json({ error: 'Hesabınız askıya alınmıştır. Destek ekibiyle iletişime geçin.' });
     req.user = user;
     req.auth = decoded;
+    touchLastSeen(user.id);
     next();
   } catch {
     res.clearCookie('smm_session', { path: '/' });

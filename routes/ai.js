@@ -9,6 +9,7 @@ const { toKurus } = require('../utils/money');
 const { fetchProviderCatalog, filterCatalogForQuery } = require('../services/providerCatalog');
 const { chooseBlogCover } = require('../services/blogCover');
 const { buildMetaDescription } = require('../utils/metaDescription');
+const { detectRefillFromText } = require('../utils/serviceFlags');
 
 router.use(authenticateToken, requireAdmin);
 
@@ -443,7 +444,7 @@ async function executeAction(tx, action, prepared = null) {
       const sourceRate = Number(item.source.cost_rate);
       const sellTry = prepared.currency === 'TRY' ? sourceRate * prepared.multiplier : sourceRate * prepared.multiplier * prepared.usdTryRate;
       const sellUsd = prepared.currency === 'TRY' ? (sourceRate * prepared.multiplier) / prepared.usdTryRate : sourceRate * prepared.multiplier;
-      const refill = item.source.refill || /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün/i.test(`${item.source.name} ${item.source.category}`) ? 1 : 0;
+      const refill = item.source.refill || detectRefillFromText(`${item.source.name} ${item.source.category}`) ? 1 : 0;
       const result = await tx.run(`INSERT INTO services
         (category_id, provider_id, provider_service_id, name, name_tr, name_en, description, description_tr, description_en,
          rate_per_1000, rate_per_1000_kurus, rate_per_1000_usd_cents, provider_cost_rate, provider_cost_currency,

@@ -3,6 +3,7 @@ const router = express.Router();
 const { dbAsync } = require('../config/database');
 const { activeServiceDiscounts, activeDepositBonus, activePopupCampaign } = require('../services/campaigns');
 const { toKurus, fromKurus } = require('../utils/money');
+const { linkExamplesFor } = require('../utils/linkValidator');
 
 // GET SERVICES & CATEGORIES FOR PUBLIC/CLIENT CATALOG
 router.get('/', async (req, res) => {
@@ -51,6 +52,10 @@ router.get('/', async (req, res) => {
     // ustu cizili eski fiyati ve indirimli yeni fiyati birlikte gorur.
     const discounts = await activeServiceDiscounts();
     for (const service of services) {
+      // Siparis formundaki ornek baglanti servisin platformuna gore gelir
+      // (YouTube servisinde Instagram ornegi gorunmesin). Sunucudaki link
+      // dogrulayiciyla ayni tespit kullanilir; ipucu ile kural celismez.
+      Object.assign(service, linkExamplesFor(service));
       const discount = discounts.get(service.id);
       if (discount) {
         service.discount_percent = discount.discount_percent;

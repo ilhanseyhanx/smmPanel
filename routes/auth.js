@@ -158,6 +158,12 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
       }
     }
     setSessionCookie(res, signSession(user));
+    // Admin "Kullanici Detayi" icin son giris bilgisi; yanit beklenmez.
+    dbAsync.run(
+      `UPDATE users SET last_login_at = CURRENT_TIMESTAMP, last_seen_at = CURRENT_TIMESTAMP,
+              last_login_ip = ?, login_count = login_count + 1 WHERE id = ?`,
+      [String(securityMonitor.clientIp(req) || '').slice(0, 64) || null, user.id]
+    ).catch(() => {});
     res.json({ message: 'Giriş başarılı.', user: publicUser(user) });
   } catch (err) { next(err); }
 });

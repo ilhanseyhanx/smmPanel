@@ -202,6 +202,7 @@ async function placeOrder({
       username: user.username,
       serviceName: reserved.service.name,
       quantity: reserved.quantity,
+      providerQuantity: reserved.providerQuantity,
       charge: fromKurus(reserved.chargeKurus),
       link,
       status,

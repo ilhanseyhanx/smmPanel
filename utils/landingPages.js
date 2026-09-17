@@ -249,8 +249,10 @@ const T = {
   }
 };
 
+// Tek gercek kaynak services.refill: admin "Standart" secince ad "garanti"
+// icerse bile (orn. "Garantisiz") vitrin garantili gostermez.
 function isGuaranteed(s) {
-  return s.refill == 1 || /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün|days refill|yenileme/i.test(`${s.name} ${s.category_name}`);
+  return Number(s.refill) === 1;
 }
 
 function priceText(s, lang) {

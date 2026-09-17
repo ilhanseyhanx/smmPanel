@@ -135,19 +135,23 @@ async function notifyNewUser(user, { referral } = {}) {
   return send(lines.join('\n'));
 }
 
-async function notifyNewOrder({ orderId, username, serviceName, quantity, charge, link, status, providerOrderId }) {
+async function notifyNewOrder({ orderId, username, serviceName, quantity, providerQuantity, charge, link, status, providerOrderId }) {
   try {
     const config = await loadConfig();
     if (!config.notifyOrder) return false;
   } catch { return false; }
 
+  // Fazla gonderim / carpan varsa admin saglayiciya gercekte giden miktari da gorur.
+  const sentToProvider = Number(providerQuantity) > 0 && Number(providerQuantity) !== Number(quantity)
+    ? ` <i>(sağlayıcıya ${escapeHtml(Number(providerQuantity).toLocaleString('tr-TR'))})</i>`
+    : '';
   const lines = [
     '🛒 <b>Yeni Sipariş Oluşturuldu</b>',
     '',
     `🧾 Sipariş No: <b>#${escapeHtml(orderId)}</b>`,
     `👤 Kullanıcı: ${escapeHtml(username)}`,
     `📦 Servis: ${escapeHtml(serviceName)}`,
-    `🔢 Miktar: ${escapeHtml(Number(quantity).toLocaleString('tr-TR'))}`,
+    `🔢 Miktar: ${escapeHtml(Number(quantity).toLocaleString('tr-TR'))}${sentToProvider}`,
     `💰 Tutar: ₺${escapeHtml(Number(charge).toFixed(2))}`,
     `🔗 Hedef: ${escapeHtml(link)}`,
     `📊 Durum: ${escapeHtml(status)}`

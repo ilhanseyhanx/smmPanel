@@ -82,8 +82,9 @@ router.get('/', authenticateToken, async (req, res, next) => {
     res.json({
       orders: orders.map(o => {
         // Yorumlar ve urun teslimat icerigi sifreli olsa da liste ucundan
-        // istemciye ham ciphertext olarak dahi cikmaz.
-        const { secure_payload, delivery_token_hash, ...safeOrder } = o;
+        // istemciye ham ciphertext olarak dahi cikmaz. Saglayiciya giden
+        // gercek miktar (fazla gonderim/carpan) da musteriye gosterilmez.
+        const { secure_payload, delivery_token_hash, provider_quantity, ...safeOrder } = o;
         return { ...safeOrder, charge: fromKurus(o.charge_kurus) };
       }),
       pagination: { page, limit, total: total.count, pages: Math.ceil(total.count / limit) }

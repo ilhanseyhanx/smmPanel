@@ -17,6 +17,7 @@ const Shopier = require('../services/shopier');
 const { buildXlsx, columnsFromRows } = require('../utils/xlsx');
 const { buildMetaDescription } = require('../utils/metaDescription');
 const securityMonitor = require('../services/securityMonitor');
+const { detectRefillFromText, parseRefillFlag } = require('../utils/serviceFlags');
 
 // --- Ortak dogrulama semalari ---------------------------------------------
 // Admin uclari da musteri uclari gibi sema ile dogrulanir; boylece negatif
@@ -131,12 +132,23 @@ const serviceCreateSchema = z.object({
   provider_service_type: z.string().trim().max(80).optional(),
   pricing_model: z.enum(['per_1000', 'per_item']).optional(),
   provider_quantity_multiplier: z.coerce.number().int().min(1).max(1_000_000).optional(),
+  // Eksik teslim eden saglayici icin fazla gonderim yuzdesi (0 = kapali).
+  provider_overage_percent: z.coerce.number().finite().min(0).max(500).optional(),
   warranty_hours: z.coerce.number().int().min(0).max(87600).optional(),
   refund_policy_tr: z.string().max(3000).optional(),
   refund_policy_en: z.string().max(3000).optional(),
   terms_required: z.union([z.boolean(), z.string(), z.number()]).optional(),
   refill: z.union([z.boolean(), z.string(), z.number()]).optional()
 });
+
+// Fazla gonderim yuzdesi: bos/gecersizse mevcut deger korunur; 0-500 arasi,
+// en fazla 2 ondalik.
+function normalizeOveragePercent(value, fallback = 0) {
+  if (value === undefined || value === null || value === '') return Math.max(0, Number(fallback) || 0);
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) return Math.max(0, Number(fallback) || 0);
+  return Math.min(500, Math.round(num * 100) / 100);
+}
 
 // Ozellik listesi satir satir saklanir; bos satirlar ve HTML atilir.
 function normalizeFeatureList(value, fallback = '') {
@@ -460,13 +472,7 @@ router.post('/providers/:id/import-services', requireIdParam, validate(importSer
       );
 
       // Auto-detect refill/guarantee from provider API or title keywords
-      const isRefill = (
-        pService.refill == true || 
-        pService.refill === 1 || 
-        pService.refill === "1" || 
-        pService.refill === "true" ||
-        /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün/i.test(`${serviceName} ${catName}`)
-      ) ? 1 : 0;
+      const isRefill = (parseRefillFlag(pService.refill) === 1 || detectRefillFromText(`${serviceName} ${catName}`)) ? 1 : 0;
 
       if (!existing) {
         await dbAsync.run(
@@ -593,6 +599,7 @@ const SERVICE_EXPORT_LABELS = {
   provider_cost_rate: 'Sağlayıcı Maliyeti', provider_cost_currency: 'Maliyet Para Birimi',
   provider_cost_updated_at: 'Maliyet Güncelleme', min_quantity: 'Min. Adet',
   max_quantity: 'Maks. Adet', refill: 'Telafi (Refill)', status: 'Durum',
+  provider_quantity_multiplier: 'Sağlayıcı Çarpanı', provider_overage_percent: 'Fazla Gönderim (%)',
   start_time_tr: 'Başlama Süresi (TR)', start_time_en: 'Başlama Süresi (EN)',
   speed_tr: 'Hız (TR)', speed_en: 'Hız (EN)',
   features_tr: 'Özellikler (TR)', features_en: 'Özellikler (EN)'
@@ -865,7 +872,7 @@ router.post('/services', validate(serviceCreateSchema), async (req, res) => {
       rate_per_1000, rate_per_1000_usd, provider_cost_rate, provider_cost_currency,
       min_quantity, max_quantity, description, description_tr, description_en, refill,
       start_time_tr, start_time_en, speed_tr, speed_en, features_tr, features_en,
-      order_input_type, provider_service_type, pricing_model, provider_quantity_multiplier,
+      order_input_type, provider_service_type, pricing_model, provider_quantity_multiplier, provider_overage_percent,
       warranty_hours, refund_policy_tr, refund_policy_en, terms_required } = req.body;
     const safeNameTr = normalizePlainText(name_tr || name, 220);
     const safeNameEn = normalizePlainText(name_en || name_tr || name, 220);
@@ -897,10 +904,12 @@ router.post('/services', validate(serviceCreateSchema), async (req, res) => {
       category = { id: catRes.id };
     }
 
-    const isRefill = (
-      refill == 1 || refill === "1" || refill === true || refill === "true" ||
-      /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün/i.test(`${safeNameTr} ${safeNameEn} ${category_name}`)
-    ) ? 1 : 0;
+    // Admin popup'ta secim yaptiysa o gecerlidir; secim yoksa addan tahmin edilir.
+    // Eskiden "Standart" secilse bile ad "garanti" iceriyorsa garantili kaydediliyordu.
+    const explicitRefill = parseRefillFlag(refill);
+    const isRefill = explicitRefill !== null
+      ? explicitRefill
+      : (detectRefillFromText(`${safeNameTr} ${safeNameEn} ${category_name}`) ? 1 : 0);
     const safeProviderType = normalizePlainText(provider_service_type || '', 80);
     const inputType = order_input_type || (/custom\s*comments?/i.test(safeProviderType) ? 'custom_comments' : 'link');
 
@@ -909,9 +918,9 @@ router.post('/services', validate(serviceCreateSchema), async (req, res) => {
        rate_per_1000_kurus, rate_per_1000_usd_cents, provider_cost_rate, provider_cost_currency, provider_cost_updated_at,
        min_quantity, max_quantity, description, description_tr, description_en, status, refill,
        start_time_tr, start_time_en, speed_tr, speed_en, features_tr, features_en,
-       order_input_type, provider_service_type, pricing_model, provider_quantity_multiplier,
+       order_input_type, provider_service_type, pricing_model, provider_quantity_multiplier, provider_overage_percent,
        warranty_hours, refund_policy_tr, refund_policy_en, terms_required)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${Number(provider_cost_rate) > 0 ? 'CURRENT_TIMESTAMP' : 'NULL'}, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${Number(provider_cost_rate) > 0 ? 'CURRENT_TIMESTAMP' : 'NULL'}, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         category.id,
         provider_id || null,
@@ -940,6 +949,7 @@ router.post('/services', validate(serviceCreateSchema), async (req, res) => {
         safeProviderType,
         pricing_model || 'per_1000',
         Math.max(1, parseInt(provider_quantity_multiplier || 1)),
+        normalizeOveragePercent(provider_overage_percent, 0),
         Math.max(0, parseInt(warranty_hours || 0)),
         normalizePlainText(refund_policy_tr || '', 3000),
         normalizePlainText(refund_policy_en || '', 3000),
@@ -961,7 +971,7 @@ router.put('/services/:id', requireIdParam, validate(serviceUpdateSchema), async
     const { category_name, category_name_en, name, name_tr, name_en, rate_per_1000, rate_per_1000_usd,
       min_quantity, max_quantity, status, refill, description_tr, description_en,
       start_time_tr, start_time_en, speed_tr, speed_en, features_tr, features_en,
-      order_input_type, provider_service_type, pricing_model, provider_quantity_multiplier,
+      order_input_type, provider_service_type, pricing_model, provider_quantity_multiplier, provider_overage_percent,
       warranty_hours, refund_policy_tr, refund_policy_en, terms_required } = req.body;
     let categoryId = current.category_id;
     if (category_name && category_name !== current.category_name) {
@@ -980,6 +990,7 @@ router.put('/services/:id', requireIdParam, validate(serviceUpdateSchema), async
       min_quantity = ?, max_quantity = ?, status = ?, refill = ?,
       start_time_tr = ?, start_time_en = ?, speed_tr = ?, speed_en = ?, features_tr = ?, features_en = ?,
       order_input_type = ?, provider_service_type = ?, pricing_model = ?, provider_quantity_multiplier = ?,
+      provider_overage_percent = ?,
       warranty_hours = ?, refund_policy_tr = ?, refund_policy_en = ?, terms_required = ? WHERE id = ?`, [
       categoryId, safeNameTr, safeNameTr, safeNameEn,
       normalizePlainText(description_tr ?? current.description_tr ?? current.description ?? '', 1000),
@@ -987,7 +998,7 @@ router.put('/services/:id', requireIdParam, validate(serviceUpdateSchema), async
       normalizePlainText(description_en ?? current.description_en ?? current.description ?? '', 1000),
       tlRate, toKurus(tlRate), Math.round(Number(rate_per_1000_usd ?? (current.rate_per_1000_usd_cents / 100)) * 100),
       parseInt(min_quantity ?? current.min_quantity), parseInt(max_quantity ?? current.max_quantity),
-      status === undefined ? current.status : parseInt(status), refill === undefined ? current.refill : parseInt(refill),
+      status === undefined ? current.status : parseInt(status), parseRefillFlag(refill) ?? current.refill,
       // Alan gonderilmediyse (orn. durum degistirme) mevcut deger korunur.
       normalizePlainText(start_time_tr ?? current.start_time_tr ?? '', 200),
       normalizePlainText(start_time_en ?? current.start_time_en ?? '', 200),
@@ -999,6 +1010,7 @@ router.put('/services/:id', requireIdParam, validate(serviceUpdateSchema), async
       normalizePlainText(provider_service_type ?? current.provider_service_type ?? '', 80),
       pricing_model ?? current.pricing_model ?? 'per_1000',
       Math.max(1, parseInt(provider_quantity_multiplier ?? current.provider_quantity_multiplier ?? 1)),
+      normalizeOveragePercent(provider_overage_percent, current.provider_overage_percent),
       Math.max(0, parseInt(warranty_hours ?? current.warranty_hours ?? 0)),
       normalizePlainText(refund_policy_tr ?? current.refund_policy_tr ?? '', 3000),
       normalizePlainText(refund_policy_en ?? current.refund_policy_en ?? '', 3000),
@@ -1199,6 +1211,135 @@ router.get('/users', async (req, res) => {
     res.json({ users });
   } catch (err) {
     res.status(500).json({ error: 'Kullanıcılar alınamadı.' });
+  }
+});
+
+// KULLANICI DETAY SAYFASI: tek kullanicinin tum gecmisi (siparisler, bakiye
+// yuklemeleri, odeme bildirimleri/denemeleri, destek, referans, guvenlik
+// olaylari, admin islemleri) tek ucta toplanir. Sifre, API anahtari ve 2FA
+// gizli anahtari asla donmez.
+router.get('/users/:id/detail', requireIdParam, async (req, res) => {
+  try {
+    const userId = req.recordId;
+    const user = await dbAsync.get(
+      `SELECT u.id, u.username, u.email, u.role, u.balance, u.balance_kurus, u.referral_balance_kurus,
+              u.banned, u.email_verified, u.two_factor_enabled, u.must_change_password,
+              u.telegram_username, u.telegram_notify, u.email_opt_out,
+              u.created_at, u.last_login_at, u.last_login_ip, u.last_seen_at, u.login_count,
+              u.api_key_created_at, (u.api_key IS NOT NULL) AS has_api_key,
+              u.referrer_id, r.username AS referrer_username
+         FROM users u LEFT JOIN users r ON r.id = u.referrer_id
+        WHERE u.id = ?`, [userId]);
+    if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+
+    const [orderStats, depositStats, ticketStats, referralStats, orders, payments, notifications, intents,
+      tickets, referred, coupons, securityEvents, auditLogs, emails] = await Promise.all([
+      dbAsync.get(
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
+                SUM(CASE WHEN status IN ('pending','processing') THEN 1 ELSE 0 END) AS active,
+                SUM(CASE WHEN status IN ('partial','canceled','failed') THEN 1 ELSE 0 END) AS problem,
+                COALESCE(SUM(CASE WHEN status NOT IN ('canceled','failed') THEN charge_kurus - refunded_kurus ELSE 0 END), 0) AS spent_kurus,
+                COALESCE(SUM(refunded_kurus), 0) AS refunded_kurus,
+                MIN(created_at) AS first_order_at, MAX(created_at) AS last_order_at
+           FROM orders WHERE user_id = ?`, [userId]),
+      dbAsync.get(
+        `SELECT COUNT(*) AS total,
+                COALESCE(SUM(CASE WHEN ${PAYMENT_METHOD_GROUP_SQL} IN ${REAL_MONEY_GROUPS} THEN p.amount_kurus ELSE 0 END), 0) AS real_kurus,
+                COALESCE(SUM(CASE WHEN ${PAYMENT_METHOD_GROUP_SQL} NOT IN ${REAL_MONEY_GROUPS} THEN p.amount_kurus ELSE 0 END), 0) AS bonus_kurus,
+                MAX(p.created_at) AS last_payment_at
+           FROM payments p WHERE p.user_id = ? AND p.status = 'completed'`, [userId]),
+      dbAsync.get(
+        `SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open
+           FROM tickets WHERE user_id = ?`, [userId]),
+      dbAsync.get(
+        `SELECT COUNT(*) AS earnings, COALESCE(SUM(amount_kurus), 0) AS earned_kurus
+           FROM referral_earnings WHERE referrer_id = ?`, [userId]),
+      dbAsync.all(
+        `SELECT o.id, o.service_id, o.link, o.quantity, o.provider_quantity, o.charge, o.charge_kurus, o.refunded_kurus,
+                o.status, o.start_count, o.remains, o.provider_order_id, o.failure_reason, o.created_at, o.completed_at,
+                COALESCE(NULLIF(s.name_tr, ''), s.name) AS service_name, p.name AS provider_name
+           FROM orders o LEFT JOIN services s ON s.id = o.service_id LEFT JOIN providers p ON p.id = o.provider_id
+          WHERE o.user_id = ? ORDER BY o.id DESC LIMIT 200`, [userId]),
+      dbAsync.all(
+        `SELECT p.id, p.amount, p.amount_kurus, p.method, p.status, p.transaction_id, p.created_at,
+                ${PAYMENT_METHOD_GROUP_SQL} AS method_group
+           FROM payments p WHERE p.user_id = ? ORDER BY p.id DESC LIMIT 200`, [userId]),
+      dbAsync.all(
+        `SELECT id, bank_name, amount, amount_kurus, sender_name, status, created_at
+           FROM payment_notifications WHERE user_id = ? ORDER BY id DESC LIMIT 100`, [userId]),
+      dbAsync.all(
+        `SELECT id, provider, merchant_oid, amount_kurus, status, failure_reason, created_at, completed_at
+           FROM payment_intents WHERE user_id = ? ORDER BY id DESC LIMIT 100`, [userId]),
+      dbAsync.all(
+        `SELECT t.id, t.subject, t.status, t.created_at,
+                (SELECT MAX(created_at) FROM ticket_messages m WHERE m.ticket_id = t.id) AS last_message_at,
+                (SELECT COUNT(*) FROM ticket_messages m WHERE m.ticket_id = t.id) AS message_count
+           FROM tickets t WHERE t.user_id = ? ORDER BY t.id DESC LIMIT 100`, [userId]),
+      dbAsync.all(
+        `SELECT u.id, u.username, u.created_at,
+                (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS order_count
+           FROM users u WHERE u.referrer_id = ? ORDER BY u.id DESC LIMIT 100`, [userId]),
+      dbAsync.all(
+        `SELECT uc.used_at, c.code, c.amount
+           FROM user_coupons uc JOIN coupons c ON c.id = uc.coupon_id
+          WHERE uc.user_id = ? ORDER BY uc.id DESC LIMIT 50`, [userId]),
+      dbAsync.all(
+        `SELECT type, ip, path, detail, created_at FROM security_events
+          WHERE username = ? COLLATE NOCASE ORDER BY id DESC LIMIT 50`, [user.username]),
+      dbAsync.all(
+        `SELECT a.action, a.entity_type, a.entity_id, a.details, a.ip_address, a.created_at, actor.username AS actor_username
+           FROM audit_logs a LEFT JOIN users actor ON actor.id = a.actor_user_id
+          WHERE (a.entity_type = 'user' AND a.entity_id = ?) OR a.actor_user_id = ?
+          ORDER BY a.id DESC LIMIT 100`, [String(userId), userId]),
+      dbAsync.all(
+        `SELECT template_name, subject, status, error, created_at FROM email_logs
+          WHERE user_id = ? OR email = ? ORDER BY id DESC LIMIT 50`, [userId, user.email]).catch(() => [])
+    ]);
+
+    res.json({
+      user: {
+        ...user,
+        balance: fromKurus(user.balance_kurus),
+        referral_balance: fromKurus(user.referral_balance_kurus || 0),
+        has_api_key: Number(user.has_api_key) === 1
+      },
+      stats: {
+        orders_total: orderStats?.total || 0,
+        orders_completed: orderStats?.completed || 0,
+        orders_active: orderStats?.active || 0,
+        orders_problem: orderStats?.problem || 0,
+        spent: fromKurus(orderStats?.spent_kurus || 0),
+        refunded: fromKurus(orderStats?.refunded_kurus || 0),
+        first_order_at: orderStats?.first_order_at || null,
+        last_order_at: orderStats?.last_order_at || null,
+        deposits_total: depositStats?.total || 0,
+        deposited_real: fromKurus(depositStats?.real_kurus || 0),
+        deposited_bonus: fromKurus(depositStats?.bonus_kurus || 0),
+        last_payment_at: depositStats?.last_payment_at || null,
+        tickets_total: ticketStats?.total || 0,
+        tickets_open: ticketStats?.open || 0,
+        referral_earnings: referralStats?.earnings || 0,
+        referral_earned: fromKurus(referralStats?.earned_kurus || 0),
+        referred_count: referred.length
+      },
+      orders: orders.map(o => ({ ...o, charge: fromKurus(o.charge_kurus || toKurus(o.charge)), refunded: fromKurus(o.refunded_kurus || 0) })),
+      payments: payments.map(p => ({ ...p, amount: fromKurus(p.amount_kurus || toKurus(p.amount)) })),
+      payment_notifications: notifications.map(n => ({ ...n, amount: fromKurus(n.amount_kurus || toKurus(n.amount)) })),
+      payment_intents: intents.map(i => ({ ...i, amount: fromKurus(i.amount_kurus || 0) })),
+      tickets,
+      referred_users: referred,
+      coupons,
+      security_events: securityEvents,
+      audit_logs: auditLogs.map(a => {
+        let details = null;
+        try { details = a.details ? JSON.parse(a.details) : null; } catch { details = a.details; }
+        return { ...a, details };
+      }),
+      emails
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Kullanıcı detayı alınamadı.' });
   }
 });
 

@@ -4,6 +4,7 @@ const { toKurus, fromKurus } = require('../utils/money');
 const SmmProviderClient = require('./smmProvider');
 const telegram = require('./telegramNotifier');
 const healthEvents = require('./healthEvents');
+const { customerRemainsFrom } = require('./orderTypes');
 
 let running = false;
 
@@ -21,11 +22,19 @@ async function applyProviderStatus(orderId, providerStatus) {
   // degisikligi bilgisi disari tasinir (bildirim asla islemi bloklamaz).
   let statusChange = null;
   await withTransaction(async tx => {
-    const order = await tx.get('SELECT * FROM orders WHERE id = ?', [orderId]);
+    const order = await tx.get(
+      `SELECT o.*, s.provider_quantity_multiplier
+         FROM orders o LEFT JOIN services s ON s.id = o.service_id
+        WHERE o.id = ?`, [orderId]
+    );
     if (!order || !['pending', 'processing'].includes(order.status)) return;
     const newStatus = mapStatus(providerStatus.status, order.status);
     const startCount = Number.isFinite(Number(providerStatus.start_count)) ? Number.parseInt(providerStatus.start_count, 10) : order.start_count;
-    const remains = Number.isFinite(Number(providerStatus.remains)) ? Math.max(0, Number.parseInt(providerStatus.remains, 10)) : order.remains;
+    // Saglayicinin "remains" degeri fazla gonderilen payi da icerir; musteriye
+    // ve iade hesabina yalnizca musterinin gercek eksigi yansir.
+    const remains = Number.isFinite(Number(providerStatus.remains))
+      ? customerRemainsFrom(order, Math.max(0, Number.parseInt(providerStatus.remains, 10)), order.provider_quantity_multiplier)
+      : order.remains;
     const chargeKurus = order.charge_kurus || toKurus(order.charge);
     let targetRefund = order.refunded_kurus || 0;
     if (newStatus === 'canceled') targetRefund = chargeKurus;

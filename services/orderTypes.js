@@ -43,13 +43,45 @@ function calculateServiceChargeKurus(rateKurus, quantity, pricingModel = 'per_10
     : Math.round((rate * quantity) / 1000);
 }
 
+// Servis bazli fazla gonderim yuzdesi (0-500). Gecersiz/negatif deger 0 sayilir.
+function overagePercentOf(service) {
+  const value = Number(service?.provider_overage_percent);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(500, value);
+}
+
+// Saglayiciya gidecek miktar: musteri miktari x carpan x (1 + fazla gonderim).
+// Fazla gonderim, eksik teslim eden saglayicilari telafi eder; musteri bunu
+// gormez ve odemez (bkz. provider_overage_percent). Yukari yuvarlanir ki
+// kucuk siparislerde de en az istenen kadar teslim olsun.
 function providerQuantityFor(service, quantity) {
   const multiplier = Math.max(1, Number.parseInt(service.provider_quantity_multiplier || 1, 10));
-  const result = quantity * multiplier;
+  const base = quantity * multiplier;
+  const overage = overagePercentOf(service);
+  // Tam sayi aritmetigi: 400 * 1.14 kayan noktada 456.00000000000006 olup
+  // 457'ye yuvarlaniyordu; yuzde 2 ondalikla tam sayiya cevrilir.
+  const result = overage > 0 ? Math.ceil(base * (10000 + Math.round(overage * 100)) / 10000) : base;
   if (!Number.isSafeInteger(result) || result <= 0 || result > 100_000_000) {
     throw new Error('Sağlayıcıya gönderilecek miktar geçersiz.');
   }
   return result;
+}
+
+// Saglayicinin bildirdigi "remains" saglayici birimindedir ve fazla gonderilen
+// pay dahildir. Musteriye yansiyan eksik: once fazla pay erir, kalan musteri
+// birimine (carpan) cevrilir. Ornek: 400 istendi, 456 gonderildi, 40 kaldi ->
+// musteri 416 aldi, eksik 0. Eski siparislerde (provider_quantity yok) oldugu
+// gibi doner.
+function customerRemainsFrom(order, providerRemains, multiplier = 1) {
+  const remains = Number.parseInt(providerRemains, 10);
+  if (!Number.isFinite(remains) || remains <= 0) return 0;
+  const sent = Number.parseInt(order?.provider_quantity, 10);
+  const quantity = Number.parseInt(order?.quantity, 10);
+  if (!Number.isFinite(sent) || sent <= 0 || !Number.isFinite(quantity) || quantity <= 0) return remains;
+  const factor = Math.max(1, Number.parseInt(multiplier || 1, 10));
+  const extra = Math.max(0, sent - quantity * factor);
+  const shortfall = Math.max(0, remains - extra);
+  return Math.min(quantity, Math.ceil(shortfall / factor));
 }
 
 function inboundEmailDomain() {
@@ -79,6 +111,8 @@ module.exports = {
   isEmail,
   calculateServiceChargeKurus,
   providerQuantityFor,
+  overagePercentOf,
+  customerRemainsFrom,
   inboundEmailDomain,
   relayAddressFromToken,
   verifyWebhookSignature

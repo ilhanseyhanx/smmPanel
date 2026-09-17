@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260912a">
+  <link rel="stylesheet" href="/css/style.css?v=20260917a">
 </head>
 <body>
 
@@ -2278,30 +2278,45 @@ Canceled     iptal edildi</pre>
 
           <!-- ADMIN TAB 3: USERS -->
           <div id="admin-tab-users" style="display: none;">
-            <h2 style="margin-bottom: 20px;">👥 Kullanıcı Yönetimi</h2>
-            <div class="glass-card">
-              <div class="form-group" style="max-width: 420px;">
-                <input aria-label="Kullanıcı adı veya e-posta ara" type="search" id="admin-users-search" class="form-control"
-                       placeholder="🔍 Kullanıcı adı veya e-posta ara..."
-                       oninput="app.debouncedAdminUsersSearch()">
+            <!-- Liste gorunumu -->
+            <div id="admin-users-list-view">
+              <h2 style="margin-bottom: 20px;">👥 Kullanıcı Yönetimi</h2>
+              <div class="glass-card">
+                <div class="form-group" style="max-width: 420px;">
+                  <input aria-label="Kullanıcı adı veya e-posta ara" type="search" id="admin-users-search" class="form-control"
+                         placeholder="🔍 Kullanıcı adı veya e-posta ara..."
+                         oninput="app.debouncedAdminUsersSearch()">
+                </div>
+                <p class="admin-help" style="margin-bottom:10px;">Kullanıcı adına veya <strong>Detay</strong> düğmesine tıklayınca siparişleri, bakiye yüklemeleri, son girişi ve tüm geçmişi tam sayfa açılır.</p>
+                <div class="table-responsive">
+                  <table class="custom-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">ID</th>
+                        <th scope="col">Kullanıcı Adı</th>
+                        <th scope="col">E-Posta</th>
+                        <th scope="col">Rol</th>
+                        <th scope="col">Durum</th>
+                        <th scope="col">Bakiye</th>
+                        <th scope="col">İşlemler</th>
+                      </tr>
+                    </thead>
+                    <tbody id="admin-users-tbody">
+                      <!-- Dynamic Users List -->
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <div class="table-responsive">
-                <table class="custom-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">ID</th>
-                      <th scope="col">Kullanıcı Adı</th>
-                      <th scope="col">E-Posta</th>
-                      <th scope="col">Rol</th>
-                      <th scope="col">Durum</th>
-                      <th scope="col">Bakiye</th>
-                      <th scope="col">İşlemler</th>
-                    </tr>
-                  </thead>
-                  <tbody id="admin-users-tbody">
-                    <!-- Dynamic Users List -->
-                  </tbody>
-                </table>
+            </div>
+
+            <!-- Kullanici detay sayfasi (popup degil, tam sayfa) -->
+            <div id="admin-user-detail-view" style="display: none;">
+              <div class="user-detail-topbar">
+                <button type="button" class="btn btn-outline btn-sm" onclick="app.showAdminUsersList()"><i class="fa-solid fa-arrow-left"></i> Kullanıcılara Dön</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="app.refreshAdminUserDetail()" title="Yenile"><i class="fa-solid fa-rotate"></i> Yenile</button>
+              </div>
+              <div id="admin-user-detail-content">
+                <p class="admin-help">Kullanıcı bilgileri yükleniyor…</p>
               </div>
             </div>
           </div>
@@ -3794,6 +3809,11 @@ Canceled     iptal edildi</pre>
               <small style="color:var(--text-muted);">MoreThanPanel ürünlerinde çoğunlukla 1000.</small>
             </div>
           </div>
+          <div class="form-group">
+            <label for="single-provider-overage" class="form-label">Fazla Gönderim Oranı (%) <small style="font-weight:500;color:var(--text-muted);">— sağlayıcı eksik teslim ediyorsa</small></label>
+            <input type="number" id="single-provider-overage" class="form-control" min="0" max="500" step="0.5" value="0" oninput="app.updateOverageHelp('single')">
+            <small id="single-overage-help" style="color:var(--accent-cyan);">Kapalı: sağlayıcıya müşterinin istediği miktar gider.</small>
+          </div>
           <div class="service-editor-grid-2">
             <div class="form-group"><label for="single-warranty-hours" class="form-label">Garanti Süresi (saat, yoksa 0)</label><input type="number" id="single-warranty-hours" class="form-control" min="0" max="87600" value="0"></div>
             <div class="form-group"><label class="form-label">Koşul Onayı</label><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="single-terms-required"> Satın almadan önce müşteriye koşulları onaylat</label></div>
@@ -3880,6 +3900,11 @@ Canceled     iptal edildi</pre>
             <div class="form-group"><label for="edit-service-order-input-type" class="form-label">Müşteriden İstenecek Bilgi</label><select id="edit-service-order-input-type" class="form-control" onchange="app.onServiceTypeEditorChange('edit')"><option value="link">🔗 Standart link / kullanıcı adı</option><option value="custom_comments">💬 Özel yorum</option><option value="email_delivery">📨 E-posta teslimatı (biz iletiriz)</option><option value="email_invite">✉️ Doğrudan e-posta daveti</option><option value="player_id">🎮 Player / User ID</option></select></div>
             <div class="form-group"><label for="edit-service-pricing-model" class="form-label">Müşteri Fiyatlandırması</label><select id="edit-service-pricing-model" class="form-control" onchange="app.onServiceTypeEditorChange('edit')"><option value="per_1000">1000 adet başına</option><option value="per_item">Ürün / hesap başına</option></select></div>
             <div class="form-group"><label for="edit-service-provider-multiplier" class="form-label">Sağlayıcı Miktar Çarpanı</label><input type="number" id="edit-service-provider-multiplier" class="form-control" min="1" max="1000000" value="1"></div>
+          </div>
+          <div class="form-group">
+            <label for="edit-service-provider-overage" class="form-label">Fazla Gönderim Oranı (%) <small style="font-weight:500;color:var(--text-muted);">— sağlayıcı eksik teslim ediyorsa; müşteri görmez, farkı sen ödersin</small></label>
+            <input type="number" id="edit-service-provider-overage" class="form-control" min="0" max="500" step="0.5" value="0" oninput="app.updateOverageHelp('edit')">
+            <small id="edit-overage-help" style="color:var(--accent-cyan);">Kapalı: sağlayıcıya müşterinin istediği miktar gider.</small>
           </div>
           <div class="service-editor-grid-2"><div class="form-group"><label for="edit-service-warranty-hours" class="form-label">Garanti Süresi (saat)</label><input type="number" id="edit-service-warranty-hours" class="form-control" min="0" max="87600"></div><div class="form-group"><label class="form-label">Koşul Onayı</label><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" id="edit-service-terms-required"> Müşteriye koşulları onaylat</label></div></div>
           <div class="bilingual-editor-grid compact-grid"><div class="language-editor-card"><div class="language-editor-title">🇹🇷 Türkçe</div><label for="edit-service-refund-policy-tr" class="form-label">Garanti / İade Notu</label><textarea id="edit-service-refund-policy-tr" class="form-control" rows="3"></textarea></div><div class="language-editor-card"><div class="language-editor-title">🇬🇧 English</div><label for="edit-service-refund-policy-en" class="form-label">Warranty / Refund Note</label><textarea id="edit-service-refund-policy-en" class="form-control" rows="3"></textarea></div></div>
@@ -4381,7 +4406,7 @@ Canceled     iptal edildi</pre>
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260912a" defer></script>
-  <script src="/js/app.js?v=20260912a" defer></script>
+  <script src="/js/api.js?v=20260917a" defer></script>
+  <script src="/js/app.js?v=20260917a" defer></script>
 </body>
 </html>

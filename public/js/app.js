@@ -276,6 +276,20 @@ class SmmApp {
     this.ready = this.init();
   }
 
+  // Kayitli serviste garanti bilgisinin TEK kaynagi admin'in sectigi refill
+  // alanidir. Eskiden ad "garanti" icerince (orn. "Garantisiz") vitrin yine
+  // "Garantili" yaziyor, admin degisikligi ekrana yansimiyordu.
+  isServiceGuaranteed(service) {
+    return Number(service?.refill) === 1;
+  }
+
+  // Yalnizca saglayici katalogundan ilk eklemede on-secim icin tahmin.
+  detectRefillFromName(text) {
+    const value = String(text || '');
+    if (/garantisiz|telafisiz|no\s*refill|non[\s-]*refill|without\s*refill|refill\s*yok|garanti\s*yok|no\s*guarantee/i.test(value)) return false;
+    return /telafi|garanti|guarantee|refill|düşüşsüz|dusussuz|non[\s-]*drop|no[\s-]*drop|30 gün|60 gün|90 gün|365 gün|days? refill|yenileme|lifetime/i.test(value);
+  }
+
   debounce(fn, delay = 180) {
     let timer;
     return (...args) => {
@@ -1548,7 +1562,7 @@ class SmmApp {
     }
 
     tableBody.innerHTML = topServices.map((s, index) => {
-      const isRefill = s.refill == 1 || /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün/i.test(`${s.name} ${s.category_name}`);
+      const isRefill = this.isServiceGuaranteed(s);
       return `
         <tr>
           <td class="cell-nowrap">${String(index + 1).padStart(2, '0')}</td>
@@ -1663,7 +1677,7 @@ class SmmApp {
     };
     const features = pick(service.features_tr, service.features_en)
       .split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-    const guaranteed = service.refill == 1 || /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün/i.test(`${service.name} ${service.category_name}`);
+    const guaranteed = this.isServiceGuaranteed(service);
     return {
       startTime: pick(service.start_time_tr, service.start_time_en),
       speed: pick(service.speed_tr, service.speed_en),
@@ -1824,8 +1838,11 @@ class SmmApp {
       target.type = emailInput ? 'email' : 'text';
       if (emailInput && (!target.value || target.value.includes('://'))) target.value = this.currentUser?.email || '';
       if (!emailInput && target.type === 'text' && target.value === this.currentUser?.email) target.value = '';
+      const examples = this.serviceLinkExamples(service);
       const placeholders = {
-        link: this.ui('https://instagram.com/kullaniciadi veya post linki', 'Profile, post, or video URL'),
+        link: examples.known
+          ? this.ui(`${examples.profile} veya gönderi linki`, `${examples.profile} or post URL`)
+          : this.ui('https://instagram.com/kullaniciadi veya post linki', 'Profile, post, or video URL'),
         custom_comments: this.ui('Yorum yapılacak gönderinin bağlantısı', 'Post URL to receive comments'),
         email_delivery: this.ui('Ürünün gönderileceği e-posta adresi', 'Email address for delivery'),
         email_invite: this.ui('Davetin gönderileceği gerçek e-posta adresi', 'Actual email address for the invitation'),
@@ -1895,30 +1912,57 @@ class SmmApp {
     const text = `${service.name || ''} ${service.category_name || ''}`
       .replace(/İ/g, 'I').replace(/ı/g, 'i').toLowerCase();
 
-    const profilServisi = /follower|subscriber|abone|takipci|takipçi|member|üye|uye|\bfan/.test(text);
-    const hikayeServisi = /stor(y|ies)|hikaye|hikâye/.test(text);
-    const gonderiServisi = /like|beğeni|begeni|view|izlen|comment|yorum|share|paylaş|repost|retweet|save/.test(text);
+    // Hedef tipi: sunucu (link dogrulayiciyla ayni tespit) biliyorsa o,
+    // bilmiyorsa yerel tahmin. Ornek baglanti servisin platformuna gore gelir;
+    // YouTube abone servisinde Instagram ornegi gorunmesin.
+    const examples = this.serviceLinkExamples(service);
+    let target = service.link_target || null;
+    if (!target) {
+      if (/stor(y|ies)|hikaye|hikâye/.test(text)) target = 'story';
+      else if (/follower|subscriber|abone|takipci|takipçi|member|üye|uye|\bfan/.test(text)) target = 'profile';
+      else if (/like|beğeni|begeni|view|izlen|comment|yorum|share|paylaş|repost|retweet|save/.test(text)) target = 'media';
+    }
+    const platform = service.link_platform ? ` (${service.link_platform})` : '';
 
     let mesaj = '', ipucu = '';
-    if (hikayeServisi) {
-      mesaj = this.ui('Bu servis HİKÂYE bağlantısı istiyor.', 'This service needs a STORY link.');
-      ipucu = 'https://instagram.com/stories/kullaniciadi/123...';
-    } else if (profilServisi) {
-      mesaj = this.ui('Bu servis PROFİL bağlantısı veya kullanıcı adı istiyor. Gönderi linki göndermeyin.',
-        'This service needs a PROFILE link or username. Do not send a post link.');
-      ipucu = 'https://instagram.com/kullaniciadi';
-    } else if (gonderiServisi) {
-      mesaj = this.ui('Bu servis GÖNDERİ/VİDEO bağlantısı istiyor. Profil linki göndermeyin.',
-        'This service needs a POST/VIDEO link. Do not send a profile link.');
-      ipucu = 'https://instagram.com/p/Cxxxxxxxxxx/';
+    if (target === 'story') {
+      mesaj = this.ui(`Bu servis HİKÂYE bağlantısı istiyor${platform}.`, `This service needs a STORY link${platform}.`);
+      ipucu = examples.story || examples.media;
+    } else if (target === 'profile') {
+      mesaj = this.ui(`Bu servis PROFİL/KANAL bağlantısı veya kullanıcı adı istiyor${platform}. Gönderi linki göndermeyin.`,
+        `This service needs a PROFILE/CHANNEL link or username${platform}. Do not send a post link.`);
+      ipucu = examples.profile;
+    } else if (target === 'media') {
+      mesaj = this.ui(`Bu servis GÖNDERİ/VİDEO bağlantısı istiyor${platform}. Profil linki göndermeyin.`,
+        `This service needs a POST/VIDEO link${platform}. Do not send a profile link.`);
+      ipucu = examples.media;
     } else {
       hint.style.display = 'none';
+      if (input && examples.known) input.placeholder = `${examples.profile}  /  ${examples.media}`;
       return;
     }
 
     hint.innerHTML = `<i class="fa-solid fa-circle-info"></i> <strong>${this.escapeHtml(mesaj)}</strong><br>${this.ui('Örnek', 'Example')}: ${this.escapeHtml(ipucu)}`;
     hint.style.display = 'block';
     if (input) input.placeholder = ipucu;
+  }
+
+  // Servisin platformuna gore ornek baglantilar (sunucudan gelir); platform
+  // bilinmiyorsa genel Instagram ornekleri. Ingilizcede yer tutucu adlar cevrilir.
+  serviceLinkExamples(service) {
+    const known = Boolean(service?.link_platform);
+    const localize = value => {
+      if (!value) return value;
+      if (this.locale !== 'en') return value;
+      return value.replace('kullaniciadi', 'username').replace('kanaladi', 'channelname')
+        .replace('sayfaadi', 'pagename').replace('sanatci', 'artist').replace('parca-adi', 'track-name');
+    };
+    return {
+      known,
+      profile: localize(service?.link_example_profile || 'https://instagram.com/kullaniciadi'),
+      media: localize(service?.link_example_media || 'https://instagram.com/p/Cxxxxxxxxxx/'),
+      story: localize(service?.link_example_story || (known ? null : 'https://instagram.com/stories/kullaniciadi/123...'))
+    };
   }
 
   calculateOrderCharge() {
@@ -2058,7 +2102,7 @@ class SmmApp {
     const visibleServices = filtered.slice(start, start + this.servicesPerPage);
 
     tbody.innerHTML = visibleServices.map(s => {
-      const isRefill = s.refill == 1 || /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün/i.test(`${s.name} ${s.category_name}`);
+      const isRefill = this.isServiceGuaranteed(s);
       return `
         <tr>
           <td class="cell-nowrap">#${s.id}</td>
@@ -3109,7 +3153,7 @@ class SmmApp {
     if (tabName === 'landing-design') this.loadAdminLandingDesign();
     if (tabName === 'landing-pages') this.loadAdminLandingPages();
     if (tabName === 'ai-studio') this.loadAiStudio();
-    if (tabName === 'users') this.loadAdminUsers();
+    if (tabName === 'users') { this.showAdminUsersList(); this.loadAdminUsers(); }
     if (tabName === 'orders') this.loadAdminOrders();
     if (tabName === 'completion') this.loadCompletionTimes();
     if (tabName === 'reset') this.showResetSection(this.currentResetSection || 'security');
@@ -3872,7 +3916,8 @@ class SmmApp {
     }
 
     tbody.innerHTML = renderList.map(s => {
-      const isRefill = s.refill == 1 || /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün/i.test(`${s._name} ${s._cat}`);
+      // Saglayici katalogu (henuz eklenmemis): burada tahmin serbest.
+      const isRefill = s.refill == 1 || this.detectRefillFromName(`${s._name} ${s._cat}`);
       const rawIdStr = s._sId.toString();
       const displayId = (rawIdStr.length > 10) ? `#${rawIdStr.slice(0, 8)}...` : `#${rawIdStr}`;
       // Ayni servis daha once eklendiyse satir soluklasir, secim ve ekleme kilitlenir.
@@ -3989,7 +4034,7 @@ class SmmApp {
         const cost = Number(item._rate) || 0;
         const costInTry = this.explorerCurrency === 'TRY' ? cost : cost * this.explorerUsdTryRate;
         const sellRate = (costInTry * profitMultiplier).toFixed(2);
-        const isRefill = /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün/i.test(`${item._name} ${item._cat}`);
+        const isRefill = this.detectRefillFromName(`${item._name} ${item._cat}`);
 
         try {
           await API.addAdminService({
@@ -4054,6 +4099,22 @@ class SmmApp {
       : ' Fiyat alanı 1000 adet fiyatıdır.';
     const target = document.getElementById(helpId);
     if (target) target.textContent = (help[inputType] || help.link) + suffix;
+    this.updateOverageHelp(prefix);
+  }
+
+  // Fazla gonderim yuzdesi: 400 adetlik ornek uzerinden saglayiciya ne
+  // gidecegini aninda gosterir (musteri 400 oder, fark panel maliyeti).
+  updateOverageHelp(prefix) {
+    const inputId = prefix === 'single' ? 'single-provider-overage' : 'edit-service-provider-overage';
+    const helpId = prefix === 'single' ? 'single-overage-help' : 'edit-overage-help';
+    const input = document.getElementById(inputId);
+    const help = document.getElementById(helpId);
+    if (!input || !help) return;
+    const percent = Math.max(0, Number(input.value) || 0);
+    if (percent <= 0) { help.textContent = 'Kapalı: sağlayıcıya müşterinin istediği miktar gider.'; return; }
+    const sample = 400;
+    const sent = Math.ceil(sample * (10000 + Math.round(percent * 100)) / 10000);
+    help.textContent = `Müşteri ${sample} isterse sağlayıcıya ${sent} gider; müşteri yalnızca ${sample} adet için ödeme yapar, fark senin maliyetin.`;
   }
 
   openAddSingleServiceModal(sId, encCat, encName, costRate, minQty, maxQty) {
@@ -4081,8 +4142,8 @@ class SmmApp {
     this.singleServiceCost = { rate: cost, currency };
     document.getElementById('single-cost-price').value = `${currency === 'TRY' ? '₺' : '$'}${cost.toFixed(4)}${currency === 'TRY' ? '' : ` ≈ ₺${(cost * usdTry).toFixed(2)}`}`;
 
-    // Auto detect refill status for modal select
-    const isRefill = /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün/i.test(`${name} ${cat}`);
+    // Auto detect refill status for modal select (admin degistirirse onun secimi kaydedilir)
+    const isRefill = this.detectRefillFromName(`${name} ${cat}`);
     const refillSelect = document.getElementById('single-refill-select');
     if (refillSelect) refillSelect.value = isRefill ? "1" : "0";
 
@@ -4104,6 +4165,8 @@ class SmmApp {
     document.getElementById('single-order-input-type').value = inferredType;
     document.getElementById('single-pricing-model').value = perItem ? 'per_item' : 'per_1000';
     document.getElementById('single-provider-multiplier').value = perItem ? 1000 : 1;
+    const singleOverage = document.getElementById('single-provider-overage');
+    if (singleOverage) singleOverage.value = 0;
     document.getElementById('single-warranty-hours').value = perItem ? 24 : 0;
     document.getElementById('single-terms-required').checked = perItem;
     document.getElementById('single-refund-policy-tr').value = perItem
@@ -4154,6 +4217,7 @@ class SmmApp {
       provider_service_type: this.singleProviderServiceType || 'Default',
       pricing_model: document.getElementById('single-pricing-model').value,
       provider_quantity_multiplier: document.getElementById('single-provider-multiplier').value,
+      provider_overage_percent: document.getElementById('single-provider-overage')?.value || 0,
       warranty_hours: document.getElementById('single-warranty-hours').value,
       refund_policy_tr: document.getElementById('single-refund-policy-tr').value,
       refund_policy_en: document.getElementById('single-refund-policy-en').value,
@@ -4835,6 +4899,9 @@ class SmmApp {
     document.getElementById('edit-service-order-input-type').value = service.order_input_type || 'link';
     document.getElementById('edit-service-pricing-model').value = service.pricing_model || 'per_1000';
     document.getElementById('edit-service-provider-multiplier').value = service.provider_quantity_multiplier || 1;
+    const editOverage = document.getElementById('edit-service-provider-overage');
+    if (editOverage) editOverage.value = Number(service.provider_overage_percent) > 0 ? Number(service.provider_overage_percent) : 0;
+    this.updateOverageHelp('edit');
     document.getElementById('edit-service-warranty-hours').value = service.warranty_hours || 0;
     document.getElementById('edit-service-refund-policy-tr').value = service.refund_policy_tr || '';
     document.getElementById('edit-service-refund-policy-en').value = service.refund_policy_en || '';
@@ -4866,6 +4933,7 @@ class SmmApp {
       order_input_type: document.getElementById('edit-service-order-input-type').value,
       pricing_model: document.getElementById('edit-service-pricing-model').value,
       provider_quantity_multiplier: document.getElementById('edit-service-provider-multiplier').value,
+      provider_overage_percent: document.getElementById('edit-service-provider-overage')?.value || 0,
       warranty_hours: document.getElementById('edit-service-warranty-hours').value,
       refund_policy_tr: document.getElementById('edit-service-refund-policy-tr').value,
       refund_policy_en: document.getElementById('edit-service-refund-policy-en').value,
@@ -4981,12 +5049,13 @@ class SmmApp {
       tbody.innerHTML = res.users.map(u => `
         <tr${u.banned ? ' style="opacity:.6;"' : ''}>
           <td>#${u.id}</td>
-          <td style="font-weight: 700;">${this.escapeHtml(u.username)}</td>
+          <td style="font-weight: 700;"><a href="#" class="user-detail-link" onclick="app.openAdminUserDetail(${u.id}); return false;" title="Kullanıcı detayını aç">${this.escapeHtml(u.username)}</a></td>
           <td>${this.escapeHtml(u.email)}</td>
           <td><span class="badge ${u.role === 'admin' ? 'badge-processing' : 'badge-completed'}">${this.escapeHtml(u.role)}</span></td>
           <td>${u.banned ? '<span class="badge badge-canceled">Banlı</span>' : '<span class="badge badge-completed">Aktif</span>'}</td>
           <td style="color: var(--success); font-weight: 700;">₺${parseFloat(u.balance).toFixed(2)}</td>
           <td style="white-space: nowrap;">
+            <button class="btn btn-primary btn-sm" onclick="app.openAdminUserDetail(${u.id})" title="Tüm geçmişi tam sayfa aç"><i class="fa-solid fa-id-card"></i> Detay</button>
             <button class="btn btn-cyan btn-sm" onclick="app.openAssignService(${u.id}, '${this.escapeHtml(u.username)}')" title="Kullanıcıya hizmet ata"><i class="fa-solid fa-gift"></i> Hizmet Ata</button>
             <button class="btn btn-outline btn-sm" onclick="app.editUserBalance(${u.id}, 'add')" title="Bakiye ekle">+ Bakiye</button>
             <button class="btn btn-outline btn-sm" onclick="app.editUserBalance(${u.id}, 'subtract')" title="Bakiye düş">- Bakiye</button>
@@ -5002,6 +5071,317 @@ class SmmApp {
     } catch (err) {
       tbody.innerHTML = `<tr><td colspan="7" class="text-center">Kullanıcılar yüklenemedi.</td></tr>`;
     }
+    // Detay sayfasi acikken yapilan islemler (bakiye, ban...) sayfayi da tazeler.
+    if (this.adminUserDetailId) this.refreshAdminUserDetail();
+  }
+
+  // --- KULLANICI DETAY SAYFASI (Admin, tam sayfa) ---
+  // Kullanicinin tum gecmisi tek ekranda: bakiye/yuklemeler, siparisler,
+  // odeme bildirimleri ve denemeleri, destek, referans, guvenlik olaylari,
+  // admin islem kaydi, e-postalar ve son giris/gorulme bilgisi.
+  showAdminUsersList() {
+    this.adminUserDetailId = null;
+    const list = document.getElementById('admin-users-list-view');
+    const detail = document.getElementById('admin-user-detail-view');
+    if (list) list.style.display = 'block';
+    if (detail) detail.style.display = 'none';
+  }
+
+  async openAdminUserDetail(userId) {
+    this.adminUserDetailId = Number(userId);
+    this.adminUserDetailSection = this.adminUserDetailSection || 'orders';
+    const list = document.getElementById('admin-users-list-view');
+    const detail = document.getElementById('admin-user-detail-view');
+    const content = document.getElementById('admin-user-detail-content');
+    if (list) list.style.display = 'none';
+    if (detail) detail.style.display = 'block';
+    if (content && !this.adminUserDetailData) content.innerHTML = '<p class="admin-help">Kullanıcı bilgileri yükleniyor…</p>';
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    await this.refreshAdminUserDetail();
+  }
+
+  async refreshAdminUserDetail() {
+    const userId = this.adminUserDetailId;
+    const content = document.getElementById('admin-user-detail-content');
+    if (!userId || !content) return;
+    try {
+      const data = await API.getAdminUserDetail(userId);
+      if (this.adminUserDetailId !== userId) return; // bu arada baska kullaniciya gecildi
+      this.adminUserDetailData = data;
+      this.renderAdminUserDetail(data);
+    } catch (err) {
+      // Kullanici silindiyse listeye donulur.
+      if (/bulunamadı/i.test(String(err.message))) { showToast('Kullanıcı artık yok.', 'warning'); this.showAdminUsersList(); return; }
+      content.innerHTML = `<p class="admin-help" style="color:var(--danger);">Kullanıcı detayı yüklenemedi: ${this.escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  setAdminUserDetailSection(section) {
+    this.adminUserDetailSection = section;
+    if (this.adminUserDetailData) this.renderAdminUserDetail(this.adminUserDetailData);
+  }
+
+  // SQLite CURRENT_TIMESTAMP UTC yazar ama dilim belirteci tasimaz; yerel
+  // saat sanilmasin diye Z eklenir.
+  parseDbDate(value) {
+    if (!value) return null;
+    const s = String(value).trim();
+    const d = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(s) ? new Date(s.replace(' ', 'T') + 'Z') : new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  fmtDbDateTime(value, fallback = '—') {
+    const d = this.parseDbDate(value);
+    return d ? d.toLocaleString('tr-TR', { dateStyle: 'medium', timeStyle: 'short' }) : fallback;
+  }
+
+  fmtTimeAgo(value) {
+    const d = this.parseDbDate(value);
+    if (!d) return '';
+    const diff = Math.max(0, Date.now() - d.getTime());
+    const dk = Math.floor(diff / 60000);
+    if (dk < 1) return 'az önce';
+    if (dk < 60) return `${dk} dk önce`;
+    const sa = Math.floor(dk / 60);
+    if (sa < 24) return `${sa} sa önce`;
+    const gun = Math.floor(sa / 24);
+    if (gun < 30) return `${gun} gün önce`;
+    const ay = Math.floor(gun / 30);
+    if (ay < 12) return `${ay} ay önce`;
+    return `${Math.floor(ay / 12)} yıl önce`;
+  }
+
+  fmtTl(value) {
+    return `₺${Number(value || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  renderAdminUserDetail(data) {
+    const content = document.getElementById('admin-user-detail-content');
+    if (!content) return;
+    const u = data.user;
+    const st = data.stats || {};
+    const esc = v => this.escapeHtml(v ?? '');
+    const isAdmin = u.role === 'admin';
+    const initials = String(u.username || '?').slice(0, 2).toUpperCase();
+    const badge = (label, cls, icon) => `<span class="badge ${cls}">${icon ? `<i class="fa-solid ${icon}"></i> ` : ''}${label}</span>`;
+
+    const badges = [
+      badge(isAdmin ? 'Yönetici' : 'Müşteri', isAdmin ? 'badge-processing' : 'badge-completed', isAdmin ? 'fa-user-shield' : 'fa-user'),
+      u.banned ? badge('Banlı', 'badge-canceled', 'fa-ban') : badge('Aktif', 'badge-completed', 'fa-circle-check'),
+      Number(u.email_verified) === 1 ? badge('E-posta doğrulı', 'badge-completed', 'fa-envelope-circle-check') : badge('E-posta doğrulanmamış', 'badge-pending', 'fa-envelope'),
+      Number(u.two_factor_enabled) === 1 ? badge('2FA açık', 'badge-completed', 'fa-shield-halved') : '',
+      u.telegram_username ? badge(`Telegram: @${esc(u.telegram_username)}`, 'badge-processing', 'fa-paper-plane') : '',
+      Number(u.email_opt_out) === 1 ? badge('E-posta listesinden çıkmış', 'badge-pending', 'fa-envelope-open') : '',
+      Number(u.must_change_password) === 1 ? badge('Şifre değişimi bekliyor', 'badge-pending', 'fa-key') : ''
+    ].filter(Boolean).join(' ');
+
+    const actions = `
+      <button class="btn btn-cyan btn-sm" onclick="app.openAssignService(${u.id}, '${esc(u.username)}')"><i class="fa-solid fa-gift"></i> Hizmet Ata</button>
+      <button class="btn btn-outline btn-sm" onclick="app.editUserBalance(${u.id}, 'add')">+ Bakiye</button>
+      <button class="btn btn-outline btn-sm" onclick="app.editUserBalance(${u.id}, 'subtract')">- Bakiye</button>
+      ${isAdmin ? '' : `
+      <button class="btn btn-outline btn-sm" onclick="app.changeUserPassword(${u.id}, '${esc(u.username)}')"><i class="fa-solid fa-key"></i> Şifre</button>
+      <button class="btn btn-outline btn-sm" onclick="app.toggleUserBan(${u.id}, '${esc(u.username)}', ${u.banned ? 'false' : 'true'})"><i class="fa-solid ${u.banned ? 'fa-unlock' : 'fa-ban'}"></i> ${u.banned ? 'Banı Kaldır' : 'Banla'}</button>
+      <button class="btn btn-outline btn-sm" style="color: var(--danger); border-color: var(--danger);" onclick="app.deleteUserAccount(${u.id}, '${esc(u.username)}')"><i class="fa-solid fa-trash"></i> Sil</button>`}`;
+
+    const lastLogin = u.last_login_at ? `${this.fmtDbDateTime(u.last_login_at)} <small style="color:var(--text-dim);">(${this.fmtTimeAgo(u.last_login_at)})</small>` : 'Kayıt yok (yeni takip)';
+    const lastSeen = u.last_seen_at ? `${this.fmtDbDateTime(u.last_seen_at)} <small style="color:var(--text-dim);">(${this.fmtTimeAgo(u.last_seen_at)})</small>` : '—';
+
+    const kpi = (icon, cls, value, label, sub = '') => `
+      <div class="glass-card stat-card">
+        <div class="stat-icon ${cls}"><i class="fa-solid ${icon}"></i></div>
+        <div><div class="stat-val" style="font-size:1.15rem;">${value}</div><div class="stat-lbl">${label}${sub ? ` <small style="color:var(--text-dim);">${sub}</small>` : ''}</div></div>
+      </div>`;
+
+    const info = (label, value) => `
+      <div class="user-detail-info-item">
+        <div class="user-detail-info-label">${label}</div>
+        <div class="user-detail-info-value">${value}</div>
+      </div>`;
+
+    const sections = [
+      { key: 'orders', label: 'Siparişler', count: (data.orders || []).length, icon: 'fa-boxes-stacked' },
+      { key: 'payments', label: 'Bakiye Yüklemeleri', count: (data.payments || []).length, icon: 'fa-wallet' },
+      { key: 'notifications', label: 'Ödeme Bildirimleri', count: (data.payment_notifications || []).length, icon: 'fa-building-columns' },
+      { key: 'intents', label: 'Ödeme Denemeleri', count: (data.payment_intents || []).length, icon: 'fa-credit-card' },
+      { key: 'tickets', label: 'Destek', count: (data.tickets || []).length, icon: 'fa-headset' },
+      { key: 'referrals', label: 'Referanslar', count: (data.referred_users || []).length, icon: 'fa-people-arrows' },
+      { key: 'coupons', label: 'Kuponlar', count: (data.coupons || []).length, icon: 'fa-ticket' },
+      { key: 'security', label: 'Güvenlik', count: (data.security_events || []).length, icon: 'fa-shield-halved' },
+      { key: 'audit', label: 'İşlem Kaydı', count: (data.audit_logs || []).length, icon: 'fa-clipboard-list' },
+      { key: 'emails', label: 'E-postalar', count: (data.emails || []).length, icon: 'fa-envelope' }
+    ];
+    const active = sections.some(s => s.key === this.adminUserDetailSection) ? this.adminUserDetailSection : 'orders';
+
+    content.innerHTML = `
+      <div class="glass-card user-detail-header">
+        <div class="user-detail-avatar">${esc(initials)}</div>
+        <div class="user-detail-identity">
+          <h2 style="margin:0;">${esc(u.username)} <small style="font-weight:500;color:var(--text-dim);">#${u.id}</small></h2>
+          <div style="color:var(--text-muted);margin:4px 0 8px;"><i class="fa-solid fa-envelope"></i> ${esc(u.email)}</div>
+          <div class="user-detail-badges">${badges}</div>
+        </div>
+        <div class="user-detail-actions">${actions}</div>
+      </div>
+
+      <div class="stats-grid user-detail-kpis">
+        ${kpi('fa-wallet', 'green', this.fmtTl(u.balance), 'Mevcut Bakiye', Number(u.referral_balance) > 0 ? `+ ${this.fmtTl(u.referral_balance)} referans` : '')}
+        ${kpi('fa-money-bill-trend-up', 'cyan', this.fmtTl(st.deposited_real), 'Toplam Yükleme (gerçek para)', `${st.deposits_total || 0} işlem`)}
+        ${kpi('fa-gift', '', this.fmtTl(st.deposited_bonus), 'Bonus / Kupon / Referans')}
+        ${kpi('fa-cart-shopping', 'cyan', this.fmtTl(st.spent), 'Toplam Harcama', Number(st.refunded) > 0 ? `iade ${this.fmtTl(st.refunded)}` : '')}
+        ${kpi('fa-boxes-stacked', '', String(st.orders_total || 0), 'Sipariş', `${st.orders_completed || 0} tamam · ${st.orders_active || 0} aktif · ${st.orders_problem || 0} sorunlu`)}
+        ${kpi('fa-headset', '', String(st.tickets_total || 0), 'Destek Talebi', `${st.tickets_open || 0} açık`)}
+        ${kpi('fa-people-arrows', 'green', String(st.referred_count || 0), 'Getirdiği Üye', `${this.fmtTl(st.referral_earned)} kazanç`)}
+        ${kpi('fa-right-to-bracket', 'cyan', u.last_login_at ? this.fmtTimeAgo(u.last_login_at) : '—', 'Son Giriş', `${u.login_count || 0} giriş`)}
+      </div>
+
+      <div class="glass-card" style="margin-bottom:20px;">
+        <div class="service-editor-section-title"><i class="fa-solid fa-circle-info"></i> Hesap Bilgileri</div>
+        <div class="user-detail-info-grid">
+          ${info('Kayıt Tarihi', `${this.fmtDbDateTime(u.created_at)} <small style="color:var(--text-dim);">(${this.fmtTimeAgo(u.created_at)})</small>`)}
+          ${info('Son Giriş', lastLogin)}
+          ${info('Son Giriş IP', u.last_login_ip ? `<code>${esc(u.last_login_ip)}</code>` : '—')}
+          ${info('Son Görülme', lastSeen)}
+          ${info('Toplam Giriş', String(u.login_count || 0))}
+          ${info('İlk Sipariş', this.fmtDbDateTime(st.first_order_at))}
+          ${info('Son Sipariş', this.fmtDbDateTime(st.last_order_at))}
+          ${info('Son Bakiye Yükleme', this.fmtDbDateTime(st.last_payment_at))}
+          ${info('Referans Veren', u.referrer_username ? `<a href="#" onclick="app.openAdminUserDetail(${u.referrer_id}); return false;">${esc(u.referrer_username)}</a>` : '—')}
+          ${info('API Anahtarı', u.has_api_key ? `Var${u.api_key_created_at ? ` <small style="color:var(--text-dim);">(${this.fmtDbDateTime(u.api_key_created_at)})</small>` : ''}` : 'Yok')}
+          ${info('Telegram Bildirimi', u.telegram_username ? (Number(u.telegram_notify) === 1 ? 'Açık' : 'Bağlı, kapalı') : 'Bağlı değil')}
+          ${info('Rol', esc(u.role))}
+        </div>
+      </div>
+
+      <div class="user-detail-tabs">
+        ${sections.map(s => `<button type="button" class="btn ${active === s.key ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="app.setAdminUserDetailSection('${s.key}')"><i class="fa-solid ${s.icon}"></i> ${s.label} <span class="user-detail-count">${s.count}</span></button>`).join('')}
+      </div>
+      <div class="glass-card">${this.renderAdminUserDetailSection(active, data)}</div>`;
+  }
+
+  renderAdminUserDetailSection(section, data) {
+    const esc = v => this.escapeHtml(v ?? '');
+    const table = (headers, rows, empty) => rows.length
+      ? `<div class="table-responsive"><table class="custom-table"><thead><tr>${headers.map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`
+      : `<p class="admin-help">${empty}</p>`;
+    const dt = v => this.fmtDbDateTime(v);
+
+    if (section === 'orders') {
+      return table(['No', 'Servis', 'Bağlantı', 'Miktar', 'Tutar', 'Durum', 'Tarih'], (data.orders || []).map(o => {
+        const info = this.adminOrderStatusInfo(o.status);
+        const reason = o.failure_reason ? `<small style="display:block;color:var(--text-dim);max-width:260px;">${esc(o.failure_reason)}</small>` : '';
+        return `<tr>
+          <td class="cell-nowrap"><strong>#${o.id}</strong>${o.provider_order_id ? `<small style="display:block;color:var(--text-dim);">Sağl. #${esc(o.provider_order_id)}</small>` : ''}</td>
+          <td class="cell-truncate" title="${esc(o.service_name)}">${esc(o.service_name || `Servis #${o.service_id}`)}${o.provider_name ? `<small style="display:block;color:var(--text-dim);">${esc(o.provider_name)}</small>` : ''}</td>
+          <td>${this.renderOrderLink(o.link, 36, '0.82rem')}</td>
+          <td class="cell-nowrap">${o.quantity}${this.providerQuantityNote(o)}${o.status === 'partial' && Number(o.remains) > 0 ? `<small style="display:block;color:var(--text-dim);">eksik ${o.remains}</small>` : ''}</td>
+          <td class="cell-nowrap" style="font-weight:700;">${this.fmtTl(o.charge)}${Number(o.refunded) > 0 ? `<small style="display:block;color:var(--text-dim);">iade ${this.fmtTl(o.refunded)}</small>` : ''}</td>
+          <td><span class="badge ${info.badge}">${info.label}</span>${reason}</td>
+          <td class="cell-nowrap">${dt(o.created_at)}${o.completed_at ? `<small style="display:block;color:var(--text-dim);">bitiş ${dt(o.completed_at)}</small>` : ''}</td>
+        </tr>`;
+      }), 'Bu kullanıcının siparişi yok.');
+    }
+    if (section === 'payments') {
+      return table(['No', 'Yöntem', 'Tutar', 'Durum', 'İşlem No', 'Tarih'], (data.payments || []).map(p => {
+        const m = this.adminPaymentMethodInfo(p.method_group);
+        return `<tr>
+          <td class="cell-nowrap">#${p.id}</td>
+          <td><span class="badge ${m.badge}"><i class="fa-solid ${m.icon}"></i> ${m.label}</span><small style="display:block;color:var(--text-dim);">${esc(p.method)}</small></td>
+          <td class="cell-nowrap" style="font-weight:700;color:var(--success);">${this.fmtTl(p.amount)}</td>
+          <td>${p.status === 'completed' ? '<span class="badge badge-completed">Tamamlandı</span>' : `<span class="badge badge-pending">${esc(p.status)}</span>`}</td>
+          <td class="cell-truncate" title="${esc(p.transaction_id)}">${esc(p.transaction_id || '—')}</td>
+          <td class="cell-nowrap">${dt(p.created_at)}</td>
+        </tr>`;
+      }), 'Bakiye yükleme kaydı yok.');
+    }
+    if (section === 'notifications') {
+      const st = s => s === 'approved' ? '<span class="badge badge-completed">Onaylandı</span>' : s === 'rejected' ? '<span class="badge badge-canceled">Reddedildi</span>' : '<span class="badge badge-pending">Bekliyor</span>';
+      return table(['No', 'Banka', 'Gönderen', 'Tutar', 'Durum', 'Tarih'], (data.payment_notifications || []).map(n => `<tr>
+          <td class="cell-nowrap">#${n.id}</td>
+          <td>${esc(n.bank_name)}</td>
+          <td>${esc(n.sender_name)}</td>
+          <td class="cell-nowrap" style="font-weight:700;">${this.fmtTl(n.amount)}</td>
+          <td>${st(n.status)}</td>
+          <td class="cell-nowrap">${dt(n.created_at)}</td>
+        </tr>`), 'Havale/Papara bildirimi yok.');
+    }
+    if (section === 'intents') {
+      const st = s => s === 'completed' || s === 'paid' ? '<span class="badge badge-completed">Ödendi</span>' : s === 'failed' || s === 'expired' || s === 'canceled' ? `<span class="badge badge-canceled">${esc(s)}</span>` : `<span class="badge badge-pending">${esc(s)}</span>`;
+      return table(['Sağlayıcı', 'Sipariş Ref.', 'Tutar', 'Durum', 'Başlangıç', 'Tamamlanma'], (data.payment_intents || []).map(i => `<tr>
+          <td>${esc(i.provider)}</td>
+          <td class="cell-truncate" title="${esc(i.merchant_oid)}">${esc(i.merchant_oid)}${i.failure_reason ? `<small style="display:block;color:var(--danger);">${esc(i.failure_reason)}</small>` : ''}</td>
+          <td class="cell-nowrap" style="font-weight:700;">${this.fmtTl(i.amount)}</td>
+          <td>${st(i.status)}</td>
+          <td class="cell-nowrap">${dt(i.created_at)}</td>
+          <td class="cell-nowrap">${dt(i.completed_at)}</td>
+        </tr>`), 'Kart/kripto ödeme denemesi yok.');
+    }
+    if (section === 'tickets') {
+      return table(['No', 'Konu', 'Mesaj', 'Durum', 'Son Mesaj', 'Açılış'], (data.tickets || []).map(t => `<tr>
+          <td class="cell-nowrap">#${t.id}</td>
+          <td>${esc(t.subject)}</td>
+          <td class="cell-nowrap">${t.message_count || 0}</td>
+          <td>${t.status === 'open' ? '<span class="badge badge-pending">Açık</span>' : t.status === 'answered' ? '<span class="badge badge-processing">Yanıtlandı</span>' : `<span class="badge badge-completed">${esc(t.status)}</span>`}</td>
+          <td class="cell-nowrap">${dt(t.last_message_at)}</td>
+          <td class="cell-nowrap">${dt(t.created_at)}</td>
+        </tr>`), 'Destek talebi yok.');
+    }
+    if (section === 'referrals') {
+      return table(['Kullanıcı', 'Sipariş', 'Kayıt'], (data.referred_users || []).map(r => `<tr>
+          <td><a href="#" onclick="app.openAdminUserDetail(${r.id}); return false;">${esc(r.username)}</a> <small style="color:var(--text-dim);">#${r.id}</small></td>
+          <td class="cell-nowrap">${r.order_count || 0}</td>
+          <td class="cell-nowrap">${dt(r.created_at)}</td>
+        </tr>`), 'Bu kullanıcının referansıyla gelen üye yok.');
+    }
+    if (section === 'coupons') {
+      return table(['Kod', 'Tutar', 'Kullanım'], (data.coupons || []).map(c => `<tr>
+          <td><code>${esc(c.code)}</code></td>
+          <td class="cell-nowrap">${this.fmtTl(c.amount)}</td>
+          <td class="cell-nowrap">${dt(c.used_at)}</td>
+        </tr>`), 'Kupon kullanımı yok.');
+    }
+    if (section === 'security') {
+      const label = t => ({ failed_login: 'Hatalı giriş', banned_login: 'Banlı giriş denemesi', rate_limit: 'Hız limiti', blocked_hit: 'Engelli IP' }[t] || t);
+      return `<p class="admin-help" style="margin-bottom:10px;">Son 30 günün güvenlik olayları (kullanıcı adıyla eşleşenler).</p>` +
+        table(['Olay', 'IP', 'Yol', 'Detay', 'Tarih'], (data.security_events || []).map(e => `<tr>
+          <td><span class="badge ${e.type === 'failed_login' || e.type === 'banned_login' ? 'badge-canceled' : 'badge-pending'}">${esc(label(e.type))}</span></td>
+          <td><code>${esc(e.ip)}</code></td>
+          <td class="cell-truncate">${esc(e.path)}</td>
+          <td class="cell-truncate" title="${esc(e.detail)}">${esc(e.detail || '—')}</td>
+          <td class="cell-nowrap">${dt(e.created_at)}</td>
+        </tr>`), 'Güvenlik olayı yok.');
+    }
+    if (section === 'audit') {
+      const label = a => ({
+        admin_balance_adjusted: 'Bakiye düzenlendi', admin_user_banned: 'Banlandı', admin_user_unbanned: 'Ban kaldırıldı',
+        admin_user_password_changed: 'Şifre değiştirildi', admin_user_deleted: 'Silindi', order_status_changed: 'Sipariş durumu',
+        payment_approved: 'Ödeme onaylandı', admin_assign_order: 'Hizmet atandı'
+      }[a] || a);
+      const detailText = d => {
+        if (!d) return '—';
+        if (typeof d === 'string') return d;
+        if (d.amount_kurus !== undefined) return `${d.action === 'subtract' ? '-' : '+'}${this.fmtTl(d.amount_kurus / 100)}`;
+        if (d.from && d.to) return `${d.from} → ${d.to}`;
+        return Object.entries(d).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ');
+      };
+      return table(['İşlem', 'Yapan', 'Hedef', 'Detay', 'IP', 'Tarih'], (data.audit_logs || []).map(a => `<tr>
+          <td>${esc(label(a.action))}</td>
+          <td>${esc(a.actor_username || '—')}</td>
+          <td class="cell-nowrap">${esc(a.entity_type)} #${esc(a.entity_id)}</td>
+          <td class="cell-truncate" title="${esc(detailText(a.details))}">${esc(detailText(a.details))}</td>
+          <td><code>${esc(a.ip_address || '—')}</code></td>
+          <td class="cell-nowrap">${dt(a.created_at)}</td>
+        </tr>`), 'İşlem kaydı yok.');
+    }
+    if (section === 'emails') {
+      return table(['Şablon', 'Konu', 'Durum', 'Tarih'], (data.emails || []).map(e => `<tr>
+          <td>${esc(e.template_name || '—')}</td>
+          <td class="cell-truncate" title="${esc(e.subject)}">${esc(e.subject || '—')}</td>
+          <td>${e.status === 'sent' ? '<span class="badge badge-completed">Gönderildi</span>' : `<span class="badge badge-canceled" title="${esc(e.error)}">Hata</span>`}</td>
+          <td class="cell-nowrap">${dt(e.created_at)}</td>
+        </tr>`), 'Bu kullanıcıya gönderilmiş pazarlama e-postası yok.');
+    }
+    return '';
   }
 
   // --- KULLANICIYA HIZMET ATAMA (Admin) ---
@@ -5276,7 +5656,7 @@ class SmmApp {
         <td>${this.escapeHtml(o.username)}</td>
         <td class="cell-truncate" style="font-size: 0.85rem;" title="${this.escapeHtml(o.service_name)}">${this.escapeHtml(o.service_name)}${saglayici}</td>
         <td>${this.renderOrderLink(o.link, 40, '0.8rem')}</td>
-        <td>${o.quantity}</td>
+        <td class="cell-nowrap">${o.quantity}${this.providerQuantityNote(o)}</td>
         <td class="cell-nowrap" style="font-weight: 700;">₺${Number(o.charge || 0).toFixed(2)}</td>
         <td><span class="badge ${info.badge}">${info.label}</span>${reason}</td>
         <td class="cell-nowrap">
@@ -5290,6 +5670,14 @@ class SmmApp {
   setAdminOrdersFilter(filter) {
     this.adminOrdersFilter = filter;
     this.renderAdminOrders();
+  }
+
+  // Admin listesinde saglayiciya giden miktar musteri miktarindan farkliysa
+  // (fazla gonderim veya carpan) kucuk notla gosterilir; musteri bunu gormez.
+  providerQuantityNote(o) {
+    const sent = Number(o?.provider_quantity);
+    if (!(sent > 0) || sent === Number(o.quantity)) return '';
+    return `<small style="display:block;color:var(--accent-cyan);" title="Sağlayıcıya gönderilen miktar">→ ${sent}</small>`;
   }
 
   // --- SİPARİŞ DETAY POPUP'I ---
@@ -5314,6 +5702,7 @@ class SmmApp {
       alan('Sağlayıcı', o.provider_name ? `${this.escapeHtml(o.provider_name)}${o.provider_order_id ? ` · Sağlayıcı No: #${this.escapeHtml(String(o.provider_order_id))}` : ''}` : 'Manuel / atanmadı'),
       alan('Bağlantı', this.renderOrderLink(o.link, 60, '0.88rem')),
       alan('Miktar', String(o.quantity)),
+      alan('Sağlayıcıya Giden', Number(o.provider_quantity) > 0 ? `${o.provider_quantity}${Number(o.provider_quantity) !== Number(o.quantity) ? ' <small style="color:var(--accent-cyan);">(fazla gönderim / çarpan)</small>' : ''}` : '—'),
       alan('Tutar', `₺${Number(o.charge || 0).toFixed(2)}`),
       alan('Başlangıç Sayacı', o.start_count ? String(o.start_count) : '—'),
       alan('Kalan', o.remains ? String(o.remains) : '—'),
@@ -8079,7 +8468,7 @@ print(sonuc.get("error") or sonuc.get("order"))`;
   }
 
   lpServiceRowHtml(s) {
-    const isRefill = s.refill == 1 || /telafi|garanti|refill|düşüşsüz|non-drop|30 gün|60 gün|90 gün|365 gün|yenileme|days refill/i.test(`${s.name} ${s.category_name}`);
+    const isRefill = this.isServiceGuaranteed(s);
     return `<tr>
       <td class="cell-nowrap">#${s.id}</td>
       <td class="cell-service-title" title="${this.escapeHtml(s.name)}"><span class="service-name-clamp">${this.escapeHtml(s.name)}</span></td>

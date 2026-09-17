@@ -193,6 +193,7 @@ const API = {
   bulkDeleteAdminServices: (data) => API.request('/admin/services/bulk-delete', { method: 'POST', body: JSON.stringify(data) }),
   bulkStatusAdminServices: (data) => API.request('/admin/services/bulk-status', { method: 'POST', body: JSON.stringify(data) }),
   getAdminUsers: (q = '') => API.request(`/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  getAdminUserDetail: (userId) => API.request(`/admin/users/${userId}/detail`),
   updateUserBalance: (userId, amount, action) => API.request(`/admin/users/${userId}/balance`, { method: 'POST', body: JSON.stringify({ amount, action }) }),
   setUserBan: (userId, banned) => API.request(`/admin/users/${userId}/ban`, { method: 'POST', body: JSON.stringify({ banned }) }),
   setUserPassword: (userId, new_password) => API.request(`/admin/users/${userId}/password`, { method: 'POST', body: JSON.stringify({ new_password }) }),

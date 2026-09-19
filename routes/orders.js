@@ -3,9 +3,9 @@ const { z } = require('zod');
 const { dbAsync } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
-const { normalizePlainText, decryptSecret } = require('../utils/security');
+const { decryptSecret } = require('../utils/security');
 const { fromKurus } = require('../utils/money');
-const SmmProviderClient = require('../services/smmProvider');
+const { requestRefill } = require('../services/refills');
 
 const router = express.Router();
 const createSchema = z.object({
@@ -122,22 +122,10 @@ router.get('/:id/delivery', authenticateToken, async (req, res, next) => {
 
 router.post('/:id/refill', authenticateToken, async (req, res, next) => {
   try {
-    const order = await dbAsync.get(
-      `SELECT o.*, s.refill, p.api_url, p.api_key
-       FROM orders o JOIN services s ON s.id = o.service_id
-       LEFT JOIN providers p ON p.id = o.provider_id
-       WHERE o.id = ? AND o.user_id = ?`,
-      [req.params.id, req.user.id]
-    );
-    if (!order) return res.status(404).json({ error: 'Sipariş bulunamadı.' });
-    if (!order.refill) return res.status(400).json({ error: 'Bu servis telafi desteklemiyor.' });
-    if (order.status !== 'completed') return res.status(400).json({ error: 'Yalnızca tamamlanmış siparişler için telafi istenebilir.' });
-    if (order.refill_status === 'requested' || order.refill_status === 'processing') return res.status(409).json({ error: 'Bu sipariş için aktif bir telafi talebi var.' });
-    if (!order.provider_order_id || !order.api_url) return res.status(400).json({ error: 'Sağlayıcı telafi bağlantısı bulunamadı.' });
-    const response = await new SmmProviderClient(order.api_url, order.api_key, { id: order.provider_id }).requestRefill(order.provider_order_id);
-    if (response?.error) return res.status(502).json({ error: `Sağlayıcı telafi hatası: ${normalizePlainText(response.error, 300)}` });
-    await dbAsync.run("UPDATE orders SET refill_status = 'requested' WHERE id = ? AND refill_status NOT IN ('requested','processing')", [order.id]);
-    res.json({ message: 'Telafi talebiniz sağlayıcıya iletildi.', refill: response?.refill || null });
+    // Panel ve bayi API'si ayni akistan gecer (services/refills.js): talep
+    // kaydedilir, durumu arka planda izlenir ve bitince yeni talebe acilir.
+    const result = await requestRefill({ user: req.user, orderId: req.params.id });
+    res.json({ message: 'Telafi talebiniz sağlayıcıya iletildi.', refill: result.refillId });
   } catch (err) { next(err); }
 });
 

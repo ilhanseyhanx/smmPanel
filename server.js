@@ -92,6 +92,11 @@ app.use((req, res, next) => {
   next();
 });
 
+// BAYI SITELERI: istek bir bayinin alan adina geldiyse bayi uygulamasi cevap
+// verir ve ana sitenin hicbir parcasi (statik dosyalar, SEO, blog, admin)
+// calismaz. Ana site adresleri veritabanina sorulmadan buradan gecer.
+app.use(require('./tenant').tenantDispatcher);
+
 const allowedOrigins = new Set((process.env.ALLOWED_ORIGINS || `http://localhost:${PORT}`).split(',').map(v => v.trim()).filter(Boolean));
 app.use(cors({
   credentials: true,
@@ -635,92 +640,18 @@ app.use('/api/blog', blogRoutes);
 // kullanici sorgusu yapardi. Kimlik + yetki burada acikca uygulanir.
 const { authenticateToken: saglikAuth, requireAdmin: saglikAdmin } = require('./middleware/auth');
 app.use('/api/admin/health', saglikAuth, saglikAdmin, require('./routes/adminHealth'));
+// Bayi yonetimi de ayni sekilde ana admin zincirinden once baglanir.
+app.use('/api/admin/resellers', saglikAuth, saglikAdmin, require('./routes/adminResellers'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/campaigns', require('./routes/campaigns'));
 app.use('/api/landing-pages', require('./routes/landingPages'));
+// Jet kullanicisinin bayilik basvurusu ve durumu.
+app.use('/api/reseller', require('./routes/reseller'));
 
-// ----------------------------------------------------
-// RESELLER API V2 (Standard SMM API Endpoint)
-// ----------------------------------------------------
-app.post('/api/v2', async (req, res) => {
-  const { key, action, service, link, quantity, comments, order, orders } = req.body;
-  const { dbAsync, withTransaction } = require('./config/database');
-  const { calculateChargeKurus, fromKurus, toKurus } = require('./utils/money');
-  const { normalizePlainText } = require('./utils/security');
-
-  if (!key) {
-    return res.json({ error: 'Invalid API Key' });
-  }
-
-  const user = await dbAsync.get(`SELECT * FROM users WHERE api_key = ?`, [key]);
-  if (!user || user.banned) {
-    return res.json({ error: 'Invalid API Key' });
-  }
-
-  if (action === 'services') {
-    // Bayi API'si Ingilizce oncelikli: EN alani bossa TR'ye duser.
-    const list = await dbAsync.all(`SELECT id as service, COALESCE(NULLIF(name_en, ''), name) as name, rate_per_1000_kurus,
-      min_quantity as min, max_quantity as max, category_id as category, refill,
-      order_input_type, pricing_model,
-      COALESCE(NULLIF(description_en, ''), description, '') as description,
-      COALESCE(NULLIF(start_time_en, ''), start_time_tr, '') as start_time,
-      COALESCE(NULLIF(speed_en, ''), speed_tr, '') as speed,
-      COALESCE(NULLIF(features_en, ''), features_tr, '') as features
-      FROM services WHERE status = 1`);
-    return res.json(list.map(item => ({
-      ...item,
-      rate: fromKurus(item.rate_per_1000_kurus).toFixed(2),
-      refill: Number(item.refill) === 1,
-      type: item.order_input_type === 'custom_comments' ? 'Custom Comments' : 'Default',
-      // Ozellikler satir satir saklanir; API'de dizi olarak verilir.
-      features: String(item.features || '').split(/\r?\n/).filter(Boolean),
-      rate_per_1000_kurus: undefined
-    })));
-  }
-
-  if (action === 'balance') {
-    return res.json({ balance: fromKurus(user.balance_kurus).toFixed(2), currency: 'TRY' });
-  }
-
-  if (action === 'add') {
-    const qty = quantity === undefined || quantity === '' ? undefined : Number(quantity);
-    if ((qty !== undefined && !Number.isSafeInteger(qty)) || !link) return res.json({ error: 'Invalid parameters' });
-    try {
-      // Panel siparisiyle AYNI yoldan gecer: link dogrulamasi, kampanya
-      // indirimi, bakiye dusumu, saglayiciya iletim ve basarisizlikta iade.
-      // Eskiden burada siparis yalnizca 'pending' olarak kaydedilip birakiliyor,
-      // saglayiciya hic gonderilmiyordu.
-      const { placeOrder } = require('./services/placeOrder');
-      const result = await placeOrder({
-        user, serviceId: service, link, quantity: qty, comments, termsAccepted: true, lang: 'en'
-      });
-      return res.json({ order: result.orderId });
-    } catch (err) {
-      // SMM API gelenegi: HTTP 200 + govdede error alani (Ingilizce).
-      return res.json({ error: err.messageEn || err.message });
-    }
-  }
-
-  if (action === 'status') {
-    if (order) {
-      const o = await dbAsync.get(`SELECT * FROM orders WHERE id = ? AND user_id = ?`, [order, user.id]);
-      if (!o) return res.json({ error: 'Order not found' });
-      const mapped = { completed: 'Completed', canceled: 'Canceled', partial: 'Partial', failed: 'Canceled', pending: 'Pending', processing: 'Processing' };
-      return res.json({ status: mapped[o.status] || 'Processing', start_count: o.start_count, remains: o.remains, charge: fromKurus(o.charge_kurus).toFixed(2), currency: 'TRY' });
-    }
-    if (orders) {
-      const ids = String(orders).split(',').map(Number).filter(Number.isSafeInteger).slice(0, 100);
-      if (!ids.length) return res.json({ error: 'Invalid orders' });
-      const rows = await dbAsync.all(`SELECT * FROM orders WHERE user_id = ? AND id IN (${ids.map(() => '?').join(',')})`, [user.id, ...ids]);
-      const mapped = { completed: 'Completed', canceled: 'Canceled', partial: 'Partial', failed: 'Canceled', pending: 'Pending', processing: 'Processing' };
-      return res.json(Object.fromEntries(rows.map(o => [o.id, { status: mapped[o.status] || 'Processing', start_count: o.start_count, remains: o.remains, charge: fromKurus(o.charge_kurus).toFixed(2), currency: 'TRY' }])));
-    }
-  }
-
-  res.json({ error: 'Invalid action' });
-});
+// Bayi API'si (standart SMM API v2): routes/apiV2.js
+app.use('/api/v2', require('./routes/apiV2'));
 
 // ----------------------------------------------------
 // LOCAL MOCK PROVIDER API (For testing provider sync offline)

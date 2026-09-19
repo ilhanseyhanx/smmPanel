@@ -4532,3 +4532,20 @@ body.neo-app-active .service-editor-step { background: #ffde17; color: #090909; 
 @media (max-width: 768px) {
   .user-detail-actions { justify-content: flex-start; }
 }
+
+/* Admin icerik sutunu flex ogesidir; min-width:auto yuzunden genis tablolar
+   (Siparisler, Bayiler) sutunu sag kenardan tasiriyordu. 0 olunca tablo
+   kendi kutusunda yatay kaydirilir. */
+#view-admin .admin-main-content { min-width: 0; }
+/* Admin > Bayiler: ayar formu izgarasi ve basvuru anahtari */
+.reseller-settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px 18px; margin: 12px 0 14px; }
+.reseller-settings-grid .form-group { margin-bottom: 0; }
+.reseller-settings-grid .admin-help { display: block; margin-top: 6px; font-size: 0.78rem; }
+.reseller-switch { display: flex; align-items: center; gap: 10px; min-height: 42px; cursor: pointer; color: var(--text-muted); font-size: 0.9rem; }
+.reseller-switch input { width: 18px; height: 18px; accent-color: var(--accent-cyan); }
+.reseller-public-toggle { border: 2px dashed rgba(148, 163, 184, .45); border-radius: 12px; padding: 12px 16px; margin: 12px 0 6px; }
+.reseller-public-toggle.is-on { border-style: solid; border-color: var(--success); }
+.reseller-switch-lg { min-height: 0; font-size: 1rem; color: inherit; }
+.reseller-switch-lg input { width: 22px; height: 22px; }
+.reseller-switch-lg em { font-style: normal; font-weight: 700; margin-left: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(148, 163, 184, .2); font-size: .8rem; }
+.reseller-public-toggle.is-on .reseller-switch-lg em { background: var(--success); color: #fff; }

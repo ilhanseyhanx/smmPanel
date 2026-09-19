@@ -18,6 +18,7 @@ const { buildXlsx, columnsFromRows } = require('../utils/xlsx');
 const { buildMetaDescription } = require('../utils/metaDescription');
 const securityMonitor = require('../services/securityMonitor');
 const { detectRefillFromText, parseRefillFlag } = require('../utils/serviceFlags');
+const { syncTenantRefund } = require('../services/resellers');
 
 // --- Ortak dogrulama semalari ---------------------------------------------
 // Admin uclari da musteri uclari gibi sema ile dogrulanir; boylece negatif
@@ -478,8 +479,8 @@ router.post('/providers/:id/import-services', requireIdParam, validate(importSer
         await dbAsync.run(
           `INSERT INTO services (category_id, provider_id, provider_service_id, name, rate_per_1000, rate_per_1000_kurus,
            provider_cost_rate, provider_cost_currency, provider_cost_updated_at, min_quantity, max_quantity, description, status, refill,
-           order_input_type, provider_service_type)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, 1, ?, ?, ?)`,
+           order_input_type, provider_service_type, provider_cancel, provider_dripfeed)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
           [
             category.id,
             providerId,
@@ -496,7 +497,10 @@ router.post('/providers/:id/import-services', requireIdParam, validate(importSer
             pService.description || `${catName} için kaliteli servis.`,
             isRefill,
             orderInputType,
-            providerServiceType
+            providerServiceType,
+            // Bayi API'sindeki cancel / dripfeed bayraklari buradan gelir.
+            parseRefillFlag(pService.cancel) === 1 ? 1 : 0,
+            parseRefillFlag(pService.dripfeed) === 1 ? 1 : 0
           ]
         );
         importedCount++;
@@ -750,7 +754,15 @@ router.post('/services/refresh-provider-prices', async (req, res) => {
         const linked = await dbAsync.all('SELECT id, provider_service_id FROM services WHERE provider_id = ?', [provider.id]);
         for (const service of linked) {
           const source = catalogMap.get(String(service.provider_service_id));
-          if (source) updates.push({ id: service.id, rate: source.cost_rate, currency: catalog.currency });
+          if (source) {
+            updates.push({
+              id: service.id,
+              rate: source.cost_rate,
+              currency: catalog.currency,
+              cancel: source.cancel ? 1 : 0,
+              dripfeed: source.dripfeed ? 1 : 0
+            });
+          }
         }
       } catch (error) {
         failures.push(normalizePlainText(provider.name, 100));
@@ -758,8 +770,10 @@ router.post('/services/refresh-provider-prices', async (req, res) => {
     }
     await withTransaction(async tx => {
       for (const update of updates) {
+        // Iptal / kademeli gonderim destegi de saglayici listesinden tazelenir.
         await tx.run(`UPDATE services SET provider_cost_rate = ?, provider_cost_currency = ?,
-          provider_cost_updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [update.rate, update.currency, update.id]);
+          provider_cost_updated_at = CURRENT_TIMESTAMP, provider_cancel = ?, provider_dripfeed = ? WHERE id = ?`,
+        [update.rate, update.currency, update.cancel, update.dripfeed, update.id]);
       }
     });
     res.json({
@@ -1477,9 +1491,15 @@ router.delete('/users/:id', requireIdParam, async (req, res) => {
     const target = await dbAsync.get('SELECT id, role, username FROM users WHERE id = ?', [userId]);
     if (!target) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
     if (target.role === 'admin') return res.status(400).json({ error: 'Admin hesapları silinemez.' });
+    // Bayi paneli olan hesap silinirse bayinin musterileri ve bakiyeleri
+    // sahipsiz kalirdi; once bayilik Bayiler bolumunden kapatilmali.
+    const tenant = await dbAsync.get('SELECT id, name FROM tenants WHERE owner_user_id = ?', [userId]);
+    if (tenant) return res.status(409).json({ error: `Bu kullanıcının "${tenant.name}" bayi paneli var. Önce Bayiler bölümünden bayiliği silin.` });
 
     await withTransaction(async tx => {
       // FK'lari CASCADE olmayan bagimli kayitlar once temizlenir.
+      await tx.run('DELETE FROM order_refills WHERE user_id = ? OR order_id IN (SELECT id FROM orders WHERE user_id = ?)', [userId, userId]);
+      await tx.run('DELETE FROM email_deliveries WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)', [userId]);
       await tx.run('DELETE FROM referral_earnings WHERE referrer_id = ? OR referred_user_id = ? OR order_id IN (SELECT id FROM orders WHERE user_id = ?)', [userId, userId, userId]);
       await tx.run('DELETE FROM ticket_messages WHERE ticket_id IN (SELECT id FROM tickets WHERE user_id = ?)', [userId]);
       await tx.run('DELETE FROM tickets WHERE user_id = ?', [userId]);
@@ -1620,6 +1640,8 @@ router.put('/orders/:id/status', requireIdParam, validate(orderStatusSchema), as
         refundAmount = refund;
         await tx.run('UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?', [refund, refund, order.user_id]);
         await tx.run("UPDATE orders SET status = ?, refunded_kurus = ?, failure_reason = COALESCE(failure_reason, 'Yönetici tarafından iptal edildi; tutar iade edildi.') WHERE id = ?", [status, refund, orderId]);
+        // Bayi siparisiyse musteri de bayinin fiyatindan iade alir.
+        await syncTenantRefund(tx, orderId);
       } else if (status === 'canceled') {
         await tx.run("UPDATE orders SET status = ?, failure_reason = COALESCE(failure_reason, 'Yönetici tarafından iptal edildi.') WHERE id = ?", [status, orderId]);
       } else {
@@ -1629,6 +1651,7 @@ router.put('/orders/:id/status', requireIdParam, validate(orderStatusSchema), as
       if (status !== order.status && ['completed', 'partial', 'canceled'].includes(status)) {
         const service = await tx.get('SELECT name FROM services WHERE id = ?', [order.service_id]);
         statusChange = {
+          notifyOwner: !order.tenant_id,
           userId: order.user_id,
           event: status,
           order: { id: order.id, service_name: service?.name || 'Servis', quantity: order.quantity, remains: order.remains, refund_amount: fromKurus(refundAmount) }
@@ -1636,7 +1659,7 @@ router.put('/orders/:id/status', requireIdParam, validate(orderStatusSchema), as
       }
     });
     // Musteri Telegram'a bagliysa durum degisikligini ogrenir (beklenmez).
-    if (statusChange) telegram.notifyOrderOwner(statusChange.userId, statusChange.event, statusChange.order);
+    if (statusChange?.notifyOwner) telegram.notifyOrderOwner(statusChange.userId, statusChange.event, statusChange.order);
     res.json({ message: 'Sipariş durumu güncellendi.' });
   } catch (err) {
     res.status(500).json({ error: 'Durum güncellenemedi.' });
@@ -2167,16 +2190,8 @@ router.get('/telegram/chats', async (req, res) => {
 // onayi, Shopier, PayTR, kripto, bonus/kupon...). Burada yontemler gruplanir;
 // liste + gunluk/haftalik/aylik ozet tek istekte doner.
 // ---------------------------------------------------------------------------
-const PAYMENT_METHOD_GROUP_SQL = `CASE
-  WHEN p.method LIKE 'Banka/Papara%' THEN 'bank'
-  WHEN p.method = 'Shopier' THEN 'shopier'
-  WHEN p.method = 'PayTR' THEN 'paytr'
-  WHEN p.method LIKE 'Kripto%' THEN 'crypto'
-  WHEN p.method LIKE 'Bonus%' OR p.method LIKE 'Kupon%' OR p.method = 'Referans Kazancı' THEN 'bonus'
-  ELSE 'other' END`;
-// Gercek para girisi sayilan gruplar: bonus/kupon/referans ve gelistirme
-// ortami yuklemeleri ciroya katilmaz.
-const REAL_MONEY_GROUPS = `('bank', 'shopier', 'paytr', 'crypto')`;
+// Gruplama bayilik acilis sarti ile ortak: utils/paymentGroups.js
+const { PAYMENT_METHOD_GROUP_SQL, REAL_MONEY_GROUPS } = require('../utils/paymentGroups');
 
 router.get('/payments', async (req, res) => {
   try {

@@ -106,6 +106,46 @@ class SmmProviderClient {
     }
   }
 
+  // Hata durumunda null doner: telafi takibi arka planda yapilir, bir
+  // saglayici cevap vermedi diye isci durmamali.
+  async getRefillStatus(providerRefillId) {
+    const baslangic = Date.now();
+    try {
+      await assertPublicProviderUrl(this.apiUrl);
+      const response = await axios.post(
+        this.apiUrl,
+        new URLSearchParams({ key: this.apiKey, action: 'refill_status', refill: providerRefillId.toString() }).toString(),
+        safeRequestConfig({ headers: this.headers, timeout: 15000 })
+      );
+      this._telemetri('getRefillStatus', baslangic, null, response.data);
+      return response.data;
+    } catch (err) {
+      this._telemetri('getRefillStatus', baslangic, err);
+      console.error(`SMM Provider getRefillStatus Error [${this.apiUrl}]:`, err.message);
+      return null;
+    }
+  }
+
+  // Standart SMM API: orders virgulle ayrilmis liste (en fazla 100). Yanit
+  // [{ order, cancel: 1 | { error } }] bicimindedir. Iptal yalnizca bir
+  // TALEPTIR; asil iptal ve iade durum senkronu ile gelir.
+  async cancelOrders(providerOrderIds) {
+    const baslangic = Date.now();
+    try {
+      await assertPublicProviderUrl(this.apiUrl);
+      const response = await axios.post(
+        this.apiUrl,
+        new URLSearchParams({ key: this.apiKey, action: 'cancel', orders: providerOrderIds.join(',') }).toString(),
+        safeRequestConfig({ headers: this.headers, timeout: 15000 })
+      );
+      this._telemetri('cancelOrders', baslangic, null, response.data);
+      return response.data;
+    } catch (err) {
+      this._telemetri('cancelOrders', baslangic, err);
+      throw new Error(`İptal isteği sağlayıcıya iletilemedi: ${err.message}`);
+    }
+  }
+
   async getOrderStatus(providerOrderId) {
     const baslangic = Date.now();
     try {

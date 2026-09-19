@@ -380,11 +380,19 @@ test('kılavuz gerçekten desteklenen komutları anlatır', () => {
   const bas = js.indexOf('apiGuideHtml()');
   assert.ok(bas > 0, 'kılavuz fonksiyonu bulunamadı');
   const kilavuz = js.slice(bas, js.indexOf('async loadApiKey', bas));
-  for (const komut of ['services', 'balance', 'add', 'status']) {
+  // Faz 0 (19 Eyl 2026): refill, refill_status ve cancel de destekleniyor.
+  for (const komut of ['services', 'balance', 'add', 'status', 'refill', 'refill_status', 'cancel']) {
     assert.ok(kilavuz.includes(`ad: '${komut}'`) || kilavuz.includes(`ad: '${komut} `),
       `kılavuzda "${komut}" komutu anlatılmamış`);
   }
-  // Desteklenmeyen komut ornek olarak verilmemeli
-  assert.ok(!/ad: 'refill'/.test(kilavuz), 'kılavuz desteklenmeyen refill komutunu anlatıyor');
-  assert.ok(!/ad: 'cancel'/.test(kilavuz), 'kılavuz desteklenmeyen cancel komutunu anlatıyor');
+  assert.ok(kilavuz.includes('runs') && kilavuz.includes('interval'), 'kılavuz kademeli gönderimi anlatmıyor');
+});
+
+test('API dokümanı sayfası yeni komutları anlatır', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  const bas = html.indexOf('id="view-smm-panel-api"');
+  const sayfa = html.slice(bas, html.indexOf('</section>', bas));
+  for (const parca of ['"action": "refill"', '"action": "refill_status"', '"action": "cancel"', '"runs"']) {
+    assert.ok(sayfa.includes(parca), `dokümanda ${parca} yok`);
+  }
 });

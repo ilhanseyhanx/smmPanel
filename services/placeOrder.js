@@ -11,6 +11,7 @@ const {
   tokenHash
 } = require('../utils/security');
 const { activeServiceDiscount, applyDiscountKurus } = require('./campaigns');
+const { changeCustomerBalance, syncTenantRefund } = require('./resellers');
 const { validateOrderLink } = require('../utils/linkValidator');
 const { friendlyProviderReason } = require('../utils/providerErrors');
 const SmmProviderClient = require('./smmProvider');
@@ -46,7 +47,11 @@ async function placeOrder({
   lang = 'tr',
   comments = '',
   termsAccepted = false,
-  notify = true
+  notify = true,
+  // Bayi sitesinden gelen siparis: { id, customerId, sellRateKurus, discountPercent }.
+  // user bu durumda bayinin sahibidir; musteri bayinin fiyatindan, sahip ise
+  // indirimli maliyetten AYNI islemde odenir.
+  tenant = null
 }) {
   const link = normalizePlainText(rawLink, 2048);
   const commentLines = normalizeComments(comments);
@@ -93,10 +98,41 @@ async function placeOrder({
       throw fail('Bu servis türünde kademeli gönderim kullanılamaz.', 400, 'Drip-feed is not available for this service type.');
     }
 
-    let rateKurus = service.rate_per_1000_kurus || toKurus(service.rate_per_1000);
-    if (discount) rateKurus = applyDiscountKurus(rateKurus, discount.discount_percent);
+    const baseRateKurus = service.rate_per_1000_kurus || toKurus(service.rate_per_1000);
+    let rateKurus = baseRateKurus;
+    if (discount) rateKurus = applyDiscountKurus(baseRateKurus, discount.discount_percent);
+    // Bayi maliyeti: kampanya ile bayi indiriminden hangisi ucuzsa o.
+    if (tenant && tenant.discountPercent > 0) {
+      rateKurus = Math.min(rateKurus, applyDiscountKurus(baseRateKurus, tenant.discountPercent));
+    }
     const chargeKurus = calculateServiceChargeKurus(rateKurus, requestedQuantity, service.pricing_model) * dripRuns;
     if (chargeKurus <= 0) throw fail('Hesaplanan sipariş tutarı geçersiz.', 400, 'The calculated order amount is invalid.');
+
+    let tenantChargeKurus = 0;
+    let tenantLogId = null;
+    if (tenant) {
+      tenantChargeKurus = calculateServiceChargeKurus(tenant.sellRateKurus, requestedQuantity, service.pricing_model) * dripRuns;
+      // Maliyetin altinda satis yapilmaz (bayi zarar etmesin).
+      if (!(tenantChargeKurus >= chargeKurus)) {
+        throw fail('Bu servis şu anda satışta değil.', 400, 'This service is currently unavailable.');
+      }
+      // Once musteri: yetersiz bakiye musterinin kendi hatasidir ve oncelikle
+      // o soylenir. Bayinin bakiyesi yetmezse asagida hepsi geri alinir.
+      const debited = await changeCustomerBalance(tx, {
+        tenantId: tenant.id,
+        customerId: tenant.customerId,
+        amountKurus: -tenantChargeKurus,
+        type: 'order',
+        actor: 'customer'
+      });
+      if (!debited) {
+        throw fail(
+          `Yetersiz bakiye. Gerekli tutar ₺${fromKurus(tenantChargeKurus).toFixed(2)}.`, 400,
+          `Not enough balance. Required amount: ${fromKurus(tenantChargeKurus).toFixed(2)} TRY.`
+        );
+      }
+      tenantLogId = debited.logId;
+    }
 
     const providerQuantity = providerQuantityFor(service, requestedQuantity);
     // E-posta altyapilari yerel kismi kucuk harfe cevirebilir. Tokeni bastan
@@ -113,6 +149,17 @@ async function placeOrder({
         WHERE id = ? AND balance_kurus >= ?`,
       [chargeKurus, chargeKurus, user.id, chargeKurus]
     );
+    if (debit.changes !== 1 && tenant) {
+      // Bayinin Jet bakiyesi bitmis: musteriye maliyet/tutar gosterilmez.
+      const err = fail(
+        'Bu servis şu anda geçici olarak kullanılamıyor. Lütfen biraz sonra tekrar deneyin.', 503,
+        'This service is temporarily unavailable. Please try again shortly.'
+      );
+      err.expose = true;
+      err.code = 'TENANT_OWNER_BALANCE';
+      err.requiredKurus = chargeKurus;
+      throw err;
+    }
     if (debit.changes !== 1) {
       throw fail(
         `Yetersiz bakiye. Gerekli tutar ₺${fromKurus(chargeKurus).toFixed(2)}.`, 400,
@@ -124,8 +171,9 @@ async function placeOrder({
       `INSERT INTO orders
          (user_id, service_id, provider_id, link, quantity, provider_quantity, charge, charge_kurus, status,
           drip_runs, drip_interval_minutes, order_input_type, secure_payload, delivery_email,
-          delivery_token_hash, delivery_status, terms_accepted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`,
+          delivery_token_hash, delivery_status, terms_accepted_at,
+          tenant_id, tenant_customer_id, tenant_charge_kurus)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         user.id, service.id, service.provider_id, link, requestedQuantity, providerQuantity,
         fromKurus(chargeKurus), chargeKurus, dripRuns, dripRuns > 1 ? dripIntervalMinutes : null,
@@ -133,12 +181,20 @@ async function placeOrder({
         inputType === 'email_delivery' || inputType === 'email_invite' ? link : null,
         relayToken ? tokenHash(relayToken) : null,
         inputType === 'email_delivery' ? 'waiting' : 'none',
-        Number(service.terms_required) === 1 ? new Date().toISOString() : null
+        Number(service.terms_required) === 1 ? new Date().toISOString() : null,
+        tenant ? tenant.id : null,
+        tenant ? tenant.customerId : null,
+        tenantChargeKurus
       ]
     );
+    if (tenant) {
+      await tx.run('UPDATE tenant_balance_logs SET order_id = ? WHERE id = ?', [order.id, tenantLogId]);
+      await tx.run('UPDATE tenants SET last_order_at = CURRENT_TIMESTAMP WHERE id = ?', [tenant.id]);
+    }
     return {
       service,
       chargeKurus,
+      tenantChargeKurus,
       orderId: order.id,
       quantity: requestedQuantity,
       providerQuantity,
@@ -182,24 +238,32 @@ async function placeOrder({
           "UPDATE orders SET status = 'failed', refunded_kurus = ?, failure_reason = ? WHERE id = ?",
           [reserved.chargeKurus, normalizePlainText(`${friendly} [Sağlayıcı: ${providerError.message}]`, 500), reserved.orderId]
         );
+        // Bayi musterisi de odedigi tutarin tamamini geri alir.
+        await syncTenantRefund(tx, reserved.orderId);
       }
     });
-    throw fail(
+    const err = fail(
       `Sipariş alınamadı: ${friendly} Tutar bakiyenize iade edildi.`, 502,
       'The order could not be placed and the amount was refunded to your balance.'
     );
+    // Mesaj bilerek musteriye gosterilir: iade yapildigini bilmesi gerekir.
+    err.expose = true;
+    throw err;
   }
 
   const updatedUser = await dbAsync.get('SELECT balance_kurus FROM users WHERE id = ?', [user.id]);
-  if (notify) {
+  // Bayi siparisinde sahibin Telegram'ina her musteri siparisi gitmez.
+  if (notify && !tenant) {
     telegram.notifyOrderOwner(user.id, 'processing', {
       id: reserved.orderId,
       service_name: reserved.service.name,
       quantity: reserved.quantity
     });
+  }
+  if (notify) {
     telegram.notifyNewOrder({
       orderId: reserved.orderId,
-      username: user.username,
+      username: tenant ? `${user.username} (bayi müşterisi)` : user.username,
       serviceName: reserved.service.name,
       quantity: reserved.quantity,
       providerQuantity: reserved.providerQuantity,
@@ -215,6 +279,7 @@ async function placeOrder({
     providerOrderId,
     status,
     chargeKurus: reserved.chargeKurus,
+    tenantChargeKurus: reserved.tenantChargeKurus,
     serviceName: reserved.service.name,
     quantity: reserved.quantity,
     newBalanceKurus: updatedUser.balance_kurus

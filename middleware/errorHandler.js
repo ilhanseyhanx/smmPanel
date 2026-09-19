@@ -13,7 +13,9 @@ function errorHandler(err, req, res, next) {
   const status = Number.isInteger(err.status) ? err.status : 500;
   // 5xx'te ic hata metni disari sizdirilmaz; durum kodu ise korunur
   // (502 sağlayıcı hatasi ile 500 sunucu hatasi ayri sinyallerdir).
-  if (status >= 500) {
+  // expose: rotanin bilerek musteriye yazdigi mesaj (or. "Sipariş alınamadı,
+  // tutar iade edildi"); bu isaret yoksa metin gizlenir.
+  if (status >= 500 && !err.expose) {
     // Sistem Sagligi: yalnizca veritabani kaynakli 5xx'ler kaydedilir
     // (SQLITE_BUSY vb.). Kayit asla yaniti etkilemez.
     if (healthEvents.sqliteHatasiMi(err)) {

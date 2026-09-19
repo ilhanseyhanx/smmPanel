@@ -549,6 +549,131 @@ async function runMigrations() {
   // (payment_intents yukaridaki blokta olusturuluyor, bu yuzden burada.)
   await addColumnIfMissing('payment_intents', 'provider_ref', 'TEXT');
 
+  // Saglayicinin servis listesindeki iptal / kademeli gonderim destegi.
+  // Iceri aktarmada ve "saglayici fiyatlarini guncelle"de doldurulur; bayi
+  // API'sindeki services yanitinda cancel / dripfeed bayragi olarak verilir.
+  await addColumnIfMissing('services', 'provider_cancel', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumnIfMissing('services', 'provider_dripfeed', 'INTEGER NOT NULL DEFAULT 0');
+  // API'den iptal talebi saglayiciya iletildiginde; ayni siparis icin tekrar
+  // tekrar istek gitmesin diye tutulur. Asil iptal/iade durum senkronuyla gelir.
+  await addColumnIfMissing('orders', 'cancel_requested_at', 'DATETIME');
+  // Telafi talepleri: her talep ayri kayit. Musteriye (panel/API) bizim
+  // numaramiz gosterilir; saglayici numarasi durum takibi icindir.
+  await dbAsync.exec(`
+    CREATE TABLE IF NOT EXISTS order_refills (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES orders(id),
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      provider_refill_id TEXT,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending', 'processing', 'completed', 'rejected', 'expired')),
+      provider_status TEXT,
+      last_checked_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_order_refills_order ON order_refills(order_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_order_refills_open ON order_refills(status, last_checked_at);
+  `);
+  // --- BAYI (CHILD PANEL) SISTEMI -----------------------------------------
+  // Tek kod, cok alan adi: her bayi (tenant) bir Jet kullanicisina aittir.
+  // Bayinin musterileri users tablosuna KARISMAZ; kendi tablolarinda durur.
+  // Bayi siparisi, sahibinin (owner) Jet siparisi olarak orders'a yazilir;
+  // tenant_* sutunlari musterinin odedigi tutari ve iadesini tasir.
+  await dbAsync.exec(`
+    CREATE TABLE IF NOT EXISTS tenants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      owner_user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      theme TEXT NOT NULL DEFAULT 'classic',
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'sleeping')),
+      status_reason TEXT,
+      discount_percent REAL,
+      default_markup_percent REAL NOT NULL DEFAULT 30,
+      settings_json TEXT NOT NULL DEFAULT '{}',
+      last_order_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS tenant_domains (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      domain TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'active', 'disabled')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      activated_at DATETIME
+    );
+    CREATE TABLE IF NOT EXISTS tenant_customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      username TEXT NOT NULL,
+      email TEXT NOT NULL,
+      password TEXT NOT NULL,
+      balance_kurus INTEGER NOT NULL DEFAULT 0,
+      api_key TEXT UNIQUE,
+      banned INTEGER NOT NULL DEFAULT 0,
+      token_version INTEGER NOT NULL DEFAULT 0,
+      last_login_at DATETIME,
+      last_login_ip TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(tenant_id, username),
+      UNIQUE(tenant_id, email)
+    );
+    CREATE TABLE IF NOT EXISTS tenant_service_prices (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      markup_percent REAL,
+      -- Servisin kendi birimindeki sabit satis fiyati (1000 adet veya adet basi).
+      fixed_rate_kurus INTEGER,
+      custom_name TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (tenant_id, service_id)
+    );
+    CREATE TABLE IF NOT EXISTS tenant_balance_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      customer_id INTEGER NOT NULL REFERENCES tenant_customers(id) ON DELETE CASCADE,
+      amount_kurus INTEGER NOT NULL,
+      balance_after_kurus INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      order_id INTEGER,
+      note TEXT,
+      actor TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS tenant_activity_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      actor_type TEXT NOT NULL,
+      actor_id INTEGER,
+      action TEXT NOT NULL,
+      details TEXT,
+      ip_address TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_tenant_domains_tenant ON tenant_domains(tenant_id);
+    CREATE INDEX IF NOT EXISTS idx_tenant_customers_tenant ON tenant_customers(tenant_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_tenant_balance_logs ON tenant_balance_logs(tenant_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_tenant_balance_logs_customer ON tenant_balance_logs(customer_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_tenant_activity_logs ON tenant_activity_logs(tenant_id, id DESC);
+  `);
+  await addColumnIfMissing('orders', 'tenant_id', 'INTEGER');
+  await addColumnIfMissing('orders', 'tenant_customer_id', 'INTEGER');
+  // Musterinin bayiye odedigi tutar ve bundan iade edilen kisim (kurus).
+  await addColumnIfMissing('orders', 'tenant_charge_kurus', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumnIfMissing('orders', 'tenant_refunded_kurus', 'INTEGER NOT NULL DEFAULT 0');
+  await dbAsync.run('CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id, id DESC)');
+  await dbAsync.run('CREATE INDEX IF NOT EXISTS idx_orders_tenant_customer ON orders(tenant_customer_id, id DESC)');
+
+  // Takip tablosundan onceki telafi talepleri hic kapanmiyordu: siparis
+  // sonsuza dek "aktif telafi var" sayilip yeni talep engelleniyordu.
+  // Kaydi olmayan eski talepler serbest birakilir (yeniler hep kayitli).
+  await dbAsync.run(`UPDATE orders SET refill_status = 'none'
+    WHERE refill_status IN ('requested', 'processing')
+      AND NOT EXISTS (SELECT 1 FROM order_refills r WHERE r.order_id = orders.id)`);
+
   const admins = await dbAsync.all("SELECT id, password FROM users WHERE role = 'admin' AND must_change_password = 0");
   for (const admin of admins) {
     if (await bcrypt.compare('admin123', admin.password)) {
@@ -996,6 +1121,12 @@ async function clearAllDemoData(keepAdmin = true) {
   await dbAsync.run(`DELETE FROM payment_intents`);
   await dbAsync.run(`DELETE FROM payment_webhooks`);
   await dbAsync.run(`DELETE FROM payments`);
+  // Siparise bagli kayitlar once silinir (yabanci anahtar kisitlari).
+  await dbAsync.run(`DELETE FROM order_refills`);
+  await dbAsync.run(`DELETE FROM email_deliveries`);
+  // Bayi verileri (alt tablolar tenants silinince CASCADE ile gider).
+  await dbAsync.run(`DELETE FROM tenant_service_prices`);
+  await dbAsync.run(`DELETE FROM tenants`);
   await dbAsync.run(`DELETE FROM orders`);
   await dbAsync.run(`DELETE FROM services`);
   await dbAsync.run(`DELETE FROM categories`);

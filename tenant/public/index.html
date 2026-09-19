@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="tr" data-theme="%%THEME%%">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>%%SITE_NAME%%</title>
+  <meta name="description" content="%%DESCRIPTION%%">
+  <meta property="og:title" content="%%SITE_NAME%%">
+  <meta property="og:description" content="%%DESCRIPTION%%">
+  <meta name="theme-color" content="%%PRIMARY%%">
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="/assets/storefront.css?v=20260920c">
+  <style>:root { --primary: %%PRIMARY%%; }</style>
+</head>
+<body>
+  <header class="sf-header">
+    <div class="sf-container sf-header-inner">
+      <a class="sf-brand" href="/" data-nav="home">
+        <span class="sf-brand-mark"><i class="fa-solid fa-bolt" aria-hidden="true"></i></span>
+        <span class="sf-brand-name">%%SITE_NAME%%</span>
+      </a>
+      <nav class="sf-nav" aria-label="Ana menü">
+        <a href="/" data-nav="home" data-auth="guest">Ana Sayfa</a>
+        <a href="/services" data-nav="services">Servisler</a>
+        <a href="/order" data-nav="order" data-auth="user">Yeni Sipariş</a>
+        <a href="/orders" data-nav="orders" data-auth="user">Siparişlerim</a>
+        <a href="/account" data-nav="account" data-auth="user">Hesabım</a>
+      </nav>
+      <div class="sf-header-actions">
+        <span class="sf-balance" data-auth="user" title="Bakiye"><i class="fa-solid fa-wallet" aria-hidden="true"></i> <span id="sf-balance">₺0,00</span></span>
+        <button type="button" class="sf-btn sf-btn-ghost" data-auth="guest" data-open-auth="login">Giriş Yap</button>
+        <button type="button" class="sf-btn sf-btn-primary" data-auth="guest" data-open-auth="register">Kayıt Ol</button>
+        <button type="button" class="sf-btn sf-btn-ghost" data-auth="user" id="sf-logout">Çıkış</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="sf-announcement" id="sf-announcement" hidden></div>
+
+  <main class="sf-container sf-main">
+    <!-- ANA SAYFA (ziyaretci) -->
+    <section class="sf-view" data-view="home">
+      <div class="sf-hero">
+        <div>
+          <h1>Sosyal medya hesaplarını <span>hızla büyüt</span></h1>
+          <p>Takipçi, beğeni, izlenme ve daha fazlası. Hesabını oluştur, bakiyeni yükle ve siparişini saniyeler içinde ver.</p>
+          <div class="sf-hero-actions">
+            <button type="button" class="sf-btn sf-btn-primary sf-btn-lg" data-open-auth="register">Hemen Başla</button>
+            <a href="/services" data-nav="services" class="sf-btn sf-btn-ghost sf-btn-lg">Servisleri Gör</a>
+          </div>
+        </div>
+        <div class="sf-card sf-auth-card" id="sf-auth-card">
+          <div class="sf-tabs" role="tablist">
+            <button type="button" role="tab" class="active" data-auth-tab="login">Giriş Yap</button>
+            <button type="button" role="tab" data-auth-tab="register">Kayıt Ol</button>
+          </div>
+          <form id="sf-login-form" class="sf-form" data-auth-form="login" novalidate>
+            <label>Kullanıcı adı veya e-posta<input name="username" autocomplete="username" required></label>
+            <label>Şifre<input name="password" type="password" autocomplete="current-password" required></label>
+            <p class="sf-form-error" role="alert"></p>
+            <button type="submit" class="sf-btn sf-btn-primary sf-btn-block">Giriş Yap</button>
+          </form>
+          <form id="sf-register-form" class="sf-form" data-auth-form="register" hidden novalidate>
+            <label>Kullanıcı adı<input name="username" autocomplete="username" required></label>
+            <label>E-posta<input name="email" type="email" autocomplete="email" required></label>
+            <label>Şifre <small>(en az 10 karakter)</small><input name="password" type="password" autocomplete="new-password" required></label>
+            <p class="sf-form-error" role="alert"></p>
+            <button type="submit" class="sf-btn sf-btn-primary sf-btn-block">Hesap Oluştur</button>
+          </form>
+        </div>
+      </div>
+      <div class="sf-features">
+        <div class="sf-feature"><i class="fa-solid fa-rocket" aria-hidden="true"></i><h3>Hızlı teslimat</h3><p>Siparişlerin çoğu dakikalar içinde başlar.</p></div>
+        <div class="sf-feature"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><h3>Güvenli</h3><p>Şifreni asla istemeyiz; yalnızca bağlantı yeterli.</p></div>
+        <div class="sf-feature"><i class="fa-solid fa-rotate" aria-hidden="true"></i><h3>Garantili servisler</h3><p>Düşüş olursa telafi isteyebilirsin.</p></div>
+      </div>
+    </section>
+
+    <!-- SERVISLER -->
+    <section class="sf-view" data-view="services" hidden>
+      <div class="sf-page-head">
+        <h1>Servisler ve Fiyatlar</h1>
+        <input type="search" id="sf-service-search" class="sf-input" placeholder="Servis ara..." aria-label="Servis ara">
+      </div>
+      <div id="sf-services-list" class="sf-services-list"><p class="sf-muted">Yükleniyor…</p></div>
+    </section>
+
+    <!-- YENI SIPARIS -->
+    <section class="sf-view" data-view="order" hidden>
+      <div class="sf-page-head"><h1>Yeni Sipariş</h1></div>
+      <div class="sf-order-grid">
+        <form id="sf-order-form" class="sf-card sf-form" novalidate>
+          <label>Kategori<select id="sf-order-category" class="sf-input"></select></label>
+          <label>Servis<select id="sf-order-service" name="service_id" class="sf-input"></select></label>
+          <div id="sf-service-info" class="sf-service-info" hidden></div>
+          <label id="sf-link-label">Bağlantı<input name="link" id="sf-order-link" class="sf-input" placeholder="https://..." required></label>
+          <label id="sf-quantity-label">Miktar<input name="quantity" id="sf-order-quantity" type="number" min="1" class="sf-input"></label>
+          <label id="sf-comments-label" hidden>Yorumlar <small>(her satıra bir yorum)</small><textarea name="comments" id="sf-order-comments" rows="5" class="sf-input"></textarea></label>
+          <label class="sf-check" id="sf-terms-label" hidden><input type="checkbox" id="sf-order-terms"> Teslimat, garanti ve iade koşullarını kabul ediyorum.</label>
+          <div class="sf-charge">Tutar: <strong id="sf-order-charge">₺0,00</strong></div>
+          <p class="sf-form-error" role="alert"></p>
+          <button type="submit" class="sf-btn sf-btn-primary sf-btn-block" id="sf-order-submit">Siparişi Gönder</button>
+        </form>
+        <aside class="sf-card sf-order-help">
+          <h3><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Nasıl sipariş verilir?</h3>
+          <ol>
+            <li>Kategoriyi ve servisi seç.</li>
+            <li>Profil veya gönderi bağlantını yapıştır.</li>
+            <li>Miktarı gir ve siparişi gönder.</li>
+          </ol>
+          <p class="sf-muted">Hesabın gizli olmamalı. Sipariş sürerken bağlantıyı değiştirme.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- SIPARISLERIM -->
+    <section class="sf-view" data-view="orders" hidden>
+      <div class="sf-page-head"><h1>Siparişlerim</h1><button type="button" class="sf-btn sf-btn-ghost" id="sf-orders-refresh"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Yenile</button></div>
+      <div class="sf-card sf-table-wrap">
+        <table class="sf-table">
+          <thead><tr><th>No</th><th>Servis</th><th>Bağlantı</th><th>Miktar</th><th>Tutar</th><th>Durum</th><th>Tarih</th><th></th></tr></thead>
+          <tbody id="sf-orders-tbody"><tr><td colspan="8" class="sf-muted">Yükleniyor…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- HESABIM -->
+    <section class="sf-view" data-view="account" hidden>
+      <div class="sf-page-head"><h1>Hesabım</h1></div>
+      <div class="sf-account-grid">
+        <div class="sf-card">
+          <h3>Bakiye</h3>
+          <p class="sf-big" id="sf-account-balance">₺0,00</p>
+          <p class="sf-muted">Bakiye yüklemek için site yöneticisiyle iletişime geçin.</p>
+          <p class="sf-muted" id="sf-contact"></p>
+        </div>
+        <div class="sf-card">
+          <h3>Hesap Bilgileri</h3>
+          <dl class="sf-dl">
+            <dt>Kullanıcı adı</dt><dd id="sf-account-username">—</dd>
+            <dt>E-posta</dt><dd id="sf-account-email">—</dd>
+          </dl>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="sf-footer">
+    <div class="sf-container">© <span id="sf-year"></span> %%SITE_NAME%%</div>
+  </footer>
+
+  <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
+  <script src="/assets/storefront.js?v=20260920c" defer></script>
+</body>
+</html>

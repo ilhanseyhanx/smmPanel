@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260917a">
+  <link rel="stylesheet" href="/css/style.css?v=20260920b">
 </head>
 <body>
 
@@ -999,6 +999,18 @@ Content-Type: application/json
   "comments": "Harika olmuş!\nÇok faydalı bir paylaşım."
 }</pre>
 
+          <h4 style="color:var(--accent-cyan);margin:0 0 8px;">Kademeli gönderim (drip-feed)</h4>
+          <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:8px;"><code>runs</code> tur sayısı (1-100), <code>interval</code> turlar arası dakikadır (5-10080). <code>quantity</code> her turun miktarıdır; ücret quantity × runs olarak düşer.</p>
+          <pre style="background: rgba(7,10,18,0.6); padding: 14px; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 0.85rem; overflow-x: auto;" class="mb-20">{
+  "key": "YOUR_API_KEY",
+  "action": "add",
+  "service": 101,
+  "link": "https://instagram.com/kullaniciadi",
+  "quantity": 500,
+  "runs": 4,
+  "interval": 60
+}</pre>
+
           <h3 style="color: #fff; margin-bottom: 10px;">3. Sipariş Durumu Sorgulama</h3>
           <pre style="background: rgba(7,10,18,0.6); padding: 14px; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 0.85rem; overflow-x: auto;">
 POST http://localhost:3000/api/v2
@@ -1037,8 +1049,62 @@ Content-Type: application/json
 // Yanıt: sipariş numarası -> durum
 {
   "1042": { "status": "Completed", "start_count": 1500, "remains": 0, "charge": "12.50", "currency": "TRY" },
-  "1043": { "status": "Processing", "start_count": 980, "remains": 220, "charge": "8.00", "currency": "TRY" }
+  "1043": { "status": "Processing", "start_count": 980, "remains": 220, "charge": "8.00", "currency": "TRY" },
+  "9999": { "error": "Incorrect order ID" }
 }</pre>
+
+          <h3 style="color: #fff; margin-bottom: 10px;">6. Telafi (Refill) İsteme</h3>
+          <p style="color: var(--text-muted); margin-bottom: 10px;">Tamamlanmış ve telafi garantili siparişler için. Toplu istek için <code>order</code> yerine <code>"orders": "1042,1043"</code> gönderin; yanıt her sipariş için ayrı satır içerir.</p>
+          <pre style="background: rgba(7,10,18,0.6); padding: 14px; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 0.85rem; overflow-x: auto;" class="mb-20">
+POST http://localhost:3000/api/v2
+Content-Type: application/json
+
+{
+  "key": "YOUR_API_KEY",
+  "action": "refill",
+  "order": 1042
+}
+
+// Yanıt
+{ "refill": 55 }</pre>
+
+          <h3 style="color: #fff; margin-bottom: 10px;">7. Telafi Durumu Sorgulama</h3>
+          <pre style="background: rgba(7,10,18,0.6); padding: 14px; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 0.85rem; overflow-x: auto;" class="mb-20">
+POST http://localhost:3000/api/v2
+Content-Type: application/json
+
+{
+  "key": "YOUR_API_KEY",
+  "action": "refill_status",
+  "refill": 55
+}
+
+// Yanıt: Pending | In progress | Completed | Rejected
+{ "status": "Completed" }
+
+// Toplu: "refills": "55,56"
+[
+  { "refill": 55, "status": "Completed" },
+  { "refill": 56, "status": { "error": "Refill not found" } }
+]</pre>
+
+          <h3 style="color: #fff; margin-bottom: 10px;">8. Sipariş İptali</h3>
+          <p style="color: var(--text-muted); margin-bottom: 10px;">İptal talebi sağlayıcıya iletilir. Sipariş iptal edildiğinde durumu <code>Canceled</code> (kısmen teslim edildiyse <code>Partial</code>) olur ve teslim edilmeyen kısmın ücreti bakiyenize iade edilir. Servis listesindeki <code>cancel</code> alanı iptal desteğini gösterir.</p>
+          <pre style="background: rgba(7,10,18,0.6); padding: 14px; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 0.85rem; overflow-x: auto;" class="mb-20">
+POST http://localhost:3000/api/v2
+Content-Type: application/json
+
+{
+  "key": "YOUR_API_KEY",
+  "action": "cancel",
+  "orders": "1042,1043"
+}
+
+// Yanıt
+[
+  { "order": 1042, "cancel": 1 },
+  { "order": 1043, "cancel": { "error": "This order cannot be canceled" } }
+]</pre>
 
           <h3 style="color: #fff; margin-bottom: 10px;">Sipariş Durum Değerleri</h3>
           <pre style="background: rgba(7,10,18,0.6); padding: 14px; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 0.85rem; overflow-x: auto;">
@@ -1053,8 +1119,10 @@ Canceled     iptal edildi</pre>
           <pre style="background: rgba(7,10,18,0.6); padding: 14px; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 0.85rem; overflow-x: auto;">
 { "error": "Invalid API Key" }     anahtar yok, yanlış veya hesap askıda
 { "error": "Invalid parameters" }  link boş ya da miktar geçersiz
+{ "error": "Incorrect service ID" } servis numarası eksik veya geçersiz
 { "error": "Order not found" }     sipariş yok veya size ait değil
 { "error": "Invalid orders" }      toplu sorguda geçerli sipariş numarası yok
+{ "error": "Refill not found" }    telafi numarası yok veya size ait değil
 { "error": "Invalid action" }      desteklenmeyen action değeri</pre>
 
           <h3 style="color: #fff; margin-bottom: 10px;">Güvenlik</h3>
@@ -1301,6 +1369,7 @@ Canceled     iptal edildi</pre>
             <option value="coupons">Kuponlar</option>
             <option value="campaigns">Kampanyalar</option>
             <option value="users">Kullanıcılar</option>
+            <option value="resellers">Bayiler</option>
             <option value="email-marketing">E-Posta Pazarlama</option>
             <option value="tickets">Destek</option>
             <option value="reviews">Yorumlar</option>
@@ -1331,6 +1400,7 @@ Canceled     iptal edildi</pre>
 
             <div class="admin-nav-label">Müşteri</div>
             <button type="button" class="sidebar-item" data-admin-tab="users" onclick="app.switchAdminTab('users', event)"><i class="fa-solid fa-users"></i><span>Kullanıcılar</span></button>
+            <button type="button" class="sidebar-item" data-admin-tab="resellers" onclick="app.switchAdminTab('resellers', event)"><i class="fa-solid fa-handshake"></i><span>Bayiler</span></button>
             <button type="button" class="sidebar-item" data-admin-tab="email-marketing" onclick="app.switchAdminTab('email-marketing', event)"><i class="fa-solid fa-envelope-open-text"></i><span>E-Posta Pazarlama</span></button>
             <button type="button" class="sidebar-item" data-admin-tab="tickets" onclick="app.switchAdminTab('tickets', event)"><i class="fa-solid fa-headset"></i><span>Destek</span><em id="admin-nav-tickets-count"></em></button>
             <button type="button" class="sidebar-item" data-admin-tab="reviews" onclick="app.switchAdminTab('reviews', event)"><i class="fa-solid fa-star"></i><span>Yorumlar</span><em id="admin-nav-reviews-count"></em></button>
@@ -2318,6 +2388,96 @@ Canceled     iptal edildi</pre>
               <div id="admin-user-detail-content">
                 <p class="admin-help">Kullanıcı bilgileri yükleniyor…</p>
               </div>
+            </div>
+          </div>
+
+          <!-- BAYILER: genel bayilik ayarlari, bayi listesi ve tam sayfa bayi detayi -->
+          <div id="admin-tab-resellers" style="display: none;">
+            <div id="admin-resellers-list-view">
+              <div class="flex-between mb-20" style="gap:12px;flex-wrap:wrap;">
+                <h2 style="margin:0;">🤝 Bayiler</h2>
+                <button type="button" class="btn btn-outline btn-sm" onclick="app.loadAdminResellers()"><i class="fa-solid fa-rotate"></i> Yenile</button>
+              </div>
+              <div class="stats-grid user-detail-kpis" id="admin-resellers-summary"></div>
+
+              <div class="glass-card mb-20">
+                <div class="service-editor-section-title"><i class="fa-solid fa-sliders"></i> Bayilik Ayarları</div>
+                <p class="admin-help">Kaydettiğiniz anda tüm bayilerin maliyetine ve müşteri fiyatlarına yansır. Bayiye özel indirim girilmiş bayiler kendi oranını kullanmaya devam eder.</p>
+                <div class="reseller-public-toggle" id="reseller-public-box">
+                  <label class="reseller-switch reseller-switch-lg" for="reseller-setting-public">
+                    <input type="checkbox" id="reseller-setting-public">
+                    <span><strong>Sitede bayilik sayfası</strong> <em id="reseller-public-state">Kapalı</em></span>
+                  </label>
+                  <p class="admin-help" style="margin:6px 0 0;">Kapalıyken sitenizde bayilikle ilgili hiçbir şey görünmez ve başvuru alınmaz; site şu anki haliyle kalır. Aşağıdan elle bayi açmaya ve mevcut bayileri yönetmeye devam edebilirsiniz. Açık bayilerin siteleri bu ayardan etkilenmez.</p>
+                </div>
+                <div class="reseller-settings-grid">
+                  <div class="form-group">
+                    <label for="reseller-setting-discount" class="form-label">Bayi İndirimi (%)</label>
+                    <input type="number" id="reseller-setting-discount" class="form-control" min="0" max="90" step="0.1">
+                    <small class="admin-help">Bayinin sizden alış fiyatı: satış fiyatınız eksi bu oran.</small>
+                  </div>
+                  <div class="form-group">
+                    <label for="reseller-setting-min-deposit" class="form-label">Açılış Şartı (TL)</label>
+                    <input type="number" id="reseller-setting-min-deposit" class="form-control" min="0" step="1">
+                    <small class="admin-help">Gerçek para ile toplam yükleme (bonus/kupon sayılmaz).</small>
+                  </div>
+                  <div class="form-group">
+                    <label for="reseller-setting-markup" class="form-label">Varsayılan Bayi Kârı (%)</label>
+                    <input type="number" id="reseller-setting-markup" class="form-control" min="0" max="1000" step="0.1">
+                    <small class="admin-help">Yeni açılan bayilerin müşteri fiyatına eklenen kâr.</small>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="reseller-setting-open">Başvurular</label>
+                    <label class="reseller-switch"><input type="checkbox" id="reseller-setting-open"> <span>Yeni bayilik başvurularını kabul et</span></label>
+                    <small class="admin-help">Yalnızca bayilik sayfası açıkken geçerlidir.</small>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-primary" id="reseller-settings-save" onclick="app.saveResellerSettings()"><i class="fa-solid fa-floppy-disk"></i> Kaydet ve Bayilere Uygula</button>
+              </div>
+
+              <div class="glass-card mb-20">
+                <div class="service-editor-section-title"><i class="fa-solid fa-user-plus"></i> Elle Bayi Paneli Aç</div>
+                <p class="admin-help">Açılış şartı aranmaz. Sahip olarak mevcut bir kullanıcının adını, e-postasını veya ID'sini girin.</p>
+                <div class="reseller-settings-grid">
+                  <div class="form-group"><label for="reseller-create-owner" class="form-label">Sahip (kullanıcı)</label><input id="reseller-create-owner" class="form-control" placeholder="kullanici_adi"></div>
+                  <div class="form-group"><label for="reseller-create-name" class="form-label">Site Adı</label><input id="reseller-create-name" class="form-control" placeholder="Kanka SMM"></div>
+                  <div class="form-group"><label for="reseller-create-slug" class="form-label">Adres (slug)</label><input id="reseller-create-slug" class="form-control" placeholder="kankasmm"></div>
+                </div>
+                <button type="button" class="btn btn-cyan" onclick="app.createResellerManually()"><i class="fa-solid fa-plus"></i> Bayi Paneli Aç</button>
+              </div>
+
+              <div class="glass-card">
+                <div class="form-group" style="max-width:420px;">
+                  <input aria-label="Bayi ara" type="search" id="admin-resellers-search" class="form-control" placeholder="🔍 Bayi adı, adres veya sahip ara..." oninput="app.renderAdminResellersTable()">
+                </div>
+                <div class="table-responsive">
+                  <table class="custom-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Bayi</th>
+                        <th scope="col">Sahip</th>
+                        <th scope="col">Adres</th>
+                        <th scope="col">Durum</th>
+                        <th scope="col">Müşteri</th>
+                        <th scope="col">Sipariş (30g)</th>
+                        <th scope="col">Size Ciro (30g)</th>
+                        <th scope="col">Bayi Kârı (30g)</th>
+                        <th scope="col">Sahip Bakiyesi</th>
+                        <th scope="col">İşlemler</th>
+                      </tr>
+                    </thead>
+                    <tbody id="admin-resellers-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div id="admin-reseller-detail-view" style="display: none;">
+              <div class="user-detail-topbar">
+                <button type="button" class="btn btn-outline btn-sm" onclick="app.showAdminResellersList()"><i class="fa-solid fa-arrow-left"></i> Bayilere Dön</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="app.refreshAdminResellerDetail()" title="Yenile"><i class="fa-solid fa-rotate"></i> Yenile</button>
+              </div>
+              <div id="admin-reseller-detail-content"><p class="admin-help">Bayi bilgileri yükleniyor…</p></div>
             </div>
           </div>
 
@@ -4406,7 +4566,7 @@ Canceled     iptal edildi</pre>
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260917a" defer></script>
-  <script src="/js/app.js?v=20260917a" defer></script>
+  <script src="/js/api.js?v=20260920b" defer></script>
+  <script src="/js/app.js?v=20260920b" defer></script>
 </body>
 </html>

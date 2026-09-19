@@ -6,7 +6,11 @@ const telegram = require('./telegramNotifier');
 const healthEvents = require('./healthEvents');
 const { customerRemainsFrom } = require('./orderTypes');
 
+const { checkOpenRefills } = require('./refills');
+const { syncTenantRefund } = require('./resellers');
+
 let running = false;
+const STATUS_BATCH_SIZE = 100;
 
 function mapStatus(value, fallback) {
   const status = String(value || '').toLowerCase();
@@ -44,6 +48,8 @@ async function applyProviderStatus(orderId, providerStatus) {
       await tx.run('UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?', [refundDelta, refundDelta, order.user_id]);
     }
     await tx.run('UPDATE orders SET status = ?, start_count = ?, remains = ?, refunded_kurus = ? WHERE id = ?', [newStatus, startCount, remains, targetRefund, order.id]);
+    // Bayi siparisi: musteriye ayni oranda (bayinin fiyatindan) iade.
+    if (order.tenant_customer_id) await syncTenantRefund(tx, order.id);
     // Saglayici iptal/kismi kararlarinin sebebi admin panelinde gorunsun.
     if (newStatus === 'canceled') {
       await tx.run("UPDATE orders SET failure_reason = COALESCE(failure_reason, 'Sağlayıcı siparişi iptal etti; tutar iade edildi.') WHERE id = ?", [order.id]);
@@ -53,8 +59,11 @@ async function applyProviderStatus(orderId, providerStatus) {
 
     if (newStatus !== order.status && ['completed', 'partial', 'canceled'].includes(newStatus)) {
       const service = await tx.get('SELECT name FROM services WHERE id = ?', [order.service_id]);
+      // Bayi musterisinin siparisi sahibine "siparisin bitti" diye bildirilmez.
+      const isTenantOrder = Boolean(order.tenant_id);
       const owner = await tx.get('SELECT username FROM users WHERE id = ?', [order.user_id]);
       statusChange = {
+        notifyOwner: !isTenantOrder,
         userId: order.user_id,
         event: newStatus,
         order: {
@@ -95,13 +104,15 @@ async function applyProviderStatus(orderId, providerStatus) {
           await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)', [referred.referrer_id, 'referral', 'Referans kazancı', `₺${fromKurus(commission).toFixed(2)} referans kazancı hesabınıza eklendi.`]);
         }
       }
-      await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)', [order.user_id, 'order', 'Sipariş tamamlandı', `#${order.id} numaralı sipariş tamamlandı.`]);
+      if (!order.tenant_id) {
+        await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)', [order.user_id, 'order', 'Sipariş tamamlandı', `#${order.id} numaralı sipariş tamamlandı.`]);
+      }
     }
   });
 
   // Transaction basariyla bittikten sonra; beklenmez, hatalari kendi yutar.
   if (statusChange) {
-    telegram.notifyOrderOwner(statusChange.userId, statusChange.event, statusChange.order);
+    if (statusChange.notifyOwner) telegram.notifyOrderOwner(statusChange.userId, statusChange.event, statusChange.order);
     telegram.notifyOrderFinished(statusChange.adminSummary);
   }
 }
@@ -119,11 +130,17 @@ async function checkPendingOrders() {
     for (const [providerId, orders] of groups) {
       const provider = await dbAsync.get('SELECT * FROM providers WHERE id = ? AND status = 1', [providerId]);
       if (!provider) continue;
-      const statusMap = await new SmmProviderClient(provider.api_url, provider.api_key, { id: provider.id }).getMultiOrderStatus(orders.map(o => o.provider_order_id));
-      if (!statusMap) continue;
-      for (const order of orders) {
-        const status = statusMap[String(order.provider_order_id)] || (orders.length === 1 && statusMap.status ? statusMap : null);
-        if (status?.status) await applyProviderStatus(order.id, status);
+      const client = new SmmProviderClient(provider.api_url, provider.api_key, { id: provider.id });
+      // Standart SMM API tek istekte en fazla 100 siparis kabul eder; eskiden
+      // hepsi tek istekte gidiyordu ve 100'u asinca durumlar guncellenmiyordu.
+      for (let i = 0; i < orders.length; i += STATUS_BATCH_SIZE) {
+        const chunk = orders.slice(i, i + STATUS_BATCH_SIZE);
+        const statusMap = await client.getMultiOrderStatus(chunk.map(o => o.provider_order_id));
+        if (!statusMap) continue;
+        for (const order of chunk) {
+          const status = statusMap[String(order.provider_order_id)] || (chunk.length === 1 && statusMap.status ? statusMap : null);
+          if (status?.status) await applyProviderStatus(order.id, status);
+        }
       }
     }
     // Saglayici hatalari istemcide ayrica olculur; burasi isin kendisinin nabzi.
@@ -137,9 +154,21 @@ async function checkPendingOrders() {
   }
 }
 
-function startOrderWorker() {
-  cron.schedule('*/30 * * * * *', checkPendingOrders, { noOverlap: true });
-  console.log('Order status worker active (30s)');
+// Acik telafi taleplerinin saglayicidaki durumu; talep kapaninca siparis
+// yeni telafiye acilir (services/refills.js).
+async function checkRefills() {
+  try {
+    await checkOpenRefills();
+  } catch (err) {
+    console.error('Refill worker error:', err.message);
+    healthEvents.recordError({ category: 'worker_error', source: 'refill_worker', error: err });
+  }
 }
 
-module.exports = { startOrderWorker, checkPendingOrders, applyProviderStatus };
+function startOrderWorker() {
+  cron.schedule('*/30 * * * * *', checkPendingOrders, { noOverlap: true });
+  cron.schedule('*/5 * * * *', checkRefills, { noOverlap: true });
+  console.log('Order status worker active (30s), refill tracking (5m)');
+}
+
+module.exports = { startOrderWorker, checkPendingOrders, applyProviderStatus, STATUS_BATCH_SIZE };

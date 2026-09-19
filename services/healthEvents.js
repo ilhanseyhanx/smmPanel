@@ -78,7 +78,7 @@ const METRIKLER = Object.freeze({
   indexnow_fail: 'zaman'
 });
 
-const SAGLAYICI_ISLEMLERI = new Set(['getServices', 'addOrder', 'requestRefill', 'getOrderStatus', 'getMultiOrderStatus', 'getBalance']);
+const SAGLAYICI_ISLEMLERI = new Set(['getServices', 'addOrder', 'requestRefill', 'getRefillStatus', 'cancelOrders', 'getOrderStatus', 'getMultiOrderStatus', 'getBalance']);
 const AG_KODLARI = new Set(['ECONNRESET', 'EAI_AGAIN', 'ENOTFOUND', 'ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'EPIPE', 'ERR_SOCKET_CONNECTION_TIMEOUT']);
 const BAKIYE_KALIBI = /not enough (funds|balance)|insufficient (funds|balance)|low balance|no balance|yetersiz bakiye|bakiye(niz)? yetersiz/i;
 

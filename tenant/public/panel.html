@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Yönetim Paneli · %%SITE_NAME%%</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="/assets/storefront.css?v=20260920c">
+  <link rel="stylesheet" href="/assets/panel.css?v=20260920c">
+  <style>:root { --primary: %%PRIMARY%%; }</style>
+</head>
+<body class="pn-body">
+  <!-- GIRIS -->
+  <section class="pn-login" id="pn-login" hidden>
+    <form class="sf-card sf-form pn-login-card" id="pn-login-form" novalidate>
+      <div class="pn-login-head">
+        <span class="sf-brand-mark"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i></span>
+        <div><h1>Yönetim Paneli</h1><p class="sf-muted">%%SITE_NAME%%</p></div>
+      </div>
+      <label>Kullanıcı adı veya e-posta<input name="username" autocomplete="username" required></label>
+      <label>Şifre<input name="password" type="password" autocomplete="current-password" required></label>
+      <label id="pn-totp-label" hidden>İki adımlı doğrulama kodu<input name="totp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 haneli kod"></label>
+      <p class="sf-form-error" role="alert"></p>
+      <button type="submit" class="sf-btn sf-btn-primary sf-btn-block">Giriş Yap</button>
+      <p class="sf-muted pn-login-note">Bayi hesabınızın kullanıcı adı ve şifresiyle giriş yapın.</p>
+    </form>
+  </section>
+
+  <!-- PANEL -->
+  <div class="pn-app" id="pn-app" hidden>
+    <aside class="pn-sidebar">
+      <a class="sf-brand pn-brand" href="/admin" data-go="dashboard">
+        <span class="sf-brand-mark"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i></span>
+        <span class="sf-brand-name">%%SITE_NAME%%</span>
+      </a>
+      <nav class="pn-nav" aria-label="Yönetim menüsü">
+        <a href="/admin" data-go="dashboard"><i class="fa-solid fa-chart-pie" aria-hidden="true"></i><span>Özet</span></a>
+        <a href="/admin/services" data-go="services"><i class="fa-solid fa-tags" aria-hidden="true"></i><span>Servisler & Fiyatlar</span></a>
+        <a href="/admin/customers" data-go="customers"><i class="fa-solid fa-users" aria-hidden="true"></i><span>Müşteriler</span></a>
+        <a href="/admin/orders" data-go="orders"><i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i><span>Siparişler</span></a>
+        <a href="/admin/site" data-go="site"><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Site Ayarları</span></a>
+        <a href="/admin/logs" data-go="logs"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i><span>Kayıtlar</span></a>
+      </nav>
+      <div class="pn-sidebar-foot">
+        <a class="sf-btn sf-btn-ghost sf-btn-sm" href="/" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Siteyi Gör</a>
+        <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" id="pn-logout"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Çıkış</button>
+      </div>
+    </aside>
+
+    <main class="pn-main">
+      <header class="pn-topbar">
+        <h1 id="pn-title">Özet</h1>
+        <div class="pn-topbar-right">
+          <span class="pn-balance" id="pn-balance" title="Sizin bakiyeniz: siparişlerin maliyeti buradan düşer"><i class="fa-solid fa-wallet" aria-hidden="true"></i> <span id="pn-balance-value">₺0,00</span></span>
+          <a class="sf-btn sf-btn-primary sf-btn-sm" id="pn-topup" href="#" target="_blank" rel="noopener" hidden><i class="fa-solid fa-plus" aria-hidden="true"></i> Bakiye Yükle</a>
+          <span class="sf-muted pn-owner" id="pn-owner"></span>
+        </div>
+      </header>
+      <div class="pn-alert" id="pn-status-alert" hidden></div>
+
+      <!-- OZET -->
+      <section class="pn-view" data-view="dashboard" hidden>
+        <div class="pn-alert pn-alert-warn" id="pn-balance-alert" hidden></div>
+        <div class="pn-kpis" id="pn-kpis"></div>
+        <div class="pn-grid-2">
+          <div class="sf-card">
+            <h2 class="pn-card-title">Son Siparişler</h2>
+            <div class="sf-table-wrap"><table class="sf-table"><thead><tr><th>No</th><th>Müşteri</th><th>Servis</th><th>Tutar</th><th>Durum</th><th>Tarih</th></tr></thead><tbody id="pn-recent"></tbody></table></div>
+          </div>
+          <div class="sf-card">
+            <h2 class="pn-card-title">Adresleriniz</h2>
+            <ul class="pn-list" id="pn-addresses"></ul>
+            <h2 class="pn-card-title" style="margin-top:18px;">Fiyatlandırma</h2>
+            <p class="sf-muted" id="pn-pricing-summary"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SERVISLER -->
+      <section class="pn-view" data-view="services" hidden>
+        <div class="sf-card pn-toolbar-card">
+          <form class="pn-inline-form" id="pn-default-markup-form">
+            <label>Varsayılan kâr (%)<input type="number" id="pn-default-markup" class="sf-input" min="0" max="1000" step="0.1"></label>
+            <button type="submit" class="sf-btn sf-btn-primary">Kaydet</button>
+          </form>
+          <p class="sf-muted pn-help">Özel ayar yapmadığınız her servis, maliyetinizin üzerine bu oran eklenerek satılır. Maliyetiniz değişirse fiyatlarınız da otomatik güncellenir.</p>
+        </div>
+        <div class="pn-filters">
+          <select id="pn-svc-category" class="sf-input" aria-label="Kategori"></select>
+          <select id="pn-svc-filter" class="sf-input" aria-label="Filtre">
+            <option value="all">Tüm servisler</option>
+            <option value="custom">Özel ayarlılar</option>
+            <option value="hidden">Satışta olmayanlar</option>
+            <option value="below">Zararına düşenler</option>
+          </select>
+          <input type="search" id="pn-svc-search" class="sf-input" placeholder="Servis ara..." aria-label="Servis ara">
+        </div>
+        <div class="pn-bulk" id="pn-bulk" hidden>
+          <strong id="pn-bulk-count">0 seçili</strong>
+          <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-bulk="enable">Satışa Aç</button>
+          <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-bulk="disable">Satıştan Kaldır</button>
+          <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-bulk="markup">Kâr Oranı Uygula</button>
+          <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-bulk="reset">Varsayılana Döndür</button>
+        </div>
+        <div class="sf-card sf-table-wrap">
+          <table class="sf-table pn-table">
+            <thead><tr><th><input type="checkbox" id="pn-svc-all" aria-label="Tümünü seç"></th><th>ID</th><th>Servis</th><th>Maliyetiniz</th><th>Satış Fiyatı</th><th>Kâr</th><th>Durum</th><th></th></tr></thead>
+            <tbody id="pn-services"></tbody>
+          </table>
+        </div>
+        <p class="sf-muted pn-help" id="pn-svc-count"></p>
+      </section>
+
+      <!-- MUSTERILER -->
+      <section class="pn-view" data-view="customers" hidden>
+        <div class="pn-filters"><input type="search" id="pn-cust-search" class="sf-input" placeholder="Kullanıcı adı veya e-posta ara..." aria-label="Müşteri ara"></div>
+        <div class="sf-card sf-table-wrap">
+          <table class="sf-table pn-table">
+            <thead><tr><th>Kullanıcı</th><th>E-posta</th><th>Bakiye</th><th>Sipariş</th><th>Harcama</th><th>Kayıt</th><th>Son Giriş</th><th></th></tr></thead>
+            <tbody id="pn-customers"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- SIPARISLER -->
+      <section class="pn-view" data-view="orders" hidden>
+        <div class="pn-filters">
+          <select id="pn-ord-status" class="sf-input" aria-label="Durum">
+            <option value="">Tüm durumlar</option>
+            <option value="pending">Bekliyor</option>
+            <option value="processing">İşleniyor</option>
+            <option value="completed">Tamamlandı</option>
+            <option value="partial">Kısmi</option>
+            <option value="canceled">İptal</option>
+          </select>
+          <input type="search" id="pn-ord-search" class="sf-input" placeholder="Müşteri, bağlantı veya sipariş no..." aria-label="Sipariş ara">
+        </div>
+        <div class="sf-card sf-table-wrap">
+          <table class="sf-table pn-table">
+            <thead><tr><th>No</th><th>Müşteri</th><th>Servis</th><th>Bağlantı</th><th>Miktar</th><th>Müşteri Ödedi</th><th>Maliyet</th><th>Kâr</th><th>Durum</th><th>Tarih</th></tr></thead>
+            <tbody id="pn-orders"></tbody>
+          </table>
+        </div>
+        <div class="pn-pager" id="pn-ord-pager"></div>
+      </section>
+
+      <!-- SITE AYARLARI -->
+      <section class="pn-view" data-view="site" hidden>
+        <form class="sf-card sf-form pn-site-form" id="pn-site-form" novalidate>
+          <label>Site adı<input name="name" class="sf-input" maxlength="60" required></label>
+          <label>Ana renk
+            <span class="pn-color-row"><input type="color" id="pn-color-picker" aria-label="Renk seç"><input name="primary_color" class="sf-input" maxlength="7" placeholder="#6366f1"></span>
+          </label>
+          <label>Site açıklaması <small>(arama motorlarında görünür, en fazla 300 karakter)</small><textarea name="description" class="sf-input" rows="3" maxlength="300"></textarea></label>
+          <label>Duyuru <small>(sitenin üstünde şerit olarak görünür; boş bırakılırsa gizlenir)</small><input name="announcement" class="sf-input" maxlength="300"></label>
+          <label>Destek e-postası<input name="support_email" type="email" class="sf-input" maxlength="254"></label>
+          <label>Telegram <small>(kullanıcı adı veya bağlantı)</small><input name="telegram" class="sf-input" maxlength="100"></label>
+          <p class="sf-form-error" role="alert"></p>
+          <button type="submit" class="sf-btn sf-btn-primary">Kaydet</button>
+        </form>
+      </section>
+
+      <!-- KAYITLAR -->
+      <section class="pn-view" data-view="logs" hidden>
+        <div class="sf-tabs pn-tabs" role="tablist">
+          <button type="button" class="active" data-log-tab="activity">İşlem Kaydı</button>
+          <button type="button" data-log-tab="balance">Bakiye Hareketleri</button>
+        </div>
+        <div class="sf-card sf-table-wrap"><table class="sf-table pn-table"><thead id="pn-logs-head"></thead><tbody id="pn-logs"></tbody></table></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- GENEL PENCERE -->
+  <div class="pn-modal" id="pn-modal" hidden>
+    <div class="pn-modal-box sf-card" role="dialog" aria-modal="true" aria-labelledby="pn-modal-title">
+      <div class="pn-modal-head"><h2 id="pn-modal-title"></h2><button type="button" class="pn-modal-close" data-modal-close aria-label="Kapat">&times;</button></div>
+      <div id="pn-modal-body"></div>
+    </div>
+  </div>
+
+  <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
+  <script src="/assets/panel.js?v=20260920c" defer></script>
+</body>
+</html>

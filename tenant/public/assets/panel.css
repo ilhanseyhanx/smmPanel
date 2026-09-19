@@ -1,0 +1,95 @@
+/* Bayi yonetim paneli. Renk degiskenleri ve temel bilesenler storefront.css'ten
+   gelir; burada yalnizca panel duzeni vardir. */
+.pn-body { min-height: 100vh; }
+
+/* Giris */
+.pn-login { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
+.pn-login-card { width: 100%; max-width: 400px; }
+.pn-login-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+.pn-login-head h1 { margin: 0; font-size: 1.25rem; }
+.pn-login-head p { margin: 0; }
+.pn-login-note { margin: 0; font-size: .85rem; text-align: center; }
+
+/* Duzen */
+.pn-app { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: 100vh; }
+.pn-sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: 20px 14px; display: flex; flex-direction: column; gap: 18px; position: sticky; top: 0; height: 100vh; }
+.pn-brand { padding: 0 8px; }
+.pn-brand .sf-brand-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pn-nav { display: grid; gap: 4px; }
+.pn-nav a { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; color: var(--muted); font-weight: 600; font-size: .93rem; }
+.pn-nav a i { width: 18px; text-align: center; }
+.pn-nav a:hover { background: var(--surface-2); color: var(--text); }
+.pn-nav a.active { background: color-mix(in srgb, var(--primary) 14%, var(--surface)); color: var(--primary); }
+.pn-sidebar-foot { margin-top: auto; display: grid; gap: 8px; }
+
+.pn-main { padding: 22px 28px 48px; min-width: 0; }
+.pn-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.pn-topbar h1 { margin: 0; font-size: 1.5rem; }
+.pn-topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pn-balance { font-weight: 800; background: var(--surface); border: 1px solid var(--border); padding: 7px 14px; border-radius: 999px; }
+.pn-balance.low { color: var(--danger); border-color: var(--danger); }
+.pn-owner { font-size: .88rem; }
+
+.pn-alert { padding: 12px 16px; border-radius: 12px; margin-bottom: 16px; font-weight: 600; background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent); }
+.pn-alert-warn { background: color-mix(in srgb, var(--warning) 12%, var(--surface)); color: var(--warning); border-color: color-mix(in srgb, var(--warning) 35%, transparent); }
+
+/* Ozet */
+.pn-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.pn-kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+.pn-kpi-label { color: var(--muted); font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.pn-kpi-value { font-size: 1.45rem; font-weight: 800; margin: 4px 0 2px; }
+.pn-kpi-sub { color: var(--muted); font-size: .85rem; }
+.pn-kpi-profit .pn-kpi-value { color: var(--success); }
+.pn-grid-2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start; }
+.pn-card-title { font-size: 1rem; margin: 0 0 12px; }
+.pn-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pn-list li { display: flex; justify-content: space-between; gap: 10px; align-items: center; word-break: break-all; }
+
+/* Filtreler, toplu islem */
+.pn-toolbar-card { margin-bottom: 16px; }
+.pn-inline-form { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.pn-inline-form label { display: grid; gap: 6px; font-weight: 600; font-size: .9rem; }
+.pn-inline-form .sf-input { width: 160px; }
+.pn-help { font-size: .86rem; margin: 10px 0 0; }
+.pn-filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.pn-filters .sf-input { width: auto; min-width: 200px; flex: 1 1 200px; max-width: 360px; }
+.pn-bulk { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 12px; border-radius: 12px; background: color-mix(in srgb, var(--primary) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent); }
+.pn-table td { vertical-align: middle; }
+.pn-table .pn-sub { display: block; color: var(--muted); font-size: .78rem; font-weight: 500; }
+.pn-num { white-space: nowrap; font-weight: 700; }
+.pn-profit-pos { color: var(--success); font-weight: 700; white-space: nowrap; }
+.pn-profit-neg { color: var(--danger); font-weight: 700; white-space: nowrap; }
+.pn-actions { white-space: nowrap; display: flex; gap: 6px; }
+.pn-link-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pn-pager { display: flex; gap: 8px; justify-content: center; align-items: center; margin-top: 14px; }
+.pn-tabs { max-width: 420px; }
+
+/* Site ayarlari */
+.pn-site-form { max-width: 680px; }
+.pn-color-row { display: flex; gap: 10px; align-items: center; }
+.pn-color-row input[type=color] { width: 48px; height: 42px; padding: 2px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); cursor: pointer; }
+
+/* Pencere */
+.pn-modal { position: fixed; inset: 0; background: rgba(15, 23, 42, .55); display: grid; place-items: center; padding: 16px; z-index: 60; }
+.pn-modal-box { width: 100%; max-width: 560px; max-height: calc(100vh - 32px); overflow: auto; }
+.pn-modal-box.wide { max-width: 900px; }
+.pn-modal-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+.pn-modal-head h2 { margin: 0; font-size: 1.15rem; }
+.pn-modal-close { border: 0; background: transparent; font-size: 1.6rem; line-height: 1; cursor: pointer; color: var(--muted); }
+.pn-radio-group { display: grid; gap: 8px; }
+.pn-radio { display: flex !important; align-items: center; gap: 8px; font-weight: 500 !important; }
+.pn-radio input { width: 18px; height: 18px; margin: 0; flex: none; accent-color: var(--primary); }
+.pn-preview { padding: 12px 14px; border-radius: 10px; background: var(--surface-2); font-size: .92rem; }
+
+@media (max-width: 960px) {
+  .pn-grid-2 { grid-template-columns: 1fr; }
+}
+@media (max-width: 820px) {
+  .pn-app { grid-template-columns: 1fr; }
+  .pn-sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); padding: 12px 16px; gap: 10px; }
+  .pn-nav { display: flex; overflow-x: auto; scrollbar-width: none; }
+  .pn-nav::-webkit-scrollbar { display: none; }
+  .pn-nav a { white-space: nowrap; }
+  .pn-sidebar-foot { flex-direction: row; display: flex; margin-top: 0; }
+  .pn-main { padding: 18px 16px 40px; }
+}

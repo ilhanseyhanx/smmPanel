@@ -27,7 +27,7 @@ process.env.PUBLIC_BASE_URL = 'https://jetsmmpanel.com';
 
 const { app } = require('../server');
 const { initDatabase, dbAsync, db } = require('../config/database');
-const { getServiceStats, invalidateServiceStats, medyan, MIN_SIPARIS } = require('../services/serviceStats');
+const { getServiceStats, invalidateServiceStats, medyan, MIN_SIPARIS, GUVENILIR_ORNEK } = require('../services/serviceStats');
 
 let servisA, servisB, servisC;
 
@@ -116,10 +116,20 @@ test('uç değer medyanı bozmaz — ortalama kullanılsaydı 123 dk çıkardı'
     'medyan, ortalamadan belirgin sekilde dusuk olmali (uc deger etkisi)');
 });
 
-test(`${MIN_SIPARIS} siparişin altındaki serviste medyan gösterilmez`, async () => {
+test('tek siparişi olan servis de süre gösterir (eşik 1)', async () => {
+  assert.equal(MIN_SIPARIS, 1, 'esik degismis; admin ekraniyla tutarsizlik dogar');
   const stats = await getServiceStats();
-  assert.equal(stats[servisB]?.median_minutes, undefined,
-    '2 siparisten medyan uretilmis — yaniltici olur');
+  // B servisinde 2 tamamlanmis siparis var (7 ve 9 dk) -> medyan 8.
+  assert.equal(stats[servisB]?.median_minutes, 8, 'esik alti servis gizlenmis');
+  assert.equal(stats[servisB]?.completed_count, 2);
+});
+
+test('güvenilir örnek eşiği altındaki ölçümler işaretlenebilir', async () => {
+  const stats = await getServiceStats();
+  // Vitrin, completed_count < GUVENILIR_ORNEK olan degerlerin basina ~ koyar.
+  assert.equal(GUVENILIR_ORNEK, 3);
+  assert.ok(stats[servisB].completed_count < GUVENILIR_ORNEK, 'B yaklasik sayilmaliydi');
+  assert.ok(stats[servisA].completed_count >= GUVENILIR_ORNEK, 'A kesin sayilmaliydi');
 });
 
 test('popülerlik kişi-gün olarak sayılır: aynı kişi aynı gün = 1', async () => {
@@ -148,8 +158,11 @@ test('katalog ucu medyan süre ve popülerlik alanlarını döndürür', async (
   assert.equal(a.median_minutes, 5);
   assert.equal(typeof a.popularity, 'number');
 
+  assert.equal(a.median_sample, 5, 'olcum sayisi gonderilmedi');
+
   const b = liste.find(s => s.id === servisB);
-  assert.equal(b.median_minutes, null, 'esik alti serviste sure gonderilmis');
+  assert.equal(b.median_minutes, 8, 'tek/cift siparisli serviste sure gonderilmedi');
+  assert.equal(b.median_sample, 2);
 });
 
 test('önbellek geçersiz kılınınca yeni sipariş istatistiğe yansır', async () => {

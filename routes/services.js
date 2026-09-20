@@ -58,8 +58,10 @@ router.get('/', async (req, res) => {
     const discounts = await activeServiceDiscounts();
     for (const service of services) {
       const istatistik = serviceStats[service.id];
-      // Yeterli siparis yoksa alan hic gonderilmez; vitrin "Veri yok" yazar.
+      // Hic tamamlanmis siparis yoksa alan bos gelir; vitrin "Veri yok" yazar.
       service.median_minutes = istatistik?.median_minutes ?? null;
+      // Kac siparisten hesaplandigi: vitrin 3'un altini "yaklasik" isaretler.
+      service.median_sample = istatistik?.completed_count ?? 0;
       service.popularity = istatistik?.popularity ?? 0;
       // Siparis formundaki ornek baglanti servisin platformuna gore gelir
       // (YouTube servisinde Instagram ornegi gorunmesin). Sunucudaki link

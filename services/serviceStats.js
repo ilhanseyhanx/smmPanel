@@ -27,9 +27,15 @@
 const { dbAsync } = require('../config/database');
 
 const ONBELLEK_MS = 5 * 60 * 1000;
-// Bu esigin altinda medyan gosterilmez: 1-2 siparisten "bu servis 4 dakikada
-// teslim edilir" sonucu cikarmak dogru degil, ilk sapmada yaniltici olur.
-const MIN_SIPARIS = 3;
+// Tek siparisi olan servis de sure gosterir (kullanici karari 20 Eyl):
+// admin panelindeki "Tamamlanma Sureleri" ekrani zaten esiksiz calisiyordu ve
+// 29 servis listeliyordu; katalogda 3 esigi yuzunden yalnizca 4'u gorunuyor,
+// arada tutarsizlik olusuyordu.
+const MIN_SIPARIS = 1;
+// Bu sayinin altindaki olcumler "yaklasik" sayilir: vitrin basina ~ koyar ve
+// kac siparisten hesaplandigini ipucunda soyler. Tek siparisten cikan deger
+// medyan degil o siparisin kendi suresidir; okuyan yanilmasin.
+const GUVENILIR_ORNEK = 3;
 
 let onbellek = null;
 let onbellekZamani = 0;
@@ -97,4 +103,4 @@ function invalidateServiceStats() {
   onbellekZamani = 0;
 }
 
-module.exports = { getServiceStats, invalidateServiceStats, medyan, MIN_SIPARIS };
+module.exports = { getServiceStats, invalidateServiceStats, medyan, MIN_SIPARIS, GUVENILIR_ORNEK };

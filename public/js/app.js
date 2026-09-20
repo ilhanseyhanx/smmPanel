@@ -1521,11 +1521,18 @@ class SmmApp {
   // MAIN PLATFORMS CONFIG
   // Medyan tamamlanma suresini okunur metne cevirir: 4 -> "4 dakika",
   // 67 -> "1 saat 7 dakika". Yeterli siparisi olmayan serviste alan bos gelir.
-  formatCompletionTime(dakika) {
+  formatCompletionTime(dakika, ornekSayisi = 0) {
     if (dakika === null || dakika === undefined || !Number.isFinite(Number(dakika))) {
       return `<span style="color:var(--text-dim);">${this.ui('Veri yok', 'No data')}</span>`;
     }
     const dk = Math.max(1, Math.round(Number(dakika)));
+    // 3'ten az olcumde deger "yaklasik"tir: tek siparisten cikan sayi medyan
+    // degil o siparisin kendi suresidir. Basina ~ konur, ipucunda aciklanir.
+    const ornek = Number(ornekSayisi) || 0;
+    const yaklasik = ornek > 0 && ornek < 3;
+    const ipucu = ornek
+      ? this.ui(`${ornek} tamamlanmış siparişten hesaplandı`, `Based on ${ornek} completed order(s)`)
+      : '';
     const birim = (n, tr, en) => `${n} ${this.ui(tr, en)}`;
     let metin;
     if (dk < 60) metin = birim(dk, 'dakika', 'min');
@@ -1538,7 +1545,7 @@ class SmmApp {
     }
     // 30 dakikanin altindaki teslimat vurgulanir; sitenin en guclu yani bu.
     const hizli = dk <= 30;
-    return `<span style="${hizli ? 'color:var(--success,#22c55e); font-weight:600;' : ''}">${hizli ? '<i class="fa-solid fa-bolt" style="margin-right:4px;"></i>' : ''}${metin}</span>`;
+    return `<span title="${this.escapeHtml(ipucu)}" style="${hizli ? 'color:var(--success,#22c55e); font-weight:600;' : ''}${yaklasik ? ' opacity:.82;' : ''}">${hizli ? '<i class="fa-solid fa-bolt" style="margin-right:4px;"></i>' : ''}${yaklasik ? '~' : ''}${metin}</span>`;
   }
 
   // "En Cok Kullanilanlar" sekmesinde hangi platform butonlari gorunecek?
@@ -2063,10 +2070,18 @@ class SmmApp {
     // "En Cok Kullanilanlar" sekmesi: en basta durur ve diger sekmelerden
     // GOZLE AYRILIR (tab-btn-popular sinifi) ki kullanici onu bir filtre
     // degil, ayri bir vitrin olarak algilasin.
+    //
+    // POPULER MODDAYKEN AYNI BUTON "Tum Hizmetler"e doner. Onceden bu vitrine
+    // girildiginde tum katalogya donus yolu kalmiyordu: alt filtre yalnizca
+    // siparis almis platformlari gosterdigi icin "Tum Hizmetler" sekmesi
+    // listeden cikiyor ve kullanici populer listede sikisip kaliyordu.
     const populerAktif = this.selectedPlatform === 'popular' || this.popularMode;
     let tabsHTML = `
-      <div class="tab-btn tab-btn-popular ${populerAktif ? 'active' : ''}" onclick="app.showPopularServices()">
-        <i class="fa-solid fa-fire"></i> ${this.ui('En Çok Kullanılanlar', 'Most Used')}
+      <div class="tab-btn tab-btn-popular ${populerAktif ? 'active' : ''}"
+           onclick="${populerAktif ? "app.filterFullServicesCategory('all')" : 'app.showPopularServices()'}">
+        <i class="fa-solid ${populerAktif ? 'fa-arrow-left' : 'fa-fire'}"></i> ${populerAktif
+          ? this.ui('Tüm Hizmetler', 'All Services')
+          : this.ui('En Çok Kullanılanlar', 'Most Used')}
       </div>
     `;
 
@@ -2202,7 +2217,7 @@ class SmmApp {
           <td class="cell-nowrap">
             ${isRefill ? `<span class="badge badge-completed"><i class="fa-solid fa-shield-check"></i> ${this.t('guaranteed')}</span>` : `<span class="badge badge-pending">${this.t('standard')}</span>`}
           </td>
-          <td class="cell-nowrap">${this.formatCompletionTime(s.median_minutes)}</td>
+          <td class="cell-nowrap">${this.formatCompletionTime(s.median_minutes, s.median_sample)}</td>
           <td class="cell-nowrap" style="text-align: right;">
             <div class="service-row-actions">
               <button type="button" class="btn btn-outline btn-sm service-info-btn" onclick="app.openServiceInfoModal(${s.id})" title="${this.t('info.button')}" aria-label="${this.t('info.button')}">

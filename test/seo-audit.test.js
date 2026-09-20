@@ -449,7 +449,8 @@ test('küçültülmüş varlıklar güncel kaynaktan üretilmiş', () => {
   const esler = [
     ['public/css/style.css', 'public/css/style.min.css'],
     ['public/js/api.js', 'public/js/api.min.js'],
-    ['public/js/app.js', 'public/js/app.min.js']
+    ['public/js/app.js', 'public/js/app.min.js'],
+    ['public/js/admin-resellers.js', 'public/js/admin-resellers.min.js']
   ];
   for (const [kaynakYol, kucukYol] of esler) {
     const tam = path.join(__dirname, '..', kucukYol);
@@ -465,7 +466,9 @@ test('küçültülmüş varlıklar güncel kaynaktan üretilmiş', () => {
 
 test('HTML içinden çağrılan her app metodu küçültülmüş dosyada durur', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
-  const kucuk = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app.min.js'), 'utf8');
+  // Bayi yonetim ekrani ayri (tembel yuklenen) dosyada; ikisi birlikte bakilir.
+  const kucuk = ['app.min.js', 'admin-resellers.min.js']
+    .map(ad => fs.readFileSync(path.join(__dirname, '..', 'public', 'js', ad), 'utf8')).join('\n');
   const cagrilan = [...new Set([...html.matchAll(/\bapp\.([A-Za-z_$][\w$]*)\s*\(/g)].map(m => m[1]))];
   assert.ok(cagrilan.length > 50, 'çağrı taraması beklenenden az sonuç verdi');
   const eksik = cagrilan.filter(ad => !new RegExp(`[^\\w$]${ad}\\s*[(=]`).test(kucuk));
@@ -474,7 +477,7 @@ test('HTML içinden çağrılan her app metodu küçültülmüş dosyada durur',
 
 test('küçültülmüş dosyalar geçerli JavaScript', () => {
   const vm = require('node:vm');
-  for (const dosya of ['app.min.js', 'api.min.js']) {
+  for (const dosya of ['app.min.js', 'api.min.js', 'admin-resellers.min.js']) {
     const kod = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', dosya), 'utf8');
     assert.doesNotThrow(() => new vm.Script(kod), `${dosya} sözdizimi bozuk`);
   }

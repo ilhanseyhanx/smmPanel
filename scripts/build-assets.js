@@ -26,7 +26,9 @@ const KONTROL = process.argv.includes('--check');
 const DOSYALAR = [
   { kaynak: 'public/css/style.css', hedef: 'public/css/style.min.css', tur: 'css' },
   { kaynak: 'public/js/api.js', hedef: 'public/js/api.min.js', tur: 'js' },
-  { kaynak: 'public/js/app.js', hedef: 'public/js/app.min.js', tur: 'js' }
+  { kaynak: 'public/js/app.js', hedef: 'public/js/app.min.js', tur: 'js' },
+  // Yalnizca admin "Bayiler" sekmesini acinca yuklenir (tembel).
+  { kaynak: 'public/js/admin-resellers.js', hedef: 'public/js/admin-resellers.min.js', tur: 'js' }
 ];
 
 async function kucult(icerik, tur) {

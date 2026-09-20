@@ -8,6 +8,9 @@ const path = require('path');
 const kok = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(kok, 'public', 'index.html'), 'utf8');
 const appJs = fs.readFileSync(path.join(kok, 'public', 'js', 'app.js'), 'utf8');
+// Bayi yonetim ekrani ayri dosyada: ziyaretcilere gonderilmez.
+const modulJs = fs.readFileSync(path.join(kok, 'public', 'js', 'admin-resellers.js'), 'utf8');
+const istemciJs = appJs + modulJs;
 const apiJs = fs.readFileSync(path.join(kok, 'public', 'js', 'api.js'), 'utf8');
 const rota = fs.readFileSync(path.join(kok, 'routes', 'adminResellers.js'), 'utf8');
 
@@ -24,7 +27,7 @@ test('ayar formu ve liste alanları HTML\'de, app.js bunları kullanıyor', () =
     'admin-resellers-search', 'admin-resellers-tbody', 'admin-resellers-summary',
     'admin-resellers-list-view', 'admin-reseller-detail-view', 'admin-reseller-detail-content']) {
     assert.ok(html.includes(`id="${id}"`), `${id} alanı HTML'de yok`);
-    assert.ok(appJs.includes(`'${id}'`), `${id} app.js'te kullanılmıyor`);
+    assert.ok(istemciJs.includes(`'${id}'`), `${id} istemci kodunda kullanılmıyor`);
   }
 });
 
@@ -32,8 +35,31 @@ test('HTML\'deki onclick çağrılarının hepsi app.js\'te tanımlı', () => {
   const blok = html.slice(html.indexOf('id="admin-tab-resellers"'), html.indexOf('<!-- ADMIN TAB 4: ALL ORDERS -->'));
   const cagrilar = new Set([...blok.matchAll(/app\.([a-zA-Z]+)\(/g)].map(m => m[1]));
   for (const ad of cagrilar) {
-    assert.match(appJs, new RegExp(`\\n  (async )?${ad}\\(`), `app.${ad} tanımlı değil`);
+    assert.match(istemciJs, new RegExp(`\\n  (async )?${ad}\\(`), `app.${ad} tanımlı değil`);
   }
+});
+
+test('bayi yönetim kodu ziyaretçinin indirdiği pakete girmez', () => {
+  // Kod app.js'te DEGIL ayri dosyada olmali; app.js yalnizca tembel yukleyiciyi
+  // icermeli. Aksi halde bayilik kapaliyken bile herkes bu kodu indirirdi.
+  for (const ad of ['renderAdminResellerDetail', 'saveResellerSettings', 'renderAdminResellersTable']) {
+    const tanim = new RegExp(`\\n  (async )?${ad}\\(`);
+    assert.ok(!tanim.test(appJs), `${ad} hâlâ app.js içinde`);
+    assert.ok(tanim.test(modulJs), `${ad} modülde yok`);
+  }
+  assert.match(appJs, /loadResellerAdminModule\(\)/, 'tembel yükleyici yok');
+  assert.match(appJs, /admin-resellers\$\{min\}\.js/, 'modül adresi app.js\'te yok');
+  // HTML'de admin-resellers-* KIMLIKLERI olabilir; olmamasi gereken sey
+  // modulun sabit <script> etiketiyle herkese yuklenmesidir.
+  assert.ok(!/<script[^>]+admin-resellers/.test(html), 'modül index.html\'e sabit script olarak eklenmiş');
+  assert.ok(modulJs.startsWith('// ADMIN > BAYILER'), 'modül başlığı beklenen biçimde değil');
+  assert.match(modulJs, /Object\.assign\(SmmApp\.prototype/, 'modül SmmApp prototipine eklenmiyor');
+});
+
+test('build betiği modülün küçültülmüş sürümünü de üretir', () => {
+  const build = fs.readFileSync(path.join(kok, 'scripts', 'build-assets.js'), 'utf8');
+  assert.match(build, /admin-resellers\.js/, 'build listesinde modül yok');
+  assert.ok(fs.existsSync(path.join(kok, 'public', 'js', 'admin-resellers.min.js')), 'küçültülmüş modül üretilmemiş');
 });
 
 test('istemci uçları sunucu rotalarıyla eşleşiyor', () => {

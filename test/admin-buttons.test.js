@@ -13,8 +13,10 @@ const adminRoute = fs.readFileSync(path.join(kok, 'routes', 'admin.js'), 'utf8')
 // (this.debouncedX = this.debounce(...) gibi tanimlar da cagrilabilir).
 function appMetotlari() {
   const set = new Set();
-  for (const m of js.matchAll(/^\s{2}(?:async\s+)?(?:get\s+)?([A-Za-z_$][\w$]*)\s*\(/gm)) set.add(m[1]);
-  for (const m of js.matchAll(/this\.([A-Za-z_$][\w$]*)\s*=/g)) set.add(m[1]);
+  // Bayi yonetim ekrani ayri dosyada (tembel yuklenir); o da istemci kodudur.
+  const kaynak = js + fs.readFileSync(path.join(kok, 'public', 'js', 'admin-resellers.js'), 'utf8');
+  for (const m of kaynak.matchAll(/^\s{2}(?:async\s+)?(?:get\s+)?([A-Za-z_$][\w$]*)\s*\(/gm)) set.add(m[1]);
+  for (const m of kaynak.matchAll(/this\.([A-Za-z_$][\w$]*)\s*=/g)) set.add(m[1]);
   return set;
 }
 

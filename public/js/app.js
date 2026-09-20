@@ -1519,6 +1519,37 @@ class SmmApp {
   }
 
   // MAIN PLATFORMS CONFIG
+  // Medyan tamamlanma suresini okunur metne cevirir: 4 -> "4 dakika",
+  // 67 -> "1 saat 7 dakika". Yeterli siparisi olmayan serviste alan bos gelir.
+  formatCompletionTime(dakika) {
+    if (dakika === null || dakika === undefined || !Number.isFinite(Number(dakika))) {
+      return `<span style="color:var(--text-dim);">${this.ui('Veri yok', 'No data')}</span>`;
+    }
+    const dk = Math.max(1, Math.round(Number(dakika)));
+    const birim = (n, tr, en) => `${n} ${this.ui(tr, en)}`;
+    let metin;
+    if (dk < 60) metin = birim(dk, 'dakika', 'min');
+    else if (dk < 1440) {
+      const saat = Math.floor(dk / 60), kalan = dk % 60;
+      metin = kalan ? `${birim(saat, 'saat', 'h')} ${birim(kalan, 'dakika', 'min')}` : birim(saat, 'saat', 'h');
+    } else {
+      const gun = Math.floor(dk / 1440), saat = Math.floor((dk % 1440) / 60);
+      metin = saat ? `${birim(gun, 'gün', 'd')} ${birim(saat, 'saat', 'h')}` : birim(gun, 'gün', 'd');
+    }
+    // 30 dakikanin altindaki teslimat vurgulanir; sitenin en guclu yani bu.
+    const hizli = dk <= 30;
+    return `<span style="${hizli ? 'color:var(--success,#22c55e); font-weight:600;' : ''}">${hizli ? '<i class="fa-solid fa-bolt" style="margin-right:4px;"></i>' : ''}${metin}</span>`;
+  }
+
+  // "En Cok Kullanilanlar" sekmesinde hangi platform butonlari gorunecek?
+  // Yalnizca EN AZ BIR siparis almis platformlar listelenir; yarin Spotify'dan
+  // bir siparis gelirse butonu kendiliginden belirir, bakim gerekmez.
+  getPopularPlatforms() {
+    const hepsi = this.getMainPlatforms().filter(p => p.id !== 'all');
+    const siparisliler = (this.allServices || []).filter(s => Number(s.popularity) > 0);
+    return hepsi.filter(p => this.filterServicesByPlatformKey(siparisliler, p.id).length > 0);
+  }
+
   getMainPlatforms() {
     return [
       { id: 'all', name: this.ui('Tüm Hizmetler', 'All Services'), icon: 'fa-globe' },
@@ -2029,34 +2060,87 @@ class SmmApp {
     const tabsContainer = document.getElementById('services-platform-tabs');
     const subCatSelect = document.getElementById('services-subcategory-select');
 
-    // Render clean main platform tabs
-    const platforms = this.getMainPlatforms();
-    let tabsHTML = '';
+    // "En Cok Kullanilanlar" sekmesi: en basta durur ve diger sekmelerden
+    // GOZLE AYRILIR (tab-btn-popular sinifi) ki kullanici onu bir filtre
+    // degil, ayri bir vitrin olarak algilasin.
+    const populerAktif = this.selectedPlatform === 'popular' || this.popularMode;
+    let tabsHTML = `
+      <div class="tab-btn tab-btn-popular ${populerAktif ? 'active' : ''}" onclick="app.showPopularServices()">
+        <i class="fa-solid fa-fire"></i> ${this.ui('En Çok Kullanılanlar', 'Most Used')}
+      </div>
+    `;
+
+    // Populer modda alt filtre YALNIZCA siparis almis platformlardan olusur.
+    const platforms = populerAktif
+      ? [{ id: 'all', name: this.ui('Hepsi', 'All'), icon: 'fa-globe' }, ...this.getPopularPlatforms()]
+      : this.getMainPlatforms();
+
     platforms.forEach(p => {
+      const aktif = populerAktif
+        ? (this.popularPlatform || 'all') === p.id
+        : this.selectedPlatform === p.id;
+      const cagri = populerAktif
+        ? `app.filterPopularPlatform('${p.id}')`
+        : `app.filterFullServicesCategory('${p.id}')`;
       tabsHTML += `
-        <div class="tab-btn ${this.selectedPlatform === p.id ? 'active' : ''}" onclick="app.filterFullServicesCategory('${p.id}')">
+        <div class="tab-btn ${aktif ? 'active' : ''}" onclick="${cagri}">
           <i class="fa-solid ${p.icon}"></i> ${p.name}
         </div>
       `;
     });
     tabsContainer.innerHTML = tabsHTML;
 
-    // Populate subcategory dropdown based on selected platform
+    // Alt kategori listesi gosterilen kumeden turetilir. Populer modda bu
+    // kume zaten kisa oldugu icin (platform basina en fazla 10 servis) alt
+    // kategori secimi anlamsizlasir; o yuzden kutu gizlenir.
     if (subCatSelect) {
-      const platformServices = this.filterServicesByPlatformKey(this.allServices, this.selectedPlatform);
+      const platformServices = populerAktif
+        ? this.popularServiceList()
+        : this.filterServicesByPlatformKey(this.allServices, this.selectedPlatform);
       const uniqueSubCats = [...new Set(platformServices.map(s => s.category_name))];
 
       subCatSelect.innerHTML = `<option value="all">${this.ui('Tüm Alt Kategoriler', 'All Subcategories')} (${platformServices.length})</option>` +
         uniqueSubCats.map(c => `<option value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</option>`).join('');
+      subCatSelect.value = 'all';
+      subCatSelect.style.display = populerAktif ? 'none' : '';
     }
 
     this.filterServicesTable();
   }
 
   filterFullServicesCategory(catName) {
+    // Normal platform sekmesine gecilince "En Cok Kullanilanlar" vitrininden cikilir.
+    this.popularMode = false;
     this.selectedPlatform = catName;
     this.servicesPage = 1;
     this.renderFullServicesTable();
+  }
+
+  // --- "En Cok Kullanilanlar" vitrini ------------------------------------
+  // Populerlik = ayni kisinin ayni servisten AYNI GUN verdigi siparisler 1
+  // sayilarak hesaplanan kisi-gun puani (bkz. services/serviceStats.js).
+  showPopularServices() {
+    this.popularMode = true;
+    this.popularPlatform = 'all';
+    this.renderFullServicesTable();
+  }
+
+  filterPopularPlatform(platformId) {
+    this.popularPlatform = this.decodeArg(platformId);
+    this.renderFullServicesTable();
+  }
+
+  /** Populer modda gosterilecek servisler: platform basina en fazla 10. */
+  popularServiceList() {
+    const siparisliler = (this.allServices || []).filter(s => Number(s.popularity) > 0);
+    const platform = this.popularPlatform || 'all';
+    const liste = platform === 'all'
+      ? siparisliler
+      : this.filterServicesByPlatformKey(siparisliler, platform);
+    const sirali = [...liste].sort((a, b) =>
+      (Number(b.popularity) || 0) - (Number(a.popularity) || 0) || String(a.name).localeCompare(String(b.name), 'tr'));
+    // Platform secilince en cok kullanilan 10 servis; 10'dan azsa hepsi.
+    return platform === 'all' ? sirali : sirali.slice(0, 10);
   }
 
   filterServicesTable(page = 1) {
@@ -2065,7 +2149,9 @@ class SmmApp {
     const country = document.getElementById('services-country-select')?.value || 'all';
     const tbody = document.getElementById('full-services-tbody');
 
-    let filtered = this.filterServicesByPlatformKey(this.allServices, this.selectedPlatform);
+    let filtered = this.popularMode
+      ? this.popularServiceList()
+      : this.filterServicesByPlatformKey(this.allServices, this.selectedPlatform);
 
     if (subCat && subCat !== 'all') {
       filtered = filtered.filter(s => s.category_name === subCat);
@@ -2094,7 +2180,7 @@ class SmmApp {
     }
 
     if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" class="text-center">${this.ui('Aramanızla eşleşen servis bulunamadı.', 'No services matched your search.')}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center">${this.ui('Aramanızla eşleşen servis bulunamadı.', 'No services matched your search.')}</td></tr>`;
       const pagination = document.getElementById('services-pagination');
       if (pagination) pagination.innerHTML = '';
       return;
@@ -2116,6 +2202,7 @@ class SmmApp {
           <td class="cell-nowrap">
             ${isRefill ? `<span class="badge badge-completed"><i class="fa-solid fa-shield-check"></i> ${this.t('guaranteed')}</span>` : `<span class="badge badge-pending">${this.t('standard')}</span>`}
           </td>
+          <td class="cell-nowrap">${this.formatCompletionTime(s.median_minutes)}</td>
           <td class="cell-nowrap" style="text-align: right;">
             <div class="service-row-actions">
               <button type="button" class="btn btn-outline btn-sm service-info-btn" onclick="app.openServiceInfoModal(${s.id})" title="${this.t('info.button')}" aria-label="${this.t('info.button')}">

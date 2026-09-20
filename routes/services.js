@@ -48,10 +48,19 @@ router.get('/', async (req, res) => {
       ORDER BY c.sort_order ASC, s.id ASC
     `);
 
+    // Katalog tablosundaki "Ortalama sure" sutunu ve "En Cok Kullanilanlar"
+    // sekmesi icin: medyan tamamlanma suresi + kisi-gun populerlik puani.
+    // 5 dakikalik onbellekten gelir (bkz. services/serviceStats.js).
+    const serviceStats = await require('../services/serviceStats').getServiceStats();
+
     // Aktif servis indirimleri fiyat bilgisine islenir: musteri vitrinde
     // ustu cizili eski fiyati ve indirimli yeni fiyati birlikte gorur.
     const discounts = await activeServiceDiscounts();
     for (const service of services) {
+      const istatistik = serviceStats[service.id];
+      // Yeterli siparis yoksa alan hic gonderilmez; vitrin "Veri yok" yazar.
+      service.median_minutes = istatistik?.median_minutes ?? null;
+      service.popularity = istatistik?.popularity ?? 0;
       // Siparis formundaki ornek baglanti servisin platformuna gore gelir
       // (YouTube servisinde Instagram ornegi gorunmesin). Sunucudaki link
       // dogrulayiciyla ayni tespit kullanilir; ipucu ile kural celismez.

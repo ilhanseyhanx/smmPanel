@@ -4549,3 +4549,61 @@ body.neo-app-active .service-editor-step { background: #ffde17; color: #090909; 
 .reseller-switch-lg input { width: 22px; height: 22px; }
 .reseller-switch-lg em { font-style: normal; font-weight: 700; margin-left: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(148, 163, 184, .2); font-size: .8rem; }
 .reseller-public-toggle.is-on .reseller-switch-lg em { background: var(--success); color: #fff; }
+
+/* ===========================================================================
+   SERVIS KATALOGU — GENIS TABLO + "EN COK KULLANILANLAR" SEKMESI (20 Eyl 2026)
+   =========================================================================== */
+
+/* Katalogda 7 sutun var (ID, ad, fiyat, limit, garanti, ortalama sure, islem).
+   Genel 1500px sinirinda servis adlari kirpiliyor ve tablo ortada sikisik
+   duruyordu. YALNIZCA bu sayfa genisletilir; diger sayfalar 1500px kalir. */
+#view-services > .main-content {
+  max-width: 1840px;
+  padding-left: 18px;
+  padding-right: 18px;
+}
+
+/* "En Cok Kullanilanlar" bir platform filtresi degil, ayri bir vitrin.
+   Kullanici onu digerlerinden ilk bakista ayirsin diye farkli renk, ates
+   simgesi ve sagda ayirici bosluk verilir. */
+.tab-btn-popular {
+  background: #ff5c2b !important;
+  color: #fff !important;
+  font-weight: 800;
+}
+.tab-btn-popular i { color: #ffde17; }
+
+#view-services .tab-btn-popular {
+  background: #ff5c2b !important;
+  color: #fff !important;
+  border: 2px solid #090909;
+  box-shadow: 4px 4px 0 #090909;
+  /* Sekme grubundan gorsel olarak kopsun. */
+  margin-right: 14px;
+  position: relative;
+}
+#view-services .tab-btn-popular::after {
+  content: "";
+  position: absolute;
+  right: -9px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  background: #090909;
+}
+#view-services .tab-btn-popular:hover,
+#view-services .tab-btn-popular.active {
+  background: #090909 !important;
+  color: #ffde17 !important;
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 #ff5c2b;
+}
+#view-services .tab-btn-popular.active i,
+#view-services .tab-btn-popular:hover i { color: #ffde17; }
+
+/* Dar ekranda ayirici cizgi tasmasin. */
+@media (max-width: 720px) {
+  #view-services .tab-btn-popular { margin-right: 8px; }
+  #view-services .tab-btn-popular::after { display: none; }
+  #view-services > .main-content { padding-left: 12px; padding-right: 12px; }
+}

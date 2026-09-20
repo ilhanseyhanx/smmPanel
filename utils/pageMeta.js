@@ -16,15 +16,21 @@
 // dogrular; metin degistirilirse test uyarir.
 
 const SAYFALAR = {
+  // BASLIK REVIZYONU (20 Eyl 2026 — GSC analizi, bkz. SEO-ANALIZ-2026-09-20.md):
+  // "panel sitesi" sorgusunda pozisyon 6.18'de 11 gosterim alinip 0 tiklama
+  // geldi; "smm panel" 8.0'da, "medya panel" 4.0'da. Ilk sayfadayiz ama baslik
+  // tiklatmiyor. Marka disi gosterimlerin %57'si "panel" iceren sorgulardan
+  // geliyor, bu yuzden baslikta "sosyal medya paneli" ve "ucuz" (arayanin
+  // fiyat/guven sinyali) one alindi.
   '': {
     view: 'view-landing',
-    title: 'SMM Panel - Instagram, TikTok ve YouTube | Jet SMM Panel',
-    description: 'Instagram, TikTok, YouTube ve Twitter için takipçi, beğeni ve izlenme hizmetlerini tek panelden yönet. Otomatik teslimat, güvenli ödeme ve 7/24 destek.'
+    title: 'SMM Panel - Ucuz ve Güvenilir Sosyal Medya Paneli | Jet SMM Panel',
+    description: 'Ucuz ve güvenilir SMM panel: Instagram, TikTok, YouTube ve X için takipçi, beğeni, izlenme. Şifresiz sipariş, otomatik teslimat, 7/24 Türkçe destek.'
   },
   services: {
     view: 'view-services',
-    title: 'Hizmetler ve Güncel Fiyat Listesi | Jet SMM Panel',
-    description: 'Tüm sosyal medya hizmetlerinin güncel fiyat listesi. Instagram, TikTok ve YouTube servislerini platform ile ülkeye göre filtrele, birim fiyatları karşılaştır.'
+    title: 'SMM Panel Fiyat Listesi - Tüm Hizmetler ve Güncel Fiyatlar | Jet SMM Panel',
+    description: 'Güncel SMM panel fiyat listesi: Instagram, TikTok, YouTube ve tüm servisleri ülkeye ve kategoriye göre filtrele, 1000 adet birim fiyatını karşılaştır.'
   },
   // Satis sayfalari vitrini: yayindaki tum landing page'lerin kart listesi.
   // Sayfalar eskiden tek tek alt bilgiye baglaniyordu (link ciftligi gorunumu);

@@ -551,7 +551,7 @@ const data = await res.json(); // { status: 'Completed', remains: '0', ... }</co
 <h3>Karışık paket almak mantıklı mı?</h3>
 <p>Evet; yukarıdaki %60-40 stratejisi maliyet ile görünüm arasında en dengeli yoldur.</p>
 <h3>Yabancı takipçiyi sonradan silebilir miyim?</h3>
-<p>Evet, "Takipçileri kaldır" ile tek tek silinebilir; ancak toplu silme zaman alır. Baştan doğru paketi seçmek daha kolaydır: <a href="/instagram-takipci-satin-al">Instagram takipçi paketleri</a>.</p>
+<p>Evet, "Takipçileri kaldır" ile tek tek silinebilir; ancak toplu silme zaman alır. Baştan doğru paketi seçmek daha kolaydır: <a href="/instagram-takipci-satin-al">Instagram takipçi paketleri</a>. Diğer platformlarda Türkiye kaynaklı seçenekleri tek sayfada karşılaştırmak için <a href="/turk-takipci-satin-al">Türk takipçi satın al</a> sayfasına bakabilirsiniz.</p>
 <h3>Türk takipçi neden daha pahalı?</h3>
 <p>Kaynak havuzu küçük ve üretim maliyeti yüksek; ayrıntı <a href="/blog/instagram-takipci-fiyatlari-2026-1000-takipci-kac-tl">2026 fiyat rehberi</a>nde.</p>`,
     content_en: `<p>For accounts that post in Turkish and sell in Turkey, Turkish followers are the right choice; for accounts posting in English, playing to a global audience or simply growing the number, foreign (global) followers are both 2-4× cheaper and sufficient. The difference exists because the algorithm looks at follower engagement, not follower country; country matters for audience fit and brand deals. This guide compares the two options on four criteria and explains how they look in Insights and the mixed strategy.</p>

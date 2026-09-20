@@ -685,6 +685,11 @@ async function runMigrations() {
   await addColumnIfMissing('site_visits', 'referrer_host', 'TEXT');
   await addColumnIfMissing('site_visits', 'source_type', 'TEXT');
   await addColumnIfMissing('site_visits', 'landing_path', 'TEXT');
+  // Referansin SAYFA yolu: "r10.net'ten geldi" yetmez, hangi konudan geldigini
+  // bilmek gerekir (forum basligi, blog yazisi, yorum...). Yalnizca yol kismi
+  // saklanir, SORGU DIZESI atilir ve ARAMA MOTORLARINDA hic kaydedilmez —
+  // arama sorgusu yoluna yazilan motorlarda kullanicinin ne arattigi sizardi.
+  await addColumnIfMissing('site_visits', 'referrer_path', 'TEXT');
   await dbAsync.run('CREATE INDEX IF NOT EXISTS idx_site_visits_source ON site_visits(source_type, visit_date)');
 
   const admins = await dbAsync.all("SELECT id, password FROM users WHERE role = 'admin' AND must_change_password = 0");

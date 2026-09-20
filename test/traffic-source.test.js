@@ -60,10 +60,28 @@ test('sosyal ağlar "sosyal" kanalına düşer (t.me ve x.com dâhil)', () => {
   }
 });
 
-test('tanınmayan site "yönlendiren" olur ve alan adı saklanır', () => {
-  const { host, type } = parseReferrer(istek('https://www.producthunt.com/products/jet-smm-panel/reviews'));
+test('tanınmayan site "yönlendiren" olur; alan adı VE sayfa yolu saklanır', () => {
+  const { host, path, type } = parseReferrer(istek('https://www.producthunt.com/products/jet-smm-panel/reviews'));
   assert.equal(type, 'yonlendiren');
   assert.equal(host, 'www.producthunt.com');
+  // Forum/yorum linkinde hangi sayfadan gelindigi bilinmeli.
+  assert.equal(path, '/products/jet-smm-panel/reviews');
+});
+
+test('forum konusundan gelen ziyaretin tam sayfası kaydedilir', () => {
+  const { host, path, type } = parseReferrer(istek('https://www.r10.net/sosyal-medya/1234567-en-iyi-smm-panel-onerisi.html?page=3'));
+  assert.equal(type, 'yonlendiren');
+  assert.equal(host, 'www.r10.net');
+  assert.equal(path, '/sosyal-medya/1234567-en-iyi-smm-panel-onerisi.html');
+  assert.ok(!String(path).includes('?'), 'sorgu dizesi saklanmis');
+});
+
+test('arama motorlarında sayfa yolu KAYDEDİLMEZ (sorgu sızıntısı riski)', () => {
+  // Bazi motorlar aramayi yola yazar: /search/gizli+sorgu
+  const { host, path, type } = parseReferrer(istek('https://www.google.com/search/gizli+arama+sorgusu'));
+  assert.equal(type, 'arama');
+  assert.equal(host, 'www.google.com');
+  assert.equal(path, null, 'arama motorunda yol saklanmis — sorgu sizabilir');
 });
 
 test('referans yoksa veya bozuksa "doğrudan" sayılır', () => {
@@ -102,10 +120,11 @@ test('ziyaret kaydında kaynak ve giriş sayfası veritabanına yazılır', asyn
   assert.equal(await recordVisit(req), true);
 
   const satir = await dbAsync.get(
-    "SELECT referrer_host, source_type, landing_path FROM site_visits WHERE source_type = 'sosyal' ORDER BY id DESC LIMIT 1"
+    "SELECT referrer_host, referrer_path, source_type, landing_path FROM site_visits WHERE source_type = 'sosyal' ORDER BY id DESC LIMIT 1"
   );
   assert.ok(satir, 'ziyaret kaydi olusmadi');
   assert.equal(satir.referrer_host, 't.me');
+  assert.equal(satir.referrer_path, '/smmjetduyuru', 'kaynak sayfa yolu yazilmadi');
   assert.equal(satir.source_type, 'sosyal');
   // Sorgu dizesi ayiklanmis olmali.
   assert.equal(satir.landing_path, '/tiktok-smm-panel');
@@ -156,6 +175,14 @@ test('getTrafficSources kanal dağılımını ve alan adlarını döndürür', a
 
   const hostlar = t.domains.map(d => d.host);
   assert.ok(hostlar.includes('t.me'), 'alan adi listesi eksik: ' + hostlar.join(','));
+
+  // Tam kaynak sayfa listesi: tiklanabilir adresle birlikte gelmeli.
+  assert.ok(Array.isArray(t.source_pages), 'source_pages dizi degil');
+  const telegram = t.source_pages.find(s => s.host === 't.me');
+  assert.ok(telegram, 'kaynak sayfa listesinde t.me yok');
+  assert.equal(telegram.url, 'https://t.me/smmjetduyuru');
+  // Arama motoru kayitlari yol tutmadigi icin bu listeye girmemeli.
+  assert.ok(!t.source_pages.some(s => s.type === 'arama'), 'arama motoru kaynak sayfa listesine girmis');
 });
 
 test('admin istatistik ucu trafik, satış sayfası ve huni verisini döndürür', async () => {

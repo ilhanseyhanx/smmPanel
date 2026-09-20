@@ -3499,6 +3499,21 @@ class SmmApp {
       if (ozet) ozet.innerText = `Son ${t.window_days || data.window_days} gün · ${sayi(t.total_visitors || 0)} tekil ziyaretçi`;
     }
 
+    // Tam kaynak sayfa: forum konusu / yorum / blog yazisi — tiklanabilir.
+    const kaynakTbody = document.getElementById('stat-source-pages-tbody');
+    if (kaynakTbody) {
+      const s = t.source_pages || [];
+      kaynakTbody.innerHTML = s.length ? s.map((r, i) => `<tr>
+        <td style="color:var(--text-dim);">${i + 1}</td>
+        <td>
+          <a href="${this.escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer" style="font-weight:600;">${this.escapeHtml(r.host)}</a>
+          <div style="font-size:.76rem; color:var(--text-dim); word-break:break-all;">${this.escapeHtml(r.path || '/')}</div>
+        </td>
+        <td style="font-weight:700;">${sayi(r.visitors)}</td>
+      </tr>`).join('')
+        : '<tr><td colspan="3" class="text-center" style="color:var(--text-muted);">Henüz dış bağlantıdan gelen ziyaretçi kaydı yok.</td></tr>';
+    }
+
     const girisTbody = document.getElementById('stat-landing-entry-tbody');
     if (girisTbody) {
       const g = t.landing_pages || [];

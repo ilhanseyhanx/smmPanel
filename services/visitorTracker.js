@@ -55,20 +55,22 @@ const SOSYAL = /^(www\.|m\.|l\.)?(t\.me|telegram|instagram|facebook|fb\.|twitter
 const SOSYAL_TAM = new Set(['t.me', 'x.com', 'fb.com', 'wa.me', 'youtu.be', 'lnkd.in']);
 
 /**
- * Referans basligini kanal tipine ve alan adina cevirir.
- * @returns {{host: string|null, type: 'arama'|'sosyal'|'yonlendiren'|'dogrudan'}}
+ * Referans basligini kanal tipine, alan adina ve sayfa yoluna cevirir.
+ * @returns {{host: string|null, path: string|null, type: 'arama'|'sosyal'|'yonlendiren'|'dogrudan'}}
  */
 function parseReferrer(req) {
   const ham = String(req.headers.referer || req.headers.referrer || '').trim();
-  if (!ham) return { host: null, type: 'dogrudan' };
+  const bos = { host: null, path: null, type: 'dogrudan' };
+  if (!ham) return bos;
 
-  let host;
+  let url;
   try {
-    host = new URL(ham).hostname.toLowerCase();
+    url = new URL(ham);
   } catch {
-    return { host: null, type: 'dogrudan' };
+    return bos;
   }
-  if (!host) return { host: null, type: 'dogrudan' };
+  const host = url.hostname.toLowerCase();
+  if (!host) return bos;
 
   // Kendi sitemizden gelen gecisler kaynak sayilmaz (ic gezinme).
   const kendi = (() => {
@@ -76,12 +78,17 @@ function parseReferrer(req) {
     catch { return ''; }
   })();
   if (kendi && (host === kendi || host === `www.${kendi}` || `www.${host}` === kendi)) {
-    return { host: null, type: 'dogrudan' };
+    return bos;
   }
 
-  if (ARAMA.test(host)) return { host, type: 'arama' };
-  if (SOSYAL.test(host) || SOSYAL_TAM.has(host)) return { host, type: 'sosyal' };
-  return { host, type: 'yonlendiren' };
+  // SORGU DIZESI HER ZAMAN ATILIR; yalnizca yol saklanir.
+  const yol = String(url.pathname || '/').slice(0, 200);
+
+  // Arama motorlarinda yol da kaydedilmez: bazi motorlar sorguyu yola yazar
+  // (or. /search/smm+panel) ve kullanicinin ne arattigi sizabilir.
+  if (ARAMA.test(host)) return { host, path: null, type: 'arama' };
+  if (SOSYAL.test(host) || SOSYAL_TAM.has(host)) return { host, path: yol, type: 'sosyal' };
+  return { host, path: yol, type: 'yonlendiren' };
 }
 
 /** Ziyaretcinin girdigi ilk sayfa (sorgu dizesi atilir, uzunluk sinirlanir). */
@@ -98,13 +105,13 @@ async function recordVisit(req) {
   try {
     const ua = req.headers['user-agent'];
     if (isBot(ua)) return false;
-    const { host, type } = parseReferrer(req);
+    const { host, path, type } = parseReferrer(req);
     // UNIQUE(visitor_hash, visit_date) sayesinde gunun ILK istegi yazilir;
     // kaynak bilgisi de o ilk temasa aittir (dogru olan budur — sonraki ic
     // gezinmeler kaynagi "dogrudan"a cevirmemeli).
     await dbAsync.run(
-      'INSERT OR IGNORE INTO site_visits (visitor_hash, visit_date, referrer_host, source_type, landing_path) VALUES (?, ?, ?, ?, ?)',
-      [visitorHash(req), today(), host, type, landingPath(req)]
+      'INSERT OR IGNORE INTO site_visits (visitor_hash, visit_date, referrer_host, referrer_path, source_type, landing_path) VALUES (?, ?, ?, ?, ?, ?)',
+      [visitorHash(req), today(), host, path, type, landingPath(req)]
     );
     return true;
   } catch {
@@ -152,7 +159,7 @@ async function getVisitorStats() {
 async function getTrafficSources(gun = 30) {
   const pencere = `-${Math.max(1, Math.min(365, Number(gun) || 30)) - 1} days`;
 
-  const [kanallar, alanAdlari, girisSayfalari, gunluk, kapsam] = await Promise.all([
+  const [kanallar, alanAdlari, kaynakSayfalari, girisSayfalari, gunluk, kapsam] = await Promise.all([
     dbAsync.all(`SELECT COALESCE(source_type, 'bilinmiyor') AS type, COUNT(DISTINCT visitor_hash) AS visitors
       FROM site_visits WHERE visit_date >= date('now', ?) GROUP BY type ORDER BY visitors DESC`, [pencere]),
 
@@ -161,6 +168,15 @@ async function getTrafficSources(gun = 30) {
       FROM site_visits
       WHERE visit_date >= date('now', ?) AND referrer_host IS NOT NULL AND referrer_host != ''
       GROUP BY referrer_host ORDER BY visitors DESC LIMIT 25`, [pencere]),
+
+    // TAM KAYNAK SAYFA: "r10.net'ten geldi" yetmez; hangi konudan geldigini
+    // gosterir ki o basligi bulup takip edebilesin. Arama motorlarinda yol
+    // saklanmadigi icin bu liste dogal olarak forum/blog/yorum linklerinden olusur.
+    dbAsync.all(`SELECT referrer_host AS host, referrer_path AS path,
+        COALESCE(source_type,'yonlendiren') AS type, COUNT(DISTINCT visitor_hash) AS visitors
+      FROM site_visits
+      WHERE visit_date >= date('now', ?) AND referrer_host IS NOT NULL AND referrer_path IS NOT NULL
+      GROUP BY referrer_host, referrer_path ORDER BY visitors DESC LIMIT 30`, [pencere]),
 
     dbAsync.all(`SELECT COALESCE(NULLIF(landing_path,''), '/') AS path, COUNT(DISTINCT visitor_hash) AS visitors
       FROM site_visits WHERE visit_date >= date('now', ?) AND landing_path IS NOT NULL
@@ -195,6 +211,11 @@ async function getTrafficSources(gun = 30) {
       share: toplamZiyaretci ? Math.round(k.visitors / toplamZiyaretci * 100) : 0
     })),
     domains: alanAdlari,
+    source_pages: kaynakSayfalari.map(r => ({
+      ...r,
+      // Panelde tiklanabilir tam adres (protokol varsayilan https).
+      url: `https://${r.host}${r.path || ''}`
+    })),
     landing_pages: girisSayfalari,
     series: [...gunSet.values()].sort((a, b) => a.day.localeCompare(b.day)),
     coverage: {

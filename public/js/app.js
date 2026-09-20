@@ -1526,13 +1526,10 @@ class SmmApp {
       return `<span style="color:var(--text-dim);">${this.ui('Veri yok', 'No data')}</span>`;
     }
     const dk = Math.max(1, Math.round(Number(dakika)));
-    // 3'ten az olcumde deger "yaklasik"tir: tek siparisten cikan sayi medyan
-    // degil o siparisin kendi suresidir. Basina ~ konur, ipucunda aciklanir.
-    const ornek = Number(ornekSayisi) || 0;
-    const yaklasik = ornek > 0 && ornek < 3;
-    const ipucu = ornek
-      ? this.ui(`${ornek} tamamlanmış siparişten hesaplandı`, `Based on ${ornek} completed order(s)`)
-      : '';
+    // NOT: olcum sayisi (median_sample) API'de gelmeye devam eder ama vitrinde
+    // gorsel bir ayrim YAPILMAZ — az olcumden gelen deger de gercek bir
+    // olcumdur ve tabloda tek tip gorunmesi istendi (kullanici karari).
+    void ornekSayisi;
     const birim = (n, tr, en) => `${n} ${this.ui(tr, en)}`;
     let metin;
     if (dk < 60) metin = birim(dk, 'dakika', 'min');
@@ -1545,7 +1542,7 @@ class SmmApp {
     }
     // 30 dakikanin altindaki teslimat vurgulanir; sitenin en guclu yani bu.
     const hizli = dk <= 30;
-    return `<span title="${this.escapeHtml(ipucu)}" style="${hizli ? 'color:var(--success,#22c55e); font-weight:600;' : ''}${yaklasik ? ' opacity:.82;' : ''}">${hizli ? '<i class="fa-solid fa-bolt" style="margin-right:4px;"></i>' : ''}${yaklasik ? '~' : ''}${metin}</span>`;
+    return `<span style="${hizli ? 'color:var(--success,#22c55e); font-weight:600;' : ''}">${hizli ? '<i class="fa-solid fa-bolt" style="margin-right:4px;"></i>' : ''}${metin}</span>`;
   }
 
   // "En Cok Kullanilanlar" sekmesinde hangi platform butonlari gorunecek?

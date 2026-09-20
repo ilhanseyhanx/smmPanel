@@ -124,12 +124,14 @@ test('tek siparişi olan servis de süre gösterir (eşik 1)', async () => {
   assert.equal(stats[servisB]?.completed_count, 2);
 });
 
-test('güvenilir örnek eşiği altındaki ölçümler işaretlenebilir', async () => {
+test('ölçüm sayısı gönderilir ama vitrinde görsel ayrım yapılmaz', async () => {
+  // Az olcumden gelen deger de gercek bir olcumdur; tabloda tek tip gorunur
+  // (kullanici karari). Sayi yine de API'de tasinir: admin tarafi ve ileride
+  // yapilacak degerlendirmeler icin gerekli.
   const stats = await getServiceStats();
-  // Vitrin, completed_count < GUVENILIR_ORNEK olan degerlerin basina ~ koyar.
-  assert.equal(GUVENILIR_ORNEK, 3);
-  assert.ok(stats[servisB].completed_count < GUVENILIR_ORNEK, 'B yaklasik sayilmaliydi');
-  assert.ok(stats[servisA].completed_count >= GUVENILIR_ORNEK, 'A kesin sayilmaliydi');
+  assert.equal(typeof stats[servisA].completed_count, 'number');
+  assert.equal(typeof stats[servisB].completed_count, 'number');
+  assert.ok(GUVENILIR_ORNEK > 0, 'sabit kaldirilmis');
 });
 
 test('popülerlik kişi-gün olarak sayılır: aynı kişi aynı gün = 1', async () => {

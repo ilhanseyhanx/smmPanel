@@ -58,6 +58,10 @@ async function applyProviderStatus(orderId, providerStatus) {
     }
 
     if (newStatus !== order.status && ['completed', 'partial', 'canceled'].includes(newStatus)) {
+      // Katalogdaki "Ortalama sure" ve "En Cok Kullanilanlar" siralamasi bu
+      // siparisten etkilenir; 5 dakikalik onbellegin dolmasini beklemeden
+      // tazelensin ki vitrin gecikmeli veri gostermesin.
+      try { require('./serviceStats').invalidateServiceStats(); } catch { /* istatistik sart degil */ }
       const service = await tx.get('SELECT name FROM services WHERE id = ?', [order.service_id]);
       // Bayi musterisinin siparisi sahibine "siparisin bitti" diye bildirilmez.
       const isTenantOrder = Boolean(order.tenant_id);

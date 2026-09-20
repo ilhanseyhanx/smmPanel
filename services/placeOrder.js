@@ -191,6 +191,9 @@ async function placeOrder({
       await tx.run('UPDATE tenant_balance_logs SET order_id = ? WHERE id = ?', [order.id, tenantLogId]);
       await tx.run('UPDATE tenants SET last_order_at = CURRENT_TIMESTAMP WHERE id = ?', [tenant.id]);
     }
+    // Yeni siparis "En Cok Kullanilanlar" siralamasini degistirebilir; katalog
+    // onbellegi tazelensin (bkz. services/serviceStats.js).
+    try { require('./serviceStats').invalidateServiceStats(); } catch { /* istatistik sart degil */ }
     return {
       service,
       chargeKurus,

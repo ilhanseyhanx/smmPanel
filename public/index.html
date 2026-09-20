@@ -1646,99 +1646,229 @@ Canceled     iptal edildi</pre>
           </div>
 
           <div id="admin-tab-statistics" style="display: none;">
-            <div class="flex-between mb-20">
+            <div class="flex-between mb-20" style="flex-wrap: wrap; gap: 12px;">
               <div>
                 <h2>📊 İstatistikler</h2>
-                <p style="font-size: 0.88rem; color: var(--text-muted);">Ziyaretçi sayıları, satın alınan servisler ve blog okunmaları.</p>
+                <p style="font-size: 0.88rem; color: var(--text-muted);">Ziyaretçiler nereden geliyor, hangi sayfa çalışıyor, ne kadarı müşteriye dönüyor.</p>
               </div>
-              <button class="btn btn-cyan btn-sm" onclick="app.loadAdminStatistics()">
-                <i class="fa-solid fa-rotate"></i> Yenile
-              </button>
-            </div>
-
-            <!-- TEKIL ZIYARETCI -->
-            <div class="stats-grid mb-20">
-              <div class="glass-card stat-card">
-                <div class="stat-icon"><i class="fa-solid fa-user-clock"></i></div>
-                <div>
-                  <div class="stat-val" id="stat-visitors-daily">0</div>
-                  <div class="stat-lbl">Bugün (tekil ziyaretçi)</div>
-                </div>
-              </div>
-              <div class="glass-card stat-card">
-                <div class="stat-icon cyan"><i class="fa-solid fa-calendar-week"></i></div>
-                <div>
-                  <div class="stat-val" id="stat-visitors-weekly">0</div>
-                  <div class="stat-lbl">Son 7 gün (tekil)</div>
-                </div>
-              </div>
-              <div class="glass-card stat-card">
-                <div class="stat-icon green"><i class="fa-solid fa-calendar-days"></i></div>
-                <div>
-                  <div class="stat-val" id="stat-visitors-monthly">0</div>
-                  <div class="stat-lbl">Son 30 gün (tekil)</div>
-                </div>
-              </div>
-              <div class="glass-card stat-card">
-                <div class="stat-icon"><i class="fa-solid fa-users-viewfinder"></i></div>
-                <div>
-                  <div class="stat-val" id="stat-visitors-total">0</div>
-                  <div class="stat-lbl">Tüm zamanlar (tekil)</div>
-                </div>
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <select id="stat-window-select" class="form-control" style="width: 150px;" aria-label="Zaman aralığı" onchange="app.loadAdminStatistics()">
+                  <option value="7">Son 7 gün</option>
+                  <option value="30" selected>Son 30 gün</option>
+                  <option value="90">Son 90 gün</option>
+                </select>
+                <button class="btn btn-cyan btn-sm" onclick="app.loadAdminStatistics()">
+                  <i class="fa-solid fa-rotate"></i> Yenile
+                </button>
               </div>
             </div>
 
-            <!-- SATIN ALINAN SERVISLER -->
-            <div class="glass-card mb-20">
-              <div class="flex-between mb-15" style="flex-wrap: wrap; gap: 10px;">
-                <h3 style="font-size: 1.05rem;"><i class="fa-solid fa-cart-shopping"></i> Satın Alınan Servisler</h3>
-                <span id="stat-services-summary" style="font-size: .82rem; color: var(--text-muted);"></span>
-              </div>
-              <div class="table-responsive">
-                <table class="custom-table">
-                  <thead>
-                    <tr>
-                      <th scope="col" style="width:60px;">#</th>
-                      <th scope="col">Servis</th>
-                      <th scope="col">Kategori</th>
-                      <th scope="col">Sağlayıcı</th>
-                      <th scope="col" style="width:130px;">Sipariş Sayısı</th>
-                      <th scope="col" style="width:130px;">Toplam Adet</th>
-                      <th scope="col" style="width:130px;">Net Ciro</th>
-                      <th scope="col" style="width:150px;">Son Sipariş</th>
-                    </tr>
-                  </thead>
-                  <tbody id="stat-services-tbody"></tbody>
-                </table>
-              </div>
-              <div id="stat-services-pagination" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:14px 4px 4px;"></div>
+            <!-- ALT SEKMELER: her alan kendi ekraninda -->
+            <div class="platform-tabs mb-20" style="justify-content: flex-start;">
+              <button type="button" class="tab-btn active" data-stat-tab="ozet" onclick="app.switchStatTab('ozet', event)"><i class="fa-solid fa-gauge-high"></i> Genel Bakış</button>
+              <button type="button" class="tab-btn" data-stat-tab="trafik" onclick="app.switchStatTab('trafik', event)"><i class="fa-solid fa-signs-post"></i> Trafik Kaynağı</button>
+              <button type="button" class="tab-btn" data-stat-tab="satis" onclick="app.switchStatTab('satis', event)"><i class="fa-solid fa-store"></i> Satış Sayfaları</button>
+              <button type="button" class="tab-btn" data-stat-tab="blog" onclick="app.switchStatTab('blog', event)"><i class="fa-solid fa-newspaper"></i> Blog</button>
+              <button type="button" class="tab-btn" data-stat-tab="servis" onclick="app.switchStatTab('servis', event)"><i class="fa-solid fa-cart-shopping"></i> Servisler</button>
             </div>
 
-            <!-- BLOG OKUNMALARI -->
-            <div class="glass-card">
-              <div class="flex-between mb-15" style="flex-wrap: wrap; gap: 10px;">
-                <h3 style="font-size: 1.05rem;"><i class="fa-solid fa-newspaper"></i> Blog Yazıları — Görüntülenme</h3>
-                <span id="stat-blog-summary" style="font-size: .82rem; color: var(--text-muted);"></span>
+            <!-- ============ PANEL: GENEL BAKIS ============ -->
+            <div class="stat-panel" id="stat-panel-ozet">
+              <div class="stats-grid mb-20">
+                <div class="glass-card stat-card">
+                  <div class="stat-icon"><i class="fa-solid fa-user-clock"></i></div>
+                  <div>
+                    <div class="stat-val" id="stat-visitors-daily">0</div>
+                    <div class="stat-lbl">Bugün (tekil ziyaretçi)</div>
+                  </div>
+                </div>
+                <div class="glass-card stat-card">
+                  <div class="stat-icon cyan"><i class="fa-solid fa-calendar-week"></i></div>
+                  <div>
+                    <div class="stat-val" id="stat-visitors-weekly">0</div>
+                    <div class="stat-lbl">Son 7 gün (tekil)</div>
+                  </div>
+                </div>
+                <div class="glass-card stat-card">
+                  <div class="stat-icon green"><i class="fa-solid fa-calendar-days"></i></div>
+                  <div>
+                    <div class="stat-val" id="stat-visitors-monthly">0</div>
+                    <div class="stat-lbl">Son 30 gün (tekil)</div>
+                  </div>
+                </div>
+                <div class="glass-card stat-card">
+                  <div class="stat-icon"><i class="fa-solid fa-users-viewfinder"></i></div>
+                  <div>
+                    <div class="stat-val" id="stat-visitors-total">0</div>
+                    <div class="stat-lbl">Tüm zamanlar (tekil)</div>
+                  </div>
+                </div>
               </div>
-              <div class="table-responsive">
-                <table class="custom-table">
-                  <thead>
-                    <tr>
-                      <th scope="col" style="width:60px;">#</th>
-                      <th scope="col">Başlık</th>
-                      <th scope="col">Kategori</th>
-                      <th scope="col" style="width:110px;">Durum</th>
-                      <th scope="col" style="width:150px;">Görüntülenme</th>
-                      <th scope="col" style="width:140px;">Yayın Tarihi</th>
-                    </tr>
-                  </thead>
-                  <tbody id="stat-blog-tbody"></tbody>
-                </table>
+
+              <!-- DONUSUM HUNISI: ziyaretciden paraya giden yol -->
+              <div class="glass-card mb-20">
+                <div class="flex-between mb-15" style="flex-wrap: wrap; gap: 10px;">
+                  <h3 style="font-size: 1.05rem;"><i class="fa-solid fa-filter-circle-dollar"></i> Dönüşüm Hunisi</h3>
+                  <span id="stat-funnel-note" style="font-size: .82rem; color: var(--text-muted);"></span>
+                </div>
+                <div id="stat-funnel"></div>
+                <p style="font-size: .78rem; color: var(--text-dim); margin: 14px 0 0;">
+                  Admin hesabı (kendi test siparişlerin) bu hesaba katılmaz.
+                </p>
               </div>
-              <div id="stat-blog-pagination" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:14px 4px 4px;"></div>
+
+              <!-- GELIR VE KAYIT TRENDI -->
+              <div class="glass-card">
+                <div class="flex-between mb-15" style="flex-wrap: wrap; gap: 10px;">
+                  <h3 style="font-size: 1.05rem;"><i class="fa-solid fa-chart-line"></i> Para Girişi ve Yeni Kayıtlar</h3>
+                  <span id="stat-growth-summary" style="font-size: .82rem; color: var(--text-muted);"></span>
+                </div>
+                <div class="table-responsive">
+                  <table class="custom-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Gün</th>
+                        <th scope="col" style="width:150px;">Para Girişi</th>
+                        <th scope="col" style="width:130px;">Kupon</th>
+                        <th scope="col" style="width:130px;">Yeni Kayıt</th>
+                        <th scope="col" style="width:130px;">Ziyaretçi</th>
+                      </tr>
+                    </thead>
+                    <tbody id="stat-growth-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- ============ PANEL: TRAFIK KAYNAGI ============ -->
+            <div class="stat-panel" id="stat-panel-trafik" style="display: none;">
+              <div id="stat-traffic-coverage" class="glass-card mb-20" style="display:none; padding: 14px 20px; background: rgba(33,169,246,.08); border: 1px solid rgba(33,169,246,.25);"></div>
+
+              <div class="stats-grid mb-20" id="stat-channel-cards"></div>
+
+              <div class="glass-card mb-20">
+                <div class="flex-between mb-15" style="flex-wrap: wrap; gap: 10px;">
+                  <h3 style="font-size: 1.05rem;"><i class="fa-solid fa-link"></i> Hangi Siteler Ziyaretçi Getirdi?</h3>
+                  <span id="stat-domains-summary" style="font-size: .82rem; color: var(--text-muted);"></span>
+                </div>
+                <div class="table-responsive">
+                  <table class="custom-table">
+                    <thead>
+                      <tr>
+                        <th scope="col" style="width:60px;">#</th>
+                        <th scope="col">Kaynak Site</th>
+                        <th scope="col" style="width:150px;">Kanal</th>
+                        <th scope="col" style="width:150px;">Tekil Ziyaretçi</th>
+                      </tr>
+                    </thead>
+                    <tbody id="stat-domains-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="glass-card">
+                <div class="flex-between mb-15" style="flex-wrap: wrap; gap: 10px;">
+                  <h3 style="font-size: 1.05rem;"><i class="fa-solid fa-door-open"></i> Ziyaretçiler Hangi Sayfadan Girdi?</h3>
+                  <span style="font-size: .82rem; color: var(--text-muted);">Siteye ilk adım attıkları sayfa</span>
+                </div>
+                <div class="table-responsive">
+                  <table class="custom-table">
+                    <thead>
+                      <tr>
+                        <th scope="col" style="width:60px;">#</th>
+                        <th scope="col">Giriş Sayfası</th>
+                        <th scope="col" style="width:150px;">Tekil Ziyaretçi</th>
+                      </tr>
+                    </thead>
+                    <tbody id="stat-landing-entry-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- ============ PANEL: SATIS SAYFALARI ============ -->
+            <div class="stat-panel" id="stat-panel-satis" style="display: none;">
+              <div class="glass-card">
+                <div class="flex-between mb-15" style="flex-wrap: wrap; gap: 10px;">
+                  <h3 style="font-size: 1.05rem;"><i class="fa-solid fa-store"></i> Satış Sayfaları — Görüntülenme</h3>
+                  <span id="stat-landing-summary" style="font-size: .82rem; color: var(--text-muted);"></span>
+                </div>
+                <div class="table-responsive">
+                  <table class="custom-table">
+                    <thead>
+                      <tr>
+                        <th scope="col" style="width:60px;">#</th>
+                        <th scope="col">Sayfa</th>
+                        <th scope="col" style="width:110px;">Durum</th>
+                        <th scope="col" style="width:140px;">Görüntülenme</th>
+                        <th scope="col" style="width:160px;">Dışarıdan Gelen</th>
+                        <th scope="col" style="width:140px;">Yayın Tarihi</th>
+                      </tr>
+                    </thead>
+                    <tbody id="stat-landing-tbody"></tbody>
+                  </table>
+                </div>
+                <p style="font-size: .78rem; color: var(--text-dim); margin: 14px 4px 0;">
+                  <strong>Görüntülenme</strong>: sayfanın toplam açılma sayısı (site içi gezinme dâhil).
+                  <strong>Dışarıdan gelen</strong>: siteye doğrudan bu sayfadan giren tekil ziyaretçi — sayfanın kendi başına müşteri çekip çekmediğini gösterir.
+                </p>
+              </div>
+            </div>
+
+            <!-- ============ PANEL: BLOG ============ -->
+            <div class="stat-panel" id="stat-panel-blog" style="display: none;">
+              <div class="glass-card">
+                <div class="flex-between mb-15" style="flex-wrap: wrap; gap: 10px;">
+                  <h3 style="font-size: 1.05rem;"><i class="fa-solid fa-newspaper"></i> Blog Yazıları — Görüntülenme</h3>
+                  <span id="stat-blog-summary" style="font-size: .82rem; color: var(--text-muted);"></span>
+                </div>
+                <div class="table-responsive">
+                  <table class="custom-table">
+                    <thead>
+                      <tr>
+                        <th scope="col" style="width:60px;">#</th>
+                        <th scope="col">Başlık</th>
+                        <th scope="col">Kategori</th>
+                        <th scope="col" style="width:110px;">Durum</th>
+                        <th scope="col" style="width:150px;">Görüntülenme</th>
+                        <th scope="col" style="width:140px;">Yayın Tarihi</th>
+                      </tr>
+                    </thead>
+                    <tbody id="stat-blog-tbody"></tbody>
+                  </table>
+                </div>
+                <div id="stat-blog-pagination" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:14px 4px 4px;"></div>
+              </div>
+            </div>
+
+            <!-- ============ PANEL: SERVISLER ============ -->
+            <div class="stat-panel" id="stat-panel-servis" style="display: none;">
+              <div class="glass-card">
+                <div class="flex-between mb-15" style="flex-wrap: wrap; gap: 10px;">
+                  <h3 style="font-size: 1.05rem;"><i class="fa-solid fa-cart-shopping"></i> Satın Alınan Servisler</h3>
+                  <span id="stat-services-summary" style="font-size: .82rem; color: var(--text-muted);"></span>
+                </div>
+                <div class="table-responsive">
+                  <table class="custom-table">
+                    <thead>
+                      <tr>
+                        <th scope="col" style="width:60px;">#</th>
+                        <th scope="col">Servis</th>
+                        <th scope="col">Kategori</th>
+                        <th scope="col">Sağlayıcı</th>
+                        <th scope="col" style="width:130px;">Sipariş Sayısı</th>
+                        <th scope="col" style="width:130px;">Toplam Adet</th>
+                        <th scope="col" style="width:130px;">Net Ciro</th>
+                        <th scope="col" style="width:150px;">Son Sipariş</th>
+                      </tr>
+                    </thead>
+                    <tbody id="stat-services-tbody"></tbody>
+                  </table>
+                </div>
+                <div id="stat-services-pagination" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:14px 4px 4px;"></div>
+              </div>
             </div>
           </div>
-
           <div id="admin-tab-services" style="display: none;">
             <div class="flex-between mb-20">
               <div>

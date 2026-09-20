@@ -1147,9 +1147,12 @@ router.post('/services/bulk-status', validate(bulkStatusSchema), async (req, res
 // ---------------------------------------------------------------------------
 router.get('/statistics', async (req, res) => {
   try {
-    const { getVisitorStats } = require('../services/visitorTracker');
+    const { getVisitorStats, getTrafficSources } = require('../services/visitorTracker');
+    // Trafik penceresi panelden secilebilir (7 / 30 / 90 gun).
+    const pencere = Math.max(1, Math.min(365, Number(req.query.days) || 30));
 
-    const [visitors, services, blogPosts, orderTotals] = await Promise.all([
+    const [visitors, services, blogPosts, orderTotals,
+      traffic, landingPages, userSeries, revenueSeries, funnel] = await Promise.all([
       getVisitorStats(),
 
       // Yalnizca SATIN ALINMIS servisler: orders ile JOIN edildigi icin hic
@@ -1183,7 +1186,51 @@ router.get('/statistics', async (req, res) => {
       dbAsync.get(`
         SELECT COUNT(*) AS orders, COUNT(DISTINCT service_id) AS services
         FROM orders WHERE status NOT IN ('canceled', 'failed')
-      `)
+      `),
+
+      // --- Trafik kaynagi (20 Eyl 2026) --------------------------------
+      getTrafficSources(pencere),
+
+      // --- Satis sayfalari: goruntulenme + o sayfaya dusen ziyaretci ----
+      // views sutunu her SSR acilisinda artar (server.js); landing_path ise
+      // ziyaretcinin GIRIS yaptigi sayfadir. Ikisi farkli seyi olcer:
+      // biri toplam acilis, digeri "bu sayfa disaridan kac kisi getirdi".
+      dbAsync.all(`
+        SELECT lp.slug, lp.status, lp.title_tr AS title, COALESCE(lp.views, 0) AS views,
+               lp.published_at,
+               (SELECT COUNT(DISTINCT sv.visitor_hash) FROM site_visits sv
+                 WHERE sv.landing_path = '/' || lp.slug) AS entry_visitors
+        FROM landing_pages lp
+        ORDER BY COALESCE(lp.views, 0) DESC, lp.id DESC
+      `).catch(() => []),
+
+      // --- Kullanici kazanimi (gunluk) ---------------------------------
+      dbAsync.all(`
+        SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS users
+        FROM users WHERE created_at >= date('now', ?) GROUP BY day ORDER BY day
+      `, [`-${pencere - 1} days`]).catch(() => []),
+
+      // --- Gelir (gunluk, GERCEK para girisi) ---------------------------
+      // payments tablosu hem kart hem havale hem kupon hareketini tutar;
+      // kupon bir gelir degil pazarlama maliyetidir, ayri gosterilir.
+      dbAsync.all(`
+        SELECT substr(created_at, 1, 10) AS day,
+               SUM(CASE WHEN method LIKE 'Kupon%' THEN 0 ELSE amount_kurus END) AS revenue_kurus,
+               SUM(CASE WHEN method LIKE 'Kupon%' THEN amount_kurus ELSE 0 END) AS coupon_kurus,
+               COUNT(*) AS count
+        FROM payments WHERE created_at >= date('now', ?) GROUP BY day ORDER BY day
+      `, [`-${pencere - 1} days`]).catch(() => []),
+
+      // --- Donusum hunisi ------------------------------------------------
+      // Ziyaretci -> kayit -> siparis veren -> para yatiran. Admin (id=1)
+      // haric tutulur; kendi testlerin gercek donusumu bozmasin.
+      dbAsync.get(`
+        SELECT
+          (SELECT COUNT(DISTINCT visitor_hash) FROM site_visits WHERE visit_date >= date('now', ?)) AS visitors,
+          (SELECT COUNT(*) FROM users WHERE id != 1 AND created_at >= date('now', ?)) AS signups,
+          (SELECT COUNT(DISTINCT user_id) FROM orders WHERE user_id != 1 AND created_at >= date('now', ?)) AS buyers,
+          (SELECT COUNT(DISTINCT user_id) FROM payments WHERE user_id != 1 AND method NOT LIKE 'Kupon%' AND created_at >= date('now', ?)) AS payers
+      `, [`-${pencere - 1} days`, `-${pencere - 1} days`, `-${pencere - 1} days`, `-${pencere - 1} days`]).catch(() => null)
     ]);
 
     res.json({
@@ -1200,7 +1247,24 @@ router.get('/statistics', async (req, res) => {
       totals: {
         purchased_services: orderTotals?.services || 0,
         valid_orders: orderTotals?.orders || 0
-      }
+      },
+      window_days: pencere,
+      traffic,
+      landing: {
+        pages: landingPages,
+        published: landingPages.filter(p => p.status === 'published').length,
+        total_views: landingPages.reduce((sum, p) => sum + (p.views || 0), 0)
+      },
+      growth: {
+        users: userSeries,
+        revenue: revenueSeries.map(r => ({
+          day: r.day,
+          revenue: fromKurus(r.revenue_kurus || 0),
+          coupon: fromKurus(r.coupon_kurus || 0),
+          count: r.count
+        }))
+      },
+      funnel: funnel || { visitors: 0, signups: 0, buyers: 0, payers: 0 }
     });
   } catch (err) {
     res.status(500).json({ error: 'İstatistikler alınamadı.' });

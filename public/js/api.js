@@ -174,7 +174,7 @@ const API = {
   getHealthErrors: (pencere) => API.request(`/admin/health/errors?window=${encodeURIComponent(pencere || '24h')}`),
   // Faz 3 - SEO & Crawler: bot ziyaretleri, sitemap tutarliligi, IndexNow.
   getHealthSeo: (pencere) => API.request(`/admin/health/seo?window=${encodeURIComponent(pencere || '24h')}`),
-  getAdminStatistics: () => API.request('/admin/statistics'),
+  getAdminStatistics: (days = 30) => API.request(`/admin/statistics?days=${encodeURIComponent(days)}`),
   getAdminProviders: () => API.request('/admin/providers'),
   addAdminProvider: (name, api_url, api_key) => API.request('/admin/providers', { method: 'POST', body: JSON.stringify({ name, api_url, api_key }) }),
   deleteAdminProvider: (id) => API.request(`/admin/providers/${id}`, { method: 'DELETE' }),

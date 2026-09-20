@@ -674,6 +674,19 @@ async function runMigrations() {
     WHERE refill_status IN ('requested', 'processing')
       AND NOT EXISTS (SELECT 1 FROM order_refills r WHERE r.order_id = orders.id)`);
 
+  // TRAFIK KAYNAGI (20 Eyl 2026): ziyaretcinin siteye NEREDEN geldigi.
+  // Search Console'da 36 gunde 17 tiklama gorunurken sitede 6.871 ziyaret
+  // vardi; yani trafigin neredeyse tamami Google disindan geliyordu ve hangi
+  // kanal oldugu olculmuyordu. Bu uc alan o boslugu kapatir.
+  //
+  // GIZLILIK: ham IP zaten saklanmiyor (bkz. services/visitorTracker.js).
+  // Referans icin de TAM ADRES saklanmaz, yalnizca alan adi (host) tutulur;
+  // arama sorgusu, kullanici kimligi veya izleme parametreleri kaydedilmez.
+  await addColumnIfMissing('site_visits', 'referrer_host', 'TEXT');
+  await addColumnIfMissing('site_visits', 'source_type', 'TEXT');
+  await addColumnIfMissing('site_visits', 'landing_path', 'TEXT');
+  await dbAsync.run('CREATE INDEX IF NOT EXISTS idx_site_visits_source ON site_visits(source_type, visit_date)');
+
   const admins = await dbAsync.all("SELECT id, password FROM users WHERE role = 'admin' AND must_change_password = 0");
   for (const admin of admins) {
     if (await bcrypt.compare('admin123', admin.password)) {

@@ -3315,6 +3315,18 @@ class SmmApp {
     this.renderStatPagination('stat-blog-pagination', list.length, page, 'setStatBlogPage');
   }
 
+  // Istatistik alt sekmeleri: her alan kendi ekraninda durur, veri tek
+  // istekte gelir; sekme degistirmek sunucuya tekrar gitmez.
+  switchStatTab(tab, event) {
+    document.querySelectorAll('#admin-tab-statistics .tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.statTab === tab);
+    });
+    document.querySelectorAll('#admin-tab-statistics .stat-panel').forEach(panel => {
+      panel.style.display = panel.id === `stat-panel-${tab}` ? '' : 'none';
+    });
+    if (event) event.preventDefault();
+  }
+
   async loadAdminStatistics() {
     const servicesTbody = document.getElementById('stat-services-tbody');
     const blogTbody = document.getElementById('stat-blog-tbody');
@@ -3324,14 +3336,21 @@ class SmmApp {
     blogTbody.innerHTML = '<tr><td colspan="6" class="text-center"><i class="fa-solid fa-spinner fa-spin"></i> Yükleniyor...</td></tr>';
 
     try {
-      const data = await API.getAdminStatistics();
+      const gun = Number(document.getElementById('stat-window-select')?.value) || 30;
+      const data = await API.getAdminStatistics(gun);
       const sayi = n => Number(n || 0).toLocaleString('tr-TR');
+      const para = n => '₺' + Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const setText = (id, value) => { const el = document.getElementById(id); if (el) el.innerText = value; };
 
       setText('stat-visitors-daily', sayi(data.visitors.daily));
       setText('stat-visitors-weekly', sayi(data.visitors.weekly));
       setText('stat-visitors-monthly', sayi(data.visitors.monthly));
       setText('stat-visitors-total', sayi(data.visitors.total));
+
+      this.renderStatFunnel(data, sayi);
+      this.renderStatGrowth(data, sayi, para);
+      this.renderStatTraffic(data, sayi);
+      this.renderStatLandingPages(data, sayi);
 
       // Veriyi sakla; sayfa degistirilirken sunucuya tekrar gidilmez.
       this.statServices = data.services || [];
@@ -3355,6 +3374,165 @@ class SmmApp {
       servicesTbody.innerHTML = `<tr><td colspan="8" class="text-center" style="color:var(--danger);">${this.escapeHtml(err.message)}</td></tr>`;
       blogTbody.innerHTML = `<tr><td colspan="6" class="text-center" style="color:var(--danger);">İstatistikler yüklenemedi.</td></tr>`;
     }
+  }
+
+  // --- Donusum hunisi: ziyaretciden paraya giden yol -------------------------
+  renderStatFunnel(data, sayi) {
+    const kap = document.getElementById('stat-funnel');
+    if (!kap) return;
+    const f = data.funnel || {};
+    const adimlar = [
+      { ad: 'Ziyaretçi', deger: f.visitors || 0, renk: '#21a9f6', ipucu: 'Siteyi açan tekil kişi' },
+      { ad: 'Kayıt oldu', deger: f.signups || 0, renk: '#8b5cf6', ipucu: 'Hesap açan kişi' },
+      { ad: 'Sipariş verdi', deger: f.buyers || 0, renk: '#f59e0b', ipucu: 'En az bir sipariş veren' },
+      { ad: 'Para yatırdı', deger: f.payers || 0, renk: '#22c55e', ipucu: 'Kart veya havale ile bakiye yükleyen' }
+    ];
+    const enBuyuk = Math.max(1, ...adimlar.map(a => a.deger));
+    kap.innerHTML = adimlar.map((a, i) => {
+      const onceki = i === 0 ? null : adimlar[i - 1].deger;
+      const oran = onceki ? (onceki ? Math.round(a.deger / onceki * 100) : 0) : null;
+      const genislik = Math.max(4, Math.round(a.deger / enBuyuk * 100));
+      return `<div style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:5px; flex-wrap:wrap;">
+          <span style="font-weight:600;">${a.ad}
+            <small style="color:var(--text-dim); font-weight:400;">— ${this.escapeHtml(a.ipucu)}</small></span>
+          <span style="font-weight:700;">${sayi(a.deger)}${oran !== null ? ` <small style="color:var(--text-muted); font-weight:500;">(önceki adımın %${oran}'i)</small>` : ''}</span>
+        </div>
+        <div style="height:12px; border-radius:6px; background:rgba(255,255,255,.07); overflow:hidden;">
+          <div style="height:100%; width:${genislik}%; background:${a.renk}; border-radius:6px;"></div>
+        </div>
+      </div>`;
+    }).join('');
+
+    const not = document.getElementById('stat-funnel-note');
+    if (not) {
+      const z = f.visitors || 0, p = f.payers || 0;
+      not.innerText = z
+        ? `Son ${data.window_days} gün · ziyaretçinin %${(p / z * 100).toFixed(1)}'i para yatırdı`
+        : `Son ${data.window_days} gün`;
+    }
+  }
+
+  // --- Gelir + kayit + ziyaretci trendi -------------------------------------
+  renderStatGrowth(data, sayi, para) {
+    const tbody = document.getElementById('stat-growth-tbody');
+    if (!tbody) return;
+    const gelir = new Map((data.growth?.revenue || []).map(r => [r.day, r]));
+    const kayit = new Map((data.growth?.users || []).map(r => [r.day, r.users]));
+    const ziyaret = new Map((data.visitors?.series || []).map(r => [r.day, r.visitors]));
+
+    const gunler = [...new Set([...gelir.keys(), ...kayit.keys(), ...ziyaret.keys()])].sort().reverse();
+    if (!gunler.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center" style="color:var(--text-muted);">Bu aralıkta veri yok.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = gunler.slice(0, 60).map(g => {
+      const r = gelir.get(g);
+      const tutar = r?.revenue || 0;
+      return `<tr>
+        <td>${this.escapeHtml(g)}</td>
+        <td style="font-weight:${tutar ? '700' : '400'}; color:${tutar ? 'var(--success, #22c55e)' : 'var(--text-dim)'};">${para(tutar)}</td>
+        <td style="color:var(--text-muted);">${r?.coupon ? para(r.coupon) : '—'}</td>
+        <td>${sayi(kayit.get(g) || 0)}</td>
+        <td style="color:var(--text-muted);">${sayi(ziyaret.get(g) || 0)}</td>
+      </tr>`;
+    }).join('');
+
+    const toplamGelir = (data.growth?.revenue || []).reduce((s, r) => s + (r.revenue || 0), 0);
+    const toplamKayit = (data.growth?.users || []).reduce((s, r) => s + (r.users || 0), 0);
+    const ozet = document.getElementById('stat-growth-summary');
+    if (ozet) ozet.innerText = `Son ${data.window_days} gün · ${para(toplamGelir)} para girişi · ${sayi(toplamKayit)} yeni kayıt`;
+  }
+
+  // --- Trafik kaynagi -------------------------------------------------------
+  renderStatTraffic(data, sayi) {
+    const t = data.traffic || {};
+    const etiket = {
+      arama: { ad: 'Arama Motoru', ikon: 'fa-magnifying-glass', renk: '' },
+      sosyal: { ad: 'Sosyal Medya', ikon: 'fa-share-nodes', renk: 'cyan' },
+      yonlendiren: { ad: 'Başka Siteler', ikon: 'fa-arrow-right-arrow-left', renk: 'green' },
+      dogrudan: { ad: 'Doğrudan', ikon: 'fa-link-slash', renk: '' },
+      bilinmiyor: { ad: 'Kayıt Öncesi', ikon: 'fa-circle-question', renk: '' }
+    };
+
+    const kartlar = document.getElementById('stat-channel-cards');
+    if (kartlar) {
+      const kanallar = t.channels || [];
+      kartlar.innerHTML = kanallar.length ? kanallar.map(k => {
+        const e = etiket[k.type] || { ad: k.type, ikon: 'fa-circle-question', renk: '' };
+        return `<div class="glass-card stat-card">
+          <div class="stat-icon ${e.renk}"><i class="fa-solid ${e.ikon}"></i></div>
+          <div>
+            <div class="stat-val">${sayi(k.visitors)}</div>
+            <div class="stat-lbl">${this.escapeHtml(e.ad)} — %${k.share}</div>
+          </div>
+        </div>`;
+      }).join('') : '<div class="glass-card" style="padding:18px; color:var(--text-muted);">Bu aralıkta kaynak verisi yok.</div>';
+    }
+
+    // Kolonlar 20 Eyl 2026'da eklendi; oncesindeki ziyaretlerde kaynak yok.
+    const uyari = document.getElementById('stat-traffic-coverage');
+    if (uyari) {
+      const c = t.coverage || {};
+      if (c.without_source > 0) {
+        uyari.style.display = '';
+        uyari.innerHTML = `<i class="fa-solid fa-circle-info"></i>
+          Kaynak takibi <strong>20 Eylül 2026</strong>'da açıldı. Bu aralıktaki
+          ${sayi(c.total_rows)} ziyaret kaydının ${sayi(c.without_source)} tanesi daha eskidir ve
+          "Kayıt Öncesi" olarak görünür. Birkaç gün içinde tablo tamamen dolacak.`;
+      } else {
+        uyari.style.display = 'none';
+      }
+    }
+
+    const domTbody = document.getElementById('stat-domains-tbody');
+    if (domTbody) {
+      const d = t.domains || [];
+      domTbody.innerHTML = d.length ? d.map((r, i) => `<tr>
+        <td style="color:var(--text-dim);">${i + 1}</td>
+        <td style="font-weight:600;">${this.escapeHtml(r.host)}</td>
+        <td><span class="badge">${this.escapeHtml((etiket[r.type] || {}).ad || r.type)}</span></td>
+        <td style="font-weight:700;">${sayi(r.visitors)}</td>
+      </tr>`).join('')
+        : '<tr><td colspan="4" class="text-center" style="color:var(--text-muted);">Henüz yönlendiren site kaydı yok. Ziyaretçilerin tamamı doğrudan geliyor olabilir.</td></tr>';
+      const ozet = document.getElementById('stat-domains-summary');
+      if (ozet) ozet.innerText = `Son ${t.window_days || data.window_days} gün · ${sayi(t.total_visitors || 0)} tekil ziyaretçi`;
+    }
+
+    const girisTbody = document.getElementById('stat-landing-entry-tbody');
+    if (girisTbody) {
+      const g = t.landing_pages || [];
+      girisTbody.innerHTML = g.length ? g.map((r, i) => `<tr>
+        <td style="color:var(--text-dim);">${i + 1}</td>
+        <td><a href="${this.escapeHtml(r.path)}" target="_blank" rel="noopener">${this.escapeHtml(r.path)}</a></td>
+        <td style="font-weight:700;">${sayi(r.visitors)}</td>
+      </tr>`).join('')
+        : '<tr><td colspan="3" class="text-center" style="color:var(--text-muted);">Bu aralıkta giriş sayfası verisi yok.</td></tr>';
+    }
+  }
+
+  // --- Satis sayfalari ------------------------------------------------------
+  renderStatLandingPages(data, sayi) {
+    const tbody = document.getElementById('stat-landing-tbody');
+    if (!tbody) return;
+    const sayfalar = data.landing?.pages || [];
+    tbody.innerHTML = sayfalar.length ? sayfalar.map((p, i) => `<tr>
+      <td style="color:var(--text-dim);">${i + 1}</td>
+      <td>
+        <a href="/${this.escapeHtml(p.slug)}" target="_blank" rel="noopener" style="font-weight:600;">${this.escapeHtml(p.title || p.slug)}</a>
+        <div style="font-size:.76rem; color:var(--text-dim);">/${this.escapeHtml(p.slug)}</div>
+      </td>
+      <td>${p.status === 'published'
+        ? '<span class="badge badge-success">Yayında</span>'
+        : '<span class="badge">Taslak</span>'}</td>
+      <td style="font-weight:700;">${sayi(p.views)}</td>
+      <td style="color:${p.entry_visitors ? 'var(--success, #22c55e)' : 'var(--text-dim)'}; font-weight:${p.entry_visitors ? '700' : '400'};">${sayi(p.entry_visitors)}</td>
+      <td style="color:var(--text-muted);">${p.published_at ? this.escapeHtml(String(p.published_at).slice(0, 10)) : '—'}</td>
+    </tr>`).join('')
+      : '<tr><td colspan="6" class="text-center" style="color:var(--text-muted);">Henüz satış sayfası yok.</td></tr>';
+
+    const ozet = document.getElementById('stat-landing-summary');
+    if (ozet) ozet.innerText = `${sayi(sayfalar.length)} sayfa · ${sayi(data.landing?.published || 0)} yayında · toplam ${sayi(data.landing?.total_views || 0)} görüntülenme`;
   }
 
   async loadAdminStats() {

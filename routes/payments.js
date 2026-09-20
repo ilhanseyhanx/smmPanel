@@ -1,4 +1,5 @@
 const express = require('express');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { z } = require('zod');
 const { dbAsync, withTransaction } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
@@ -16,6 +17,36 @@ const { activeDepositBonus } = require('../services/campaigns');
 const healthEvents = require('../services/healthEvents');
 
 const router = express.Router();
+
+// ---------------------------------------------------------------------------
+// ODEME BASLATMA HIZ SINIRI (20 Eyl 2026)
+// Her odeme baslatma istegi saglayicida gercek bir kayit yaratir: Shopier'de
+// magazaya bir URUN eklenir, PayTR'de token alinir. Genel /api limiti
+// (dakikada 180) bu is icin fazla gevsek — 31 Agustos'ta bir hesap 4 saniye
+// icinde 5 Shopier urunu olusturdu.
+//
+// KULLANICI BAZLI, IP BAZLI DEGIL: varsayilan anahtar IP'dir ama Turkiye'de
+// mobil operatorler CGNAT kullaniyor; ayni cikis IP'sinden gorunen yuzlerce
+// farkli musteri birbirinin kotasini yerdi. Bu uclar authenticateToken
+// arkasinda oldugu icin kimlik bellidir, anahtar olarak kullanici kimligi
+// kullanilir. IP yedegi yalnizca beklenmedik bir sirada (req.user yoksa)
+// devreye girer.
+// Sinir env ile gevsetilebilir: mevcut odeme testleri ayni demo kullanicisiyla
+// arka arkaya 13 odeme baslatiyor, orada 500'e cekilir. Uretimde tanimsizdir.
+const odemeBaslatmaLimiter = rateLimit({
+  windowMs: 10 * 60_000,
+  limit: Number(process.env.PAYMENT_RATE_LIMIT_MAX || 5),
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  keyGenerator: req => (req.user?.id ? `kullanici:${req.user.id}` : ipKeyGenerator(req)),
+  handler: (req, res, next, options) => {
+    // Guvenlik Merkezi'ne dusurulur ki kotuye kullanim panelde gorunsun.
+    try { require('../services/securityMonitor').logEvent('rate_limit', req); } catch { /* telemetri sart degil */ }
+    res.status(options.statusCode).json({
+      error: 'Çok fazla ödeme başlattınız. Lütfen birkaç dakika bekleyip tekrar deneyin.'
+    });
+  }
+});
 
 // Aktif "bakiye bonusu" kampanyasi varsa yatirilan tutara ek bonus yazar.
 // Islem, cagiranin transaction'i icinde kosar; bonus satiri payments'ta ayrica
@@ -72,7 +103,7 @@ router.post('/paytr/callback', async (req, res) => {
   }
 });
 
-router.post('/paytr/token', authenticateToken, validate(z.object({ amount: z.coerce.number().min(10).max(100000) })), async (req, res, next) => {
+router.post('/paytr/token', authenticateToken, odemeBaslatmaLimiter, validate(z.object({ amount: z.coerce.number().min(10).max(100000) })), async (req, res, next) => {
   try {
     const amountKurus = toKurus(req.body.amount);
     const merchantOid = createOpaqueToken('SM').replace(/[^a-zA-Z0-9]/g, '').slice(0, 40);
@@ -196,7 +227,7 @@ async function reconcilePendingShopierPayments(limit = 50) {
   return count;
 }
 
-router.post('/shopier/create', authenticateToken, validate(z.object({
+router.post('/shopier/create', authenticateToken, odemeBaslatmaLimiter, validate(z.object({
   amount: z.coerce.number().min(SHOPIER_MIN_TRY).max(100000)
 })), async (req, res, next) => {
   try {
@@ -297,7 +328,7 @@ router.get('/nowpayments/min/:coin', authenticateToken, async (req, res, next) =
   } catch (err) { next(err); }
 });
 
-router.post('/nowpayments/create', authenticateToken, validate(z.object({
+router.post('/nowpayments/create', authenticateToken, odemeBaslatmaLimiter, validate(z.object({
   amount: z.coerce.number().min(MIN_CRYPTO_TRY, `Kripto ödemelerde alt limit ₺${MIN_CRYPTO_TRY}'dür (blockchain ağ ücretleri nedeniyle).`).max(100000),
   pay_currency: z.string().trim().toLowerCase().max(20).default('usdttrc20')
 })), async (req, res, next) => {

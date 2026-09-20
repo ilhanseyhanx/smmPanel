@@ -15,6 +15,10 @@ process.env.DATABASE_PATH = path.join(tempDir, 'test.sqlite');
 process.env.JWT_SECRET = 'test-secret-that-is-long-enough-and-not-production';
 process.env.ENABLE_DEMO_PAYMENTS = 'false';
 process.env.PUBLIC_BASE_URL = 'http://localhost:3000';
+// Bu dosya ayni demo kullanicisiyla arka arkaya 13 odeme baslatiyor; odeme
+// baslatma hiz siniri (uretimde 10 dakikada 5) burada gevsetilir. Sinirin
+// kendi davranisi test/payment-rate-limit.test.js icinde dogrulanir.
+process.env.PAYMENT_RATE_LIMIT_MAX = '500';
 
 const { app } = require('../server');
 const { initDatabase, dbAsync, db } = require('../config/database');

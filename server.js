@@ -1336,7 +1336,19 @@ async function startServer() {
     // Sistem Sagligi Faz 2: arka plan islerinin nabzi + olay kaydi.
     const healthEvents = require('./services/healthEvents');
     // Webhook gecikirse/kacarsa Shopier'in siparis API'sinden mutabakat yap.
-    const reconcileShopier = () => paymentsRoutes.reconcilePendingShopierPayments?.()
+    // ONCE TEMIZLIK (20 Eyl 2026): terk edilmis (1 gunden eski) odeme
+    // niyetleri kapatilir. Eskiden bu temizlik YALNIZCA yeni bir odeme
+    // baslatilinca calisiyordu (routes/payments.js icinde), yani trafik
+    // durunca duruyordu; ama mutabakat her dakika calismaya devam ediyordu.
+    // Sonuc: 5 terk edilmis kayit 40 saate kadar durdu ve worker her dakika
+    // bosuna Shopier API'sine gidip zaman zaman timeout uretti. Temizlik
+    // burada da calisinca kayitlar kapanir ve mutabakat isi kalmayinca
+    // API'ye hic dokunmaz (bkz. reconcilePendingShopierPayments: bekleyen
+    // kayit yoksa erken doner).
+    const reconcileShopier = () => (async () => {
+      await require('./services/shopier').sweepAbandonedProducts().catch(() => {});
+      return paymentsRoutes.reconcilePendingShopierPayments?.();
+    })()
       .then(() => healthEvents.workerBeat('shopier_reconcile', true))
       .catch(err => {
         console.error('Shopier mutabakat worker:', err.message);

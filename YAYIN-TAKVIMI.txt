@@ -1,0 +1,277 @@
+===============================================================================
+  JET SMM PANEL - GUN GUN YAYIN TAKVIMI
+  Hazirlanma: 20 Eylul 2026  |  Dayanak: SEO-ANALIZ-2026-09-20.md
+===============================================================================
+
+TOPLAM: 15 satis sayfasi + 8 blog yazisi + 1 revizyon = 24 gun
+
+Her gun SADECE 1 icerik yayinla. 4 Eylul'de 29 sayfa tek seferde yayina
+girmisti; Google'in degerlendirmesini yavaslatan sebep buydu.
+
+YAYINLAMA YONTEMI (ikisi de ayni sonucu verir):
+  A) Admin panel  -> sayfayi bul, tek tikla "Yayinla"  (ONERILEN, onbellek
+                     aninda temizlenir)
+  B) Komut satiri -> cd /var/www/smmjet && node scripts/publish-landing-pages.js <slug>
+
+  Blog yazilari SADECE admin panelden yayinlanir:
+     Admin > "Ana Sayfa & Blog" sekmesi > "Blog Yazilari ve SEO Makaleleri"
+  Satis sayfalari:
+     Admin > "Satis Sayfalari" sekmesi
+
+HER YAYINDAN SONRA: O adresi Google Search Console + Bing Webmaster'a bildir.
+(IndexNow bildirimi otomatik gidiyor, ama elle bildirmek hizlandirir.)
+
+
+===============================================================================
+  BOLUM 1 - YENI SATIS SAYFALARI (Gun 1-11)
+  Sira ZORUNLU: bu sayfalar birbirine link veriyor, sira bozulursa 404 olur.
+===============================================================================
+
+GUN 1 --------------------------------------------------------------- SATIS
+  tiktok-smm-panel
+  https://jetsmmpanel.com/tiktok-smm-panel
+  Hedef kelime: "tiktok smm panel", "tiktok takipci paneli"  (20 gosterim)
+
+GUN 2 --------------------------------------------------------------- SATIS
+  instagram-smm-panel
+  https://jetsmmpanel.com/instagram-smm-panel
+  Hedef kelime: "instagram panel", "instagram takipci paneli"
+  NOT: Dizine girmeyen 8 Instagram sayfasina link tasiyor - en onemlisi bu.
+
+GUN 3 --------------------------------------------------------------- SATIS
+  youtube-smm-panel
+  https://jetsmmpanel.com/youtube-smm-panel
+  Hedef kelime: "youtube smm panel"
+
+GUN 4 --------------------------------------------------------------- SATIS
+  turk-takipci-satin-al
+  https://jetsmmpanel.com/turk-takipci-satin-al
+  Hedef kelime: "turk takipci satin al", miktar varyasyonlari
+  ONEMLI: Gun 5, Gun 6 ve Gun 18 bu sayfaya bagli. Atlanmamali.
+
+GUN 5 --------------------------------------------------------------- SATIS
+  twitter-smm-panel
+  https://jetsmmpanel.com/twitter-smm-panel
+  Hedef kelime: "twitter panel satin al", "twitter panel"  (12 gosterim)
+  Onkosul: Gun 4 yapilmis olmali.
+
+GUN 6 --------------------------------------------------------------- SATIS
+  ucuz-smm-panel
+  https://jetsmmpanel.com/ucuz-smm-panel
+  Hedef kelime: "ucuz smm panel", "panel sitesi"  (11 gosterim, poz 6.18)
+  Onkosul: Gun 1-5 tamamlanmis olmali (12 sayfaya link veriyor).
+
+GUN 7 --------------------------------------------------------------- SATIS
+  sosyal-medya-etkilesim-paketi
+  https://jetsmmpanel.com/sosyal-medya-etkilesim-paketi
+  Hedef kelime: "begeni paneli", "etkilesim satin al"
+  Onkosul: Gun 1 ve Gun 2 tamamlanmis olmali.
+
+GUN 8 --------------------------------------------------------------- SATIS
+  canli-yayin-izleyici-satin-al
+  https://jetsmmpanel.com/canli-yayin-izleyici-satin-al
+  Hedef kelime: "canli yayin izleyici satin al"
+  Bagimsiz - sira serbest.
+
+GUN 9 --------------------------------------------------------------- SATIS
+  muzik-dinlenme-satin-al
+  https://jetsmmpanel.com/muzik-dinlenme-satin-al
+  Hedef kelime: "spotify dinlenme", "muzik dinlenme satin al"
+  Bagimsiz - sira serbest.
+
+GUN 10 -------------------------------------------------------------- SATIS
+  pinterest-kaydetme-satin-al
+  https://jetsmmpanel.com/pinterest-kaydetme-satin-al
+  Hedef kelime: "pinterest kaydetme satin al"  (8 gosterim, sayfa yoktu)
+  Onkosul: Gun 7 tamamlanmis olmali.
+
+GUN 11 -------------------------------------------------------------- SATIS
+  youtube-shorts-izlenme-satin-al
+  https://jetsmmpanel.com/youtube-shorts-izlenme-satin-al
+  Hedef kelime: "youtube shorts izlenme"
+  Onkosul: Gun 3 tamamlanmis olmali.
+
+
+===============================================================================
+  BOLUM 2 - YAYINDAKI ICERIGIN REVIZYONU (Gun 12)
+===============================================================================
+
+GUN 12 ---------------------------------------------------------- REVIZYON
+  Sayfa yayinlama YOK. Sunucuda tek komut (admin panelden yapilamaz):
+
+     cd /var/www/smmjet
+     node scripts/revise-seo-2026-09.js
+
+  Ne yapar:
+   - "influencer-olmak-icin-kac-takipci-gerekir" basligina "Fenomen" ekler
+     (GSC'de "fenomen olmak icin kac takipci lazim" diye araniyor)
+   - 3 yayindaki yaziya "Bu yaziyla ilgili hizmetler" bolumu ekler
+   - 4 takipci sayfasina "Ne kadar almali?" + Turkiye kaynagi bolumu ekler
+
+  Guvenli: ayni komutu iki kez calistirirsan ikincisinde hicbir sey degismez.
+  Onizleme icin:  node scripts/revise-seo-2026-09.js --dry
+
+  GSC + Bing'e bildirilecek adresler:
+     https://jetsmmpanel.com/blog/influencer-olmak-icin-kac-takipci-gerekir
+     https://jetsmmpanel.com/blog/tiktok-algoritmasi-nasil-calisir
+     https://jetsmmpanel.com/blog/instagram-hikaye-izlenme-artirma-taktikleri
+     https://jetsmmpanel.com/instagram-takipci-satin-al
+     https://jetsmmpanel.com/tiktok-takipci-satin-al
+     https://jetsmmpanel.com/twitter-takipci-satin-al
+     https://jetsmmpanel.com/youtube-abone-satin-al
+
+
+===============================================================================
+  BOLUM 3 - BLOG YAZILARI (Gun 13-20)
+  Hepsi admin panelden: "Ana Sayfa & Blog" > Blog Yazilari tablosu
+===============================================================================
+
+GUN 13 ----------------------------------------------------------------- BLOG
+  smm-panel-nasil-secilir
+  "SMM Panel Nasil Secilir? Guvenilir Panel Ayirt Etmenin 7 Olcutu"
+  https://jetsmmpanel.com/blog/smm-panel-nasil-secilir
+  Hedef kelime: "panel sitesi", "smm panel nasil secilir"
+  Onkosul: Gun 1-6 tamamlanmis olmali (5 satis sayfasina link veriyor).
+
+GUN 14 ----------------------------------------------------------------- BLOG
+  drip-feed-nedir-kademeli-teslimat
+  https://jetsmmpanel.com/blog/drip-feed-nedir-kademeli-teslimat
+  Bagimsiz. Bu kumenin ILK yazisi olmali - digerleri buna link veriyor.
+
+GUN 15 ----------------------------------------------------------------- BLOG
+  gercek-takipci-ile-bot-takipci-farki
+  https://jetsmmpanel.com/blog/gercek-takipci-ile-bot-takipci-farki
+
+GUN 16 ----------------------------------------------------------------- BLOG
+  refill-yenileme-nedir-takipci-neden-duser
+  https://jetsmmpanel.com/blog/refill-yenileme-nedir-takipci-neden-duser
+
+GUN 17 ----------------------------------------------------------------- BLOG
+  instagram-takipci-fiyatlari-2026-1000-takipci-kac-tl
+  https://jetsmmpanel.com/blog/instagram-takipci-fiyatlari-2026-1000-takipci-kac-tl
+
+GUN 18 ----------------------------------------------------------------- BLOG
+  turk-takipci-mi-yabanci-takipci-mi
+  https://jetsmmpanel.com/blog/turk-takipci-mi-yabanci-takipci-mi
+  Onkosul: Gun 4 (turk-takipci-satin-al) yayinda olmali.
+  DIKKAT: Asagidaki "TEK ELLE IS" notuna bak.
+
+GUN 19 ----------------------------------------------------------------- BLOG
+  smm-panel-bayilik-nasil-yapilir
+  https://jetsmmpanel.com/blog/smm-panel-bayilik-nasil-yapilir
+
+GUN 20 ----------------------------------------------------------------- BLOG
+  smm-panel-api-entegrasyonu-rehberi
+  https://jetsmmpanel.com/blog/smm-panel-api-entegrasyonu-rehberi
+
+
+  ---------------------------------------------------------------------------
+  BLOG KUMESI HAKKINDA ONEMLI NOT (Gun 14-20)
+  ---------------------------------------------------------------------------
+  Bu 6 yazi (gun 15-20) birbirine KARSILIKLI link veriyor. Yani hangi sirayla
+  yayinlarsan yayinla, once cikan yazilarda birkac gun boyunca henuz
+  yayinlanmamis yaziya giden link bulunur (gecici 404).
+
+  Yukaridaki sira, kirik link sayisini en aza indirecek sekilde secildi
+  (toplam 7 gecici kirik link, her biri en fazla birkac gun surer).
+
+  ISTERSEN: Bu 6 yaziyi (gun 15-20) AYNI GUN yayinlayarak kirik linki sifira
+  indirebilirsin. 6 yazi, yayindaki 38 yaziya gore %16 artis demek - 4
+  Eylul'deki %37'lik toplu yayin kadar agresif degil, kabul edilebilir.
+  Karar senin: sira mi, yoksa tek gunde kume mi.
+
+
+  ---------------------------------------------------------------------------
+  TEK ELLE IS (Gun 18 oncesi)
+  ---------------------------------------------------------------------------
+  "turk-takipci-mi-yabanci-takipci-mi" yazisina /turk-takipci-satin-al
+  baglantisi eklendi AMA bu degisiklik sunucudaki taslaga gitmedi.
+
+  Iki secenekten birini yap:
+
+  1) Sunucuda su komutu calistir (Gun 4'ten sonra, Gun 18'den once):
+        cd /var/www/smmjet && node scripts/seed-blog-drafts.js --update
+     UYARI: Bu komut TUM taslak yazilari dosyadaki surumle degistirir.
+     Admin panelden elle duzenlediklerin varsa onlar kaybolur.
+
+  2) VEYA: Gun 18'de yaziyi yayinlarken admin panelden su cumleyi
+     "Yabanci takipciyi sonradan silebilir miyim?" bolumunun sonuna ekle:
+
+     Diger platformlarda Turkiye kaynakli secenekleri tek sayfada
+     karsilastirmak icin <a href="/turk-takipci-satin-al">Turk takipci
+     satin al</a> sayfasina bakabilirsiniz.
+
+
+===============================================================================
+  BOLUM 4 - ESKIDEN HAZIRLANMIS SATIS SAYFALARI (Gun 21-24)
+  Hepsi bagimsiz - sirayi istedigin gibi degistirebilirsin.
+===============================================================================
+
+GUN 21 ---------------------------------------------------------------- SATIS
+  twitch-takipci-satin-al
+  https://jetsmmpanel.com/twitch-takipci-satin-al
+  NOT: /twitch-izleyici-satin-al zaten yayinda ve GSC'de 1 tiklama aldi
+       (pozisyon 8.0) - bu dikeyde talep var.
+
+GUN 22 ---------------------------------------------------------------- SATIS
+  facebook-grup-uye-satin-al
+  https://jetsmmpanel.com/facebook-grup-uye-satin-al
+
+GUN 23 ---------------------------------------------------------------- SATIS
+  facebook-yorum-satin-al
+  https://jetsmmpanel.com/facebook-yorum-satin-al
+
+GUN 24 ---------------------------------------------------------------- SATIS
+  telegram-bot-baslatma-satin-al
+  https://jetsmmpanel.com/telegram-bot-baslatma-satin-al
+
+
+===============================================================================
+  KONTROL LISTESI - HER GUN
+===============================================================================
+
+  [ ] Sayfayi/yaziyi yayina al (admin panel veya komut)
+  [ ] Adresi tarayicida ac, acildigini gor
+  [ ] Google Search Console > URL Inceleme > "Dizine eklenmeyi iste"
+  [ ] Bing Webmaster Tools > URL Submission
+  [ ] Sayfadaki linklere tikla, 404 veren var mi bak (sira dogruysa olmaz)
+
+
+===============================================================================
+  HAFTALIK TAKIP (yayin bitene kadar)
+===============================================================================
+
+  GSC'yi HER ZAMAN su filtreyle ac:
+     Ulke = Turkiye         (gosterimlerin %36'si yurtdisi gurultusu)
+     Karsilastirma = son 28 gun / onceki 28 gun
+
+  Site geneli "ortalama pozisyon" rakamini TAKIP ETME. Yeni sayfalar
+  40-70. siralarda gosterim aldikca bu rakam duser ama bu bir dusus degil.
+
+  Bunun yerine su ucune bak:
+     1. Ana sayfanin pozisyonu        (su an 4.9)
+     2. Ilk 10'da olan kelime sayisi  (su an 8 genel kelime)
+     3. Turkiye'den gelen tiklama     (son 36 gunde 17)
+
+  Uc rakam da yukseliyorsa site buyuyordur.
+
+
+===============================================================================
+  BING HAKKINDA
+===============================================================================
+
+  Bing'de gosterim 0 - bu NORMAL ve kurulumunda hata yok. Kontrol edildi:
+  Bingbot erisebiliyor, robots engeli yok, BingSiteAuth.xml yayinda,
+  IndexNow calisiyor, SSR icerik var.
+
+  Sebep: Bing'in Turkiye pazar payi %1-2 + geri baglanti yoklugu + 5
+  haftalik alan adi. Olgunlasma 3-6 ay surer. KOD DEGISIKLIGI YAPMA.
+
+  Bing'de fark yaratacak tek sey harici baglanti:
+   - Product Hunt sayfan var (producthunt.com/products/jet-smm-panel)
+     -> Sahipligini "claim" et, gercek musterilerinden yorum iste.
+   - Turkce sektor dizinleri, forum profilleri, sosyal medya biyografileri.
+
+  Ekim sonunda Bing Webmaster > Site Explorer ekranindan tekrar bak.
+
+===============================================================================

@@ -53,6 +53,11 @@ async function placeOrder({
   // indirimli maliyetten AYNI islemde odenir.
   tenant = null
 }) {
+  // Paket servis: bilesenlerin her biri icin ayri siparis acilir (services/bundles.js).
+  const bundleRow = await dbAsync.get('SELECT is_bundle FROM services WHERE id = ?', [serviceId]);
+  if (bundleRow && Number(bundleRow.is_bundle) === 1) {
+    return require('./bundles').placeBundleOrder({ user, serviceId, link: rawLink, quantity, dripRuns, lang, termsAccepted, notify, tenant });
+  }
   const link = normalizePlainText(rawLink, 2048);
   const commentLines = normalizeComments(comments);
   const discount = await activeServiceDiscount(serviceId);

@@ -33,6 +33,7 @@ router.get('/', async (req, res) => {
         s.order_input_type,
         s.provider_service_type,
         s.pricing_model,
+        s.is_bundle,
         s.provider_quantity_multiplier,
         s.warranty_hours,
         s.refund_policy_tr,
@@ -76,6 +77,19 @@ router.get('/', async (req, res) => {
       }
     }
 
+    // Paket servislerin icerigi: bilgi penceresi ve siparis formu "paket
+    // icerigi" listesini buradan basar (yalnizca paket satirlarina eklenir).
+    if (services.some(s => Number(s.is_bundle) === 1)) {
+      const bundleItems = await require('../services/bundles').bundleItemsMap();
+      for (const service of services) {
+        if (Number(service.is_bundle) !== 1) continue;
+        service.bundle_items = (bundleItems.get(service.id) || []).map(item => ({
+          service_id: item.service_id, quantity: item.quantity,
+          name: item.name, name_tr: item.name_tr, name_en: item.name_en
+        }));
+      }
+    }
+
     // Aktif bakiye bonusu ve popup kampanyasi (vitrin icin).
     const depositBonus = await activeDepositBonus();
     const popupCampaign = await activePopupCampaign();
@@ -92,7 +106,7 @@ router.get('/', async (req, res) => {
     const usersCountRow = await dbAsync.get(`SELECT COUNT(*) as count FROM users WHERE role = 'client'`);
     const completedOrdersRow = await dbAsync.get(`SELECT COUNT(*) as count FROM orders WHERE status = 'completed'`);
     // Vitrindeki "baslayan fiyatlar" degeri: aktif servisler icindeki en dusuk 1000 adet fiyati.
-    const minRateRow = await dbAsync.get(`SELECT MIN(rate_per_1000_kurus) as min_kurus FROM services WHERE status = 1 AND rate_per_1000_kurus > 0`);
+    const minRateRow = await dbAsync.get(`SELECT MIN(rate_per_1000_kurus) as min_kurus FROM services WHERE status = 1 AND rate_per_1000_kurus > 0 AND is_bundle = 0`);
     // Siparis sikligi: son 30 gundeki ardisik siparisler arasindaki ortalama sure.
     const frequencyRow = await dbAsync.get(
       `SELECT COUNT(*) as count,

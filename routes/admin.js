@@ -9,6 +9,7 @@ const bcrypt = require('bcryptjs');
 const { withTransaction } = require('../config/database');
 const { normalizePlainText, sanitizeRichText, isSafeHttpUrl, createOpaqueToken } = require('../utils/security');
 const { toKurus, fromKurus, calculateChargeKurus } = require('../utils/money');
+const { calculateServiceChargeKurus } = require('../services/orderTypes');
 const { friendlyProviderReason } = require('../utils/providerErrors');
 const { fetchProviderCatalog } = require('../services/providerCatalog');
 const { chooseBlogCover, isLocalBlogCover } = require('../services/blogCover');
@@ -1044,10 +1045,15 @@ router.delete('/services/:id', requireIdParam, async (req, res) => {
     const serviceId = req.recordId;
     // Siparis gecmisi VEYA bagli kampanya varsa silinemez (foreign key); pasife alinir.
     const used = await dbAsync.get(
-      `SELECT 1 found FROM orders WHERE service_id = ?
-       UNION ALL SELECT 1 FROM campaigns WHERE service_id = ? LIMIT 1`, [serviceId, serviceId]);
+      `SELECT 1 found FROM orders WHERE service_id = ? OR bundle_service_id = ?
+       UNION ALL SELECT 1 FROM campaigns WHERE service_id = ?
+       UNION ALL SELECT 1 FROM service_bundle_items WHERE component_service_id = ? LIMIT 1`, [serviceId, serviceId, serviceId, serviceId]);
     if (used) await dbAsync.run('UPDATE services SET status = 0 WHERE id = ?', [serviceId]);
-    else await dbAsync.run('DELETE FROM services WHERE id = ?', [serviceId]);
+    else {
+      // Paket ise once icerigi silinir (yabanci anahtar).
+      await dbAsync.run('DELETE FROM service_bundle_items WHERE bundle_service_id = ?', [serviceId]);
+      await dbAsync.run('DELETE FROM services WHERE id = ?', [serviceId]);
+    }
     await dbAsync.run('DELETE FROM categories WHERE NOT EXISTS (SELECT 1 FROM services WHERE services.category_id = categories.id)');
     res.json({ message: used ? 'Sipariş geçmişi korundu; servis pasife alındı.' : 'Servis silindi.' });
   } catch (err) {
@@ -1063,7 +1069,9 @@ router.delete('/services/:id', requireIdParam, async (req, res) => {
 const REFERENCED_SERVICE_SQL = `
   SELECT id FROM services WHERE
     id IN (SELECT service_id FROM orders WHERE service_id IS NOT NULL)
-    OR id IN (SELECT service_id FROM campaigns WHERE service_id IS NOT NULL)`;
+    OR id IN (SELECT service_id FROM campaigns WHERE service_id IS NOT NULL)
+    OR id IN (SELECT component_service_id FROM service_bundle_items)
+    OR id IN (SELECT bundle_service_id FROM orders WHERE bundle_service_id IS NOT NULL)`;
 
 router.post('/services/bulk-delete', validate(bulkDeleteSchema), async (req, res) => {
   try {
@@ -1093,6 +1101,7 @@ router.post('/services/bulk-delete', validate(bulkDeleteSchema), async (req, res
         for (let i = 0; i < remove.length; i += 900) {
           const chunk = remove.slice(i, i + 900);
           const ph = chunk.map(() => '?').join(',');
+          await tx.run(`DELETE FROM service_bundle_items WHERE bundle_service_id IN (${ph})`, chunk);
           await tx.run(`DELETE FROM services WHERE id IN (${ph})`, chunk);
         }
       }
@@ -1446,11 +1455,13 @@ router.post('/users/:id/assign-order', requireIdParam, validate(assignOrderSchem
     const reserved = await withTransaction(async tx => {
       const service = await tx.get('SELECT * FROM services WHERE id = ? AND status = 1', [service_id]);
       if (!service) { const err = new Error('Seçilen servis aktif değil veya bulunamadı.'); err.status = 404; throw err; }
+      if (Number(service.is_bundle) === 1) { const err = new Error('Paket servisler bu ekrandan atanamaz; müşteri paketi kendi panelinden sipariş edebilir.'); err.status = 400; throw err; }
       if (quantity < service.min_quantity || quantity > service.max_quantity) {
         const err = new Error(`Miktar ${service.min_quantity} ile ${service.max_quantity} arasında olmalıdır.`); err.status = 400; throw err;
       }
       const rateKurus = service.rate_per_1000_kurus || toKurus(service.rate_per_1000);
-      const fullChargeKurus = calculateChargeKurus(rateKurus, quantity);
+      // Adet bazli (per_item) urunlerde fiyat 1000'e bolunmez; siparis formuyla ayni hesap.
+      const fullChargeKurus = calculateServiceChargeKurus(rateKurus, quantity, service.pricing_model);
       const chargeKurus = charge_user ? fullChargeKurus : 0; // hediye = 0 TL
       if (charge_user) {
         const debit = await tx.run(
@@ -1627,11 +1638,12 @@ router.get('/orders', async (req, res) => {
       }
     }
     const orders = await dbAsync.all(
-      `SELECT o.*, u.username, s.name as service_name, p.name as provider_name
+      `SELECT o.*, u.username, s.name as service_name, p.name as provider_name, b.name as bundle_name
        FROM orders o
        JOIN users u ON o.user_id = u.id
        JOIN services s ON o.service_id = s.id
        LEFT JOIN providers p ON o.provider_id = p.id
+       LEFT JOIN services b ON b.id = o.bundle_service_id
        ${where}
        ORDER BY o.id DESC LIMIT 100`,
       params

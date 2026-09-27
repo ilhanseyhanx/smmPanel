@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260920g">
+  <link rel="stylesheet" href="/css/style.css?v=20260927a">
 </head>
 <body>
 
@@ -1386,69 +1386,124 @@ Canceled     iptal edildi</pre>
 
           <select class="form-control admin-mobile-nav" aria-label="Yönetim bölümü seç" onchange="app.switchAdminTab(this.value)">
             <option value="dashboard">Genel Bakış</option>
-            <option value="health">Sistem Sağlığı</option>
-            <option value="statistics">İstatistik</option>
-            <option value="orders">Siparişler</option>
-            <option value="services">Servisler</option>
-            <option value="providers">Sağlayıcılar</option>
-            <option value="completion">Tamamlanma Süreleri</option>
-            <option value="payments">Para Yatırma</option>
-            <option value="deposits">Ödemeler</option>
-            <option value="coupons">Kuponlar</option>
-            <option value="campaigns">Kampanyalar</option>
-            <option value="users">Kullanıcılar</option>
-            <option value="resellers">Bayiler</option>
-            <option value="email-marketing">E-Posta Pazarlama</option>
-            <option value="tickets">Destek</option>
-            <option value="reviews">Yorumlar</option>
-            <option value="landing-design">İçerik</option>
-            <option value="landing-pages">Satış Sayfaları</option>
-            <option value="ai-studio">AI Asistan</option>
-            <option value="site-settings">Ayarlar</option>
-            <option value="reset">Tehlike Alanı</option>
+            <optgroup label="Siparişler &amp; Servisler">
+              <option value="orders">Siparişler</option>
+              <option value="completion">Tamamlanma Süreleri</option>
+              <option value="services">Servis Kataloğu</option>
+              <option value="favorites">Favoriler &amp; Paketler</option>
+              <option value="providers">Sağlayıcılar</option>
+            </optgroup>
+            <optgroup label="Finans">
+              <option value="payments">Para Yatırma</option>
+              <option value="deposits">Ödeme Bildirimleri</option>
+              <option value="coupons">Kuponlar</option>
+              <option value="campaigns">Kampanyalar</option>
+            </optgroup>
+            <optgroup label="Müşteriler">
+              <option value="users">Kullanıcılar</option>
+              <option value="resellers">Bayiler</option>
+              <option value="tickets">Destek</option>
+              <option value="reviews">Yorumlar</option>
+              <option value="email-marketing">E-Posta Pazarlama</option>
+            </optgroup>
+            <optgroup label="İçerik &amp; SEO">
+              <option value="landing-design">Ana Sayfa &amp; Blog</option>
+              <option value="landing-pages">Satış Sayfaları</option>
+              <option value="ai-studio">AI İçerik &amp; Operasyon</option>
+            </optgroup>
+            <optgroup label="İzleme">
+              <option value="health">Sistem Sağlığı</option>
+              <option value="statistics">İstatistik</option>
+            </optgroup>
+            <optgroup label="Sistem">
+              <option value="site-settings">Site Ayarları</option>
+              <option value="reset">Tehlike Alanı</option>
+            </optgroup>
           </select>
 
+          <!-- Menu gruplari: baslik tiklaninca acilir/kapanir (app.toggleAdminNavGroup).
+               Aktif sekmenin grubu her zaman aciktir; tercihler localStorage'da tutulur. -->
           <nav class="admin-nav-groups">
-            <div class="admin-nav-label">Genel</div>
             <button type="button" class="sidebar-item active" data-admin-tab="dashboard" onclick="app.switchAdminTab('dashboard', event)"><i class="fa-solid fa-chart-pie"></i><span>Genel Bakış</span></button>
 
-            <div class="admin-nav-label">Operasyon</div>
-            <button type="button" class="sidebar-item" data-admin-tab="health" onclick="app.switchAdminTab('health', event)"><i class="fa-solid fa-heart-pulse"></i><span>Sistem Sağlığı</span></button>
-            <button type="button" class="sidebar-item" data-admin-tab="statistics" onclick="app.switchAdminTab('statistics', event)"><i class="fa-solid fa-chart-line"></i><span>İstatistik</span></button>
-            <button type="button" class="sidebar-item" data-admin-tab="orders" onclick="app.switchAdminTab('orders', event)"><i class="fa-solid fa-boxes-stacked"></i><span>Siparişler</span></button>
-            <button type="button" class="sidebar-item" data-admin-tab="completion" onclick="app.switchAdminTab('completion', event)"><i class="fa-solid fa-stopwatch"></i><span>Tamamlanma Süreleri</span></button>
-            <button type="button" class="sidebar-item" data-admin-tab="services" onclick="app.switchAdminTab('services', event)"><i class="fa-solid fa-layer-group"></i><span>Servis Kataloğu</span></button>
-            <button type="button" class="sidebar-item" data-admin-tab="providers" onclick="app.switchAdminTab('providers', event)"><i class="fa-solid fa-server"></i><span>Sağlayıcılar</span></button>
-
-            <div class="admin-nav-label">Finans</div>
-            <button type="button" class="sidebar-item" data-admin-tab="payments" onclick="app.switchAdminTab('payments', event)"><i class="fa-solid fa-money-bill-trend-up"></i><span>Para Yatırma</span></button>
-            <button type="button" class="sidebar-item" data-admin-tab="deposits" onclick="app.switchAdminTab('deposits', event)"><i class="fa-solid fa-wallet"></i><span>Ödeme Bildirimleri</span><em id="admin-nav-deposits-count"></em></button>
-            <button type="button" class="sidebar-item" data-admin-tab="coupons" onclick="app.switchAdminTab('coupons', event)"><i class="fa-solid fa-ticket"></i><span>Kuponlar</span></button>
-            <button type="button" class="sidebar-item" data-admin-tab="campaigns" onclick="app.switchAdminTab('campaigns', event)"><i class="fa-solid fa-bullhorn"></i><span>Kampanyalar</span></button>
-
-            <div class="admin-nav-label">Müşteri</div>
-            <button type="button" class="sidebar-item" data-admin-tab="users" onclick="app.switchAdminTab('users', event)"><i class="fa-solid fa-users"></i><span>Kullanıcılar</span></button>
-            <button type="button" class="sidebar-item" data-admin-tab="resellers" onclick="app.switchAdminTab('resellers', event)"><i class="fa-solid fa-handshake"></i><span>Bayiler</span></button>
-            <button type="button" class="sidebar-item" data-admin-tab="email-marketing" onclick="app.switchAdminTab('email-marketing', event)"><i class="fa-solid fa-envelope-open-text"></i><span>E-Posta Pazarlama</span></button>
-            <button type="button" class="sidebar-item" data-admin-tab="tickets" onclick="app.switchAdminTab('tickets', event)"><i class="fa-solid fa-headset"></i><span>Destek</span><em id="admin-nav-tickets-count"></em></button>
-            <button type="button" class="sidebar-item" data-admin-tab="reviews" onclick="app.switchAdminTab('reviews', event)"><i class="fa-solid fa-star"></i><span>Yorumlar</span><em id="admin-nav-reviews-count"></em></button>
-
-            <div class="admin-nav-label">Yayın & Sistem</div>
-            <button type="button" class="sidebar-item" data-admin-tab="landing-design" onclick="app.switchAdminTab('landing-design', event)"><i class="fa-solid fa-pen-ruler"></i><span>Ana Sayfa & Blog</span></button>
-            <button type="button" class="sidebar-item" data-admin-tab="landing-pages" onclick="app.switchAdminTab('landing-pages', event)"><i class="fa-solid fa-store"></i><span>Satış Sayfaları</span></button>
-            <button type="button" class="sidebar-item" data-admin-tab="ai-studio" onclick="app.switchAdminTab('ai-studio', event)"><i class="fa-solid fa-wand-magic-sparkles"></i><span>AI İçerik & Operasyon</span></button>
-            <button type="button" class="sidebar-item" data-admin-tab="site-settings" onclick="app.toggleSettingsMenu()"><i class="fa-solid fa-sliders"></i><span>Site Ayarları</span><i class="fa-solid fa-chevron-down settings-caret" aria-hidden="true"></i></button>
-            <!-- Site Ayarları alt kategorileri: ana butona basınca açılır/kapanır -->
-            <div class="admin-subnav" id="settings-subnav">
-              <button type="button" class="sidebar-subitem" data-settings-section="general" onclick="app.openSettingsSection('general')"><i class="fa-solid fa-globe"></i><span>Genel & Duyuru</span></button>
-              <button type="button" class="sidebar-subitem" data-settings-section="brand" onclick="app.openSettingsSection('brand')"><i class="fa-solid fa-share-nodes"></i><span>Marka & Sosyal</span></button>
-              <button type="button" class="sidebar-subitem" data-settings-section="seo" onclick="app.openSettingsSection('seo')"><i class="fa-solid fa-magnifying-glass-chart"></i><span>SEO & Arama</span></button>
-              <button type="button" class="sidebar-subitem" data-settings-section="telegram" onclick="app.openSettingsSection('telegram')"><i class="fa-brands fa-telegram"></i><span>Telegram</span></button>
-              <button type="button" class="sidebar-subitem" data-settings-section="payment" onclick="app.openSettingsSection('payment')"><i class="fa-solid fa-credit-card"></i><span>Ödeme</span></button>
-              <button type="button" class="sidebar-subitem" data-settings-section="email" onclick="app.openSettingsSection('email')"><i class="fa-solid fa-envelope"></i><span>E-Posta (SMTP)</span></button>
-              <button type="button" class="sidebar-subitem" data-settings-section="security" onclick="app.openSettingsSection('security')"><i class="fa-solid fa-lock"></i><span>Güvenlik</span></button>
+            <div class="admin-nav-group" data-nav-group="operations">
+              <button type="button" class="admin-nav-toggle" onclick="app.toggleAdminNavGroup('operations')" aria-expanded="false" aria-controls="admin-nav-items-operations">
+                <i class="fa-solid fa-cart-flatbed" aria-hidden="true"></i><span>Siparişler & Servisler</span><em class="admin-nav-group-badge" aria-hidden="true"></em><i class="fa-solid fa-chevron-down admin-nav-caret" aria-hidden="true"></i>
+              </button>
+              <div class="admin-nav-items" id="admin-nav-items-operations">
+                <button type="button" class="sidebar-item" data-admin-tab="orders" onclick="app.switchAdminTab('orders', event)"><i class="fa-solid fa-boxes-stacked"></i><span>Siparişler</span></button>
+                <button type="button" class="sidebar-item" data-admin-tab="completion" onclick="app.switchAdminTab('completion', event)"><i class="fa-solid fa-stopwatch"></i><span>Tamamlanma Süreleri</span></button>
+                <button type="button" class="sidebar-item" data-admin-tab="services" onclick="app.switchAdminTab('services', event)"><i class="fa-solid fa-layer-group"></i><span>Servis Kataloğu</span></button>
+                <button type="button" class="sidebar-item" data-admin-tab="favorites" onclick="app.switchAdminTab('favorites', event)"><i class="fa-solid fa-star"></i><span>Favoriler & Paketler</span></button>
+                <button type="button" class="sidebar-item" data-admin-tab="providers" onclick="app.switchAdminTab('providers', event)"><i class="fa-solid fa-server"></i><span>Sağlayıcılar</span></button>
+              </div>
             </div>
-            <button type="button" class="sidebar-item danger" data-admin-tab="reset" onclick="app.switchAdminTab('reset', event)"><i class="fa-solid fa-triangle-exclamation"></i><span>Tehlike Alanı</span></button>
+
+            <div class="admin-nav-group" data-nav-group="finance">
+              <button type="button" class="admin-nav-toggle" onclick="app.toggleAdminNavGroup('finance')" aria-expanded="false" aria-controls="admin-nav-items-finance">
+                <i class="fa-solid fa-coins" aria-hidden="true"></i><span>Finans</span><em class="admin-nav-group-badge" aria-hidden="true"></em><i class="fa-solid fa-chevron-down admin-nav-caret" aria-hidden="true"></i>
+              </button>
+              <div class="admin-nav-items" id="admin-nav-items-finance">
+                <button type="button" class="sidebar-item" data-admin-tab="payments" onclick="app.switchAdminTab('payments', event)"><i class="fa-solid fa-money-bill-trend-up"></i><span>Para Yatırma</span></button>
+                <button type="button" class="sidebar-item" data-admin-tab="deposits" onclick="app.switchAdminTab('deposits', event)"><i class="fa-solid fa-wallet"></i><span>Ödeme Bildirimleri</span><em id="admin-nav-deposits-count"></em></button>
+                <button type="button" class="sidebar-item" data-admin-tab="coupons" onclick="app.switchAdminTab('coupons', event)"><i class="fa-solid fa-ticket"></i><span>Kuponlar</span></button>
+                <button type="button" class="sidebar-item" data-admin-tab="campaigns" onclick="app.switchAdminTab('campaigns', event)"><i class="fa-solid fa-bullhorn"></i><span>Kampanyalar</span></button>
+              </div>
+            </div>
+
+            <div class="admin-nav-group" data-nav-group="customers">
+              <button type="button" class="admin-nav-toggle" onclick="app.toggleAdminNavGroup('customers')" aria-expanded="false" aria-controls="admin-nav-items-customers">
+                <i class="fa-solid fa-users" aria-hidden="true"></i><span>Müşteriler</span><em class="admin-nav-group-badge" aria-hidden="true"></em><i class="fa-solid fa-chevron-down admin-nav-caret" aria-hidden="true"></i>
+              </button>
+              <div class="admin-nav-items" id="admin-nav-items-customers">
+                <button type="button" class="sidebar-item" data-admin-tab="users" onclick="app.switchAdminTab('users', event)"><i class="fa-solid fa-user-group"></i><span>Kullanıcılar</span></button>
+                <button type="button" class="sidebar-item" data-admin-tab="resellers" onclick="app.switchAdminTab('resellers', event)"><i class="fa-solid fa-handshake"></i><span>Bayiler</span></button>
+                <button type="button" class="sidebar-item" data-admin-tab="tickets" onclick="app.switchAdminTab('tickets', event)"><i class="fa-solid fa-headset"></i><span>Destek</span><em id="admin-nav-tickets-count"></em></button>
+                <button type="button" class="sidebar-item" data-admin-tab="reviews" onclick="app.switchAdminTab('reviews', event)"><i class="fa-solid fa-star-half-stroke"></i><span>Yorumlar</span><em id="admin-nav-reviews-count"></em></button>
+                <button type="button" class="sidebar-item" data-admin-tab="email-marketing" onclick="app.switchAdminTab('email-marketing', event)"><i class="fa-solid fa-envelope-open-text"></i><span>E-Posta Pazarlama</span></button>
+              </div>
+            </div>
+
+            <div class="admin-nav-group" data-nav-group="content">
+              <button type="button" class="admin-nav-toggle" onclick="app.toggleAdminNavGroup('content')" aria-expanded="false" aria-controls="admin-nav-items-content">
+                <i class="fa-solid fa-pen-nib" aria-hidden="true"></i><span>İçerik & SEO</span><em class="admin-nav-group-badge" aria-hidden="true"></em><i class="fa-solid fa-chevron-down admin-nav-caret" aria-hidden="true"></i>
+              </button>
+              <div class="admin-nav-items" id="admin-nav-items-content">
+                <button type="button" class="sidebar-item" data-admin-tab="landing-design" onclick="app.switchAdminTab('landing-design', event)"><i class="fa-solid fa-pen-ruler"></i><span>Ana Sayfa & Blog</span></button>
+                <button type="button" class="sidebar-item" data-admin-tab="landing-pages" onclick="app.switchAdminTab('landing-pages', event)"><i class="fa-solid fa-store"></i><span>Satış Sayfaları</span></button>
+                <button type="button" class="sidebar-item" data-admin-tab="ai-studio" onclick="app.switchAdminTab('ai-studio', event)"><i class="fa-solid fa-wand-magic-sparkles"></i><span>AI İçerik & Operasyon</span></button>
+              </div>
+            </div>
+
+            <div class="admin-nav-group" data-nav-group="monitoring">
+              <button type="button" class="admin-nav-toggle" onclick="app.toggleAdminNavGroup('monitoring')" aria-expanded="false" aria-controls="admin-nav-items-monitoring">
+                <i class="fa-solid fa-chart-line" aria-hidden="true"></i><span>İzleme</span><em class="admin-nav-group-badge" aria-hidden="true"></em><i class="fa-solid fa-chevron-down admin-nav-caret" aria-hidden="true"></i>
+              </button>
+              <div class="admin-nav-items" id="admin-nav-items-monitoring">
+                <button type="button" class="sidebar-item" data-admin-tab="health" onclick="app.switchAdminTab('health', event)"><i class="fa-solid fa-heart-pulse"></i><span>Sistem Sağlığı</span></button>
+                <button type="button" class="sidebar-item" data-admin-tab="statistics" onclick="app.switchAdminTab('statistics', event)"><i class="fa-solid fa-chart-simple"></i><span>İstatistik</span></button>
+              </div>
+            </div>
+
+            <div class="admin-nav-group" data-nav-group="system">
+              <button type="button" class="admin-nav-toggle" onclick="app.toggleAdminNavGroup('system')" aria-expanded="false" aria-controls="admin-nav-items-system">
+                <i class="fa-solid fa-gear" aria-hidden="true"></i><span>Sistem</span><em class="admin-nav-group-badge" aria-hidden="true"></em><i class="fa-solid fa-chevron-down admin-nav-caret" aria-hidden="true"></i>
+              </button>
+              <div class="admin-nav-items" id="admin-nav-items-system">
+                <button type="button" class="sidebar-item" data-admin-tab="site-settings" onclick="app.toggleSettingsMenu()"><i class="fa-solid fa-sliders"></i><span>Site Ayarları</span><i class="fa-solid fa-chevron-down settings-caret" aria-hidden="true"></i></button>
+                <!-- Site Ayarları alt kategorileri: ana butona basınca açılır/kapanır -->
+                <div class="admin-subnav" id="settings-subnav">
+                  <button type="button" class="sidebar-subitem" data-settings-section="general" onclick="app.openSettingsSection('general')"><i class="fa-solid fa-globe"></i><span>Genel & Duyuru</span></button>
+                  <button type="button" class="sidebar-subitem" data-settings-section="brand" onclick="app.openSettingsSection('brand')"><i class="fa-solid fa-share-nodes"></i><span>Marka & Sosyal</span></button>
+                  <button type="button" class="sidebar-subitem" data-settings-section="seo" onclick="app.openSettingsSection('seo')"><i class="fa-solid fa-magnifying-glass-chart"></i><span>SEO & Arama</span></button>
+                  <button type="button" class="sidebar-subitem" data-settings-section="telegram" onclick="app.openSettingsSection('telegram')"><i class="fa-brands fa-telegram"></i><span>Telegram</span></button>
+                  <button type="button" class="sidebar-subitem" data-settings-section="payment" onclick="app.openSettingsSection('payment')"><i class="fa-solid fa-credit-card"></i><span>Ödeme</span></button>
+                  <button type="button" class="sidebar-subitem" data-settings-section="email" onclick="app.openSettingsSection('email')"><i class="fa-solid fa-envelope"></i><span>E-Posta (SMTP)</span></button>
+                  <button type="button" class="sidebar-subitem" data-settings-section="security" onclick="app.openSettingsSection('security')"><i class="fa-solid fa-lock"></i><span>Güvenlik</span></button>
+                </div>
+                <button type="button" class="sidebar-item danger" data-admin-tab="reset" onclick="app.switchAdminTab('reset', event)"><i class="fa-solid fa-triangle-exclamation"></i><span>Tehlike Alanı</span></button>
+              </div>
+            </div>
           </nav>
           <div class="admin-sidebar-footer"><span class="status-dot"></span> Sistem çevrimiçi</div>
         </aside>
@@ -3377,6 +3432,67 @@ Canceled     iptal edildi</pre>
             </div>
           </div>
 
+
+          <!-- ADMIN TAB: FAVORİLER & PAKETLER -->
+          <div id="admin-tab-favorites" style="display: none;">
+            <div class="flex-between mb-20">
+              <div>
+                <h2>⭐ Favoriler & Paketler</h2>
+                <p style="font-size: 0.88rem; color: var(--text-muted);">En çok kullandığın, stabil çalışan servisleri favorilere al; birden fazla servisi tek paket olarak sat.</p>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="app.loadAdminFavoritesTab()" title="Listeleri yenile"><i class="fa-solid fa-rotate"></i> Yenile</button>
+            </div>
+
+            <div class="settings-subtabs">
+              <button type="button" class="settings-subtab active" id="favorites-subtab-favorites" onclick="app.showFavoritesSection('favorites')"><i class="fa-solid fa-star" style="color:#f5b301;"></i> Favori Servislerim <span class="badge badge-processing" id="favorites-count-badge">0</span></button>
+              <button type="button" class="settings-subtab" id="favorites-subtab-bundles" onclick="app.showFavoritesSection('bundles')"><i class="fa-solid fa-boxes-packing"></i> Paket Servisler <span class="badge badge-processing" id="bundles-count-badge">0</span></button>
+            </div>
+
+            <!-- ALT BÖLÜM: FAVORİ SERVİSLER -->
+            <div id="favorites-section-favorites">
+              <div class="glass-card mb-20" style="padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                  <input type="text" id="admin-favorites-search" class="form-control" placeholder="🔍 Favorilerde ara..." style="width: 260px;" oninput="app.renderAdminFavorites()" aria-label="Favorilerde ara">
+                  <select id="admin-favorites-sort" class="form-control" style="width: 210px;" onchange="app.renderAdminFavorites()" aria-label="Sıralama">
+                    <option value="name">Ada göre</option>
+                    <option value="orders">Sipariş sayısına göre</option>
+                    <option value="price">Fiyata göre (ucuzdan)</option>
+                    <option value="speed">Ort. süreye göre (hızlıdan)</option>
+                  </select>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="app.openAddFavoriteModal()"><i class="fa-solid fa-plus"></i> Favori Servis Ekle</button>
+              </div>
+              <div id="admin-favorites-grid" class="favorites-grid"></div>
+            </div>
+
+            <!-- ALT BÖLÜM: PAKET SERVİSLER -->
+            <div id="favorites-section-bundles" style="display: none;">
+              <div class="glass-card mb-20" style="padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <p class="admin-help" style="margin: 0; max-width: 760px;">Paket, birden fazla servisin tek ürün gibi satılmasıdır: müşteri tek fiyat öder; her bileşen için ayrı sipariş açılır ve sağlayıcılara ayrı ayrı gider. Paketler Hizmetler sayfasında ve sipariş formunda normal bir servis gibi görünür.</p>
+                <button class="btn btn-primary btn-sm" onclick="app.openBundleEditor()"><i class="fa-solid fa-plus"></i> Yeni Paket Oluştur</button>
+              </div>
+              <div class="glass-card">
+                <div class="table-responsive">
+                  <table class="custom-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">ID</th>
+                        <th scope="col">Paket</th>
+                        <th scope="col">İçerik (1 paket)</th>
+                        <th scope="col">Paket Fiyatı</th>
+                        <th scope="col">Limit</th>
+                        <th scope="col">Sipariş</th>
+                        <th scope="col">Durum</th>
+                        <th scope="col">İşlemler</th>
+                      </tr>
+                    </thead>
+                    <tbody id="admin-bundles-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- ADMIN TAB 6: TEHLİKE ALANI (GÜVENLİK MERKEZİ + SİSTEM SIFIRLAMA) -->
           <div id="admin-tab-reset" style="display: none;">
             <h2 style="margin-bottom: 16px; color: var(--danger);">⚠️ Tehlike Alanı</h2>
@@ -4429,6 +4545,143 @@ Canceled     iptal edildi</pre>
     </div>
   </div>
 
+  <!-- FAVORİ EKLE -->
+  <div class="modal-backdrop" id="modal-add-favorite">
+    <div class="modal-body glass-card">
+      <div class="flex-between mb-20">
+        <h3><i class="fa-solid fa-star" style="color:#f5b301;"></i> Favori Servis Ekle</h3>
+        <button aria-label="Kapat" onclick="app.closeModal('modal-add-favorite')" style="background: none; border: none; color: var(--text-muted); cursor: pointer;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form onsubmit="app.submitAddFavorites(event)">
+        <div class="form-group">
+          <input type="text" id="add-favorite-search" class="form-control" placeholder="🔍 Servis ara (ad, ID, kategori, sağlayıcı)..." autocomplete="off" oninput="app.renderAddFavoriteOptions()" aria-label="Servis ara">
+        </div>
+        <div class="form-group">
+          <select id="add-favorite-select" class="form-control" multiple size="10" aria-label="Favoriye eklenecek servisler"></select>
+          <small id="add-favorite-hint" style="display:block; margin-top:6px; color: var(--text-dim);"></small>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%;"><i class="fa-solid fa-plus"></i> Seçilenleri Favorilere Ekle</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- HIZLI SİPARİŞ (favori servisle) -->
+  <div class="modal-backdrop" id="modal-quick-order">
+    <div class="modal-body glass-card">
+      <div class="flex-between mb-20">
+        <h3><i class="fa-solid fa-bolt"></i> Hızlı Sipariş: <span id="quick-order-service-name" style="color:var(--accent-cyan);"></span></h3>
+        <button aria-label="Kapat" onclick="app.closeModal('modal-quick-order')" style="background: none; border: none; color: var(--text-muted); cursor: pointer;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <p id="quick-order-service-summary" class="admin-help" style="margin-bottom: 14px;"></p>
+      <form onsubmit="app.submitQuickOrder(event)">
+        <div class="form-group">
+          <label class="form-label" for="quick-order-user-search">Kimin adına? <small style="color:var(--text-dim);">(varsayılan: kendi hesabın)</small></label>
+          <input type="text" id="quick-order-user-search" class="form-control" placeholder="Kullanıcı adı veya e-posta yaz..." autocomplete="off" oninput="app.debouncedQuickOrderUserSearch()">
+          <select id="quick-order-user-select" class="form-control" size="4" style="margin-top: 8px;" aria-label="Kullanıcı seç"></select>
+          <small id="quick-order-user-hint" style="display:block; margin-top:6px; color: var(--text-dim);"></small>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="quick-order-link">Bağlantı / Kullanıcı Adı</label>
+          <input type="text" id="quick-order-link" class="form-control" placeholder="https://instagram.com/hesap" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="quick-order-qty">Miktar</label>
+          <input type="number" id="quick-order-qty" class="form-control" min="1" required oninput="app.onQuickOrderChange()">
+          <small id="quick-order-limits" style="color:var(--text-dim);"></small>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="quick-order-charge">Ücretlendirme</label>
+          <select id="quick-order-charge" class="form-control" onchange="app.onQuickOrderChange()">
+            <option value="gift">🎁 Hediye (kullanıcıdan ücret alınmaz)</option>
+            <option value="charge">💳 Kullanıcının bakiyesinden düş</option>
+          </select>
+        </div>
+        <div class="glass-card mb-20" style="padding: 12px; background: rgba(7,10,18,.5); display:flex; justify-content:space-between; align-items:center;">
+          <span style="color:var(--text-muted); font-size:.9rem;">Kullanıcıya yansıyacak tutar:</span>
+          <strong id="quick-order-total" style="color:var(--success); font-size:1.1rem;">₺0.00</strong>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;"><i class="fa-solid fa-paper-plane"></i> Siparişi Oluştur ve Gönder</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADMIN SERVİS BİLGİ KARTI -->
+  <div class="modal-backdrop" id="modal-admin-service-info">
+    <div class="modal-body glass-card admin-info-modal">
+      <div class="flex-between mb-20">
+        <h3 id="admin-service-info-title" style="min-width:0; overflow-wrap:anywhere;"><i class="fa-solid fa-circle-info"></i> Servis</h3>
+        <button aria-label="Kapat" onclick="app.closeModal('modal-admin-service-info')" style="background: none; border: none; color: var(--text-muted); cursor: pointer; flex-shrink:0;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div id="admin-service-info-body"></div>
+      <div id="admin-service-info-actions" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:16px;"></div>
+    </div>
+  </div>
+
+  <!-- PAKET DÜZENLEYİCİ -->
+  <div class="modal-backdrop" id="modal-bundle-editor">
+    <div class="modal-body glass-card bundle-editor-modal">
+      <div class="flex-between mb-20">
+        <h3 id="bundle-editor-title">📦 Yeni Paket Oluştur</h3>
+        <button aria-label="Kapat" onclick="app.closeModal('modal-bundle-editor')" style="background: none; border: none; color: var(--text-muted); cursor: pointer;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form onsubmit="app.saveBundle(event)">
+        <input type="hidden" id="bundle-id">
+        <h4 class="bundle-editor-section">1. Paket içeriği</h4>
+        <p class="admin-help" style="margin-bottom: 10px;">Bir pakette hangi servisten kaç adet olacağını belirle. Müşteri "2 paket" alırsa her adet 2 ile çarpılır ve her bileşen için ayrı sipariş açılır. Yalnızca bağlantıyla sipariş edilen aktif servisler eklenebilir.</p>
+        <div id="bundle-items"></div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="app.addBundleItemRow()"><i class="fa-solid fa-plus"></i> Servis Ekle</button>
+        <div id="bundle-summary" class="bundle-summary"></div>
+
+        <h4 class="bundle-editor-section">2. Paket bilgileri</h4>
+        <div class="form-grid-2">
+          <div class="form-group"><label class="form-label" for="bundle-name-tr">Paket Adı (Türkçe)</label><input type="text" id="bundle-name-tr" class="form-control" placeholder="Örn: YouTube Başlangıç Paketi (1000 İzlenme + 100 Beğeni)" required maxlength="220"></div>
+          <div class="form-group"><label class="form-label" for="bundle-name-en">Package Name (English)</label><input type="text" id="bundle-name-en" class="form-control" placeholder="YouTube Starter Pack (1000 Views + 100 Likes)" maxlength="220"></div>
+          <div class="form-group"><label class="form-label" for="bundle-category">Kategori</label><input type="text" id="bundle-category" class="form-control" list="bundle-category-list" placeholder="Paketler" required maxlength="100"><datalist id="bundle-category-list"></datalist></div>
+          <div class="form-group"><label class="form-label" for="bundle-category-en">Category (English)</label><input type="text" id="bundle-category-en" class="form-control" placeholder="Bundles" maxlength="100"></div>
+          <div class="form-group"><label class="form-label" for="bundle-price">Paket Fiyatı (₺) <small style="color:var(--text-dim);">— 1 paket</small></label><input type="number" id="bundle-price" class="form-control" step="0.01" min="0.01" placeholder="Örn: 149.90" required oninput="app.updateBundleSummary()"></div>
+          <div class="form-group"><label class="form-label" for="bundle-price-usd">Paket Fiyatı ($) <small style="color:var(--text-dim);">— isteğe bağlı</small></label><input type="number" id="bundle-price-usd" class="form-control" step="0.01" min="0" placeholder="Örn: 4.50"></div>
+          <div class="form-group"><label class="form-label" for="bundle-min">En az paket adedi</label><input type="number" id="bundle-min" class="form-control" min="1" value="1" required></div>
+          <div class="form-group"><label class="form-label" for="bundle-max">En fazla paket adedi</label><input type="number" id="bundle-max" class="form-control" min="1" value="10" required></div>
+          <div class="form-group"><label class="form-label" for="bundle-refill">Garanti</label>
+            <select id="bundle-refill" class="form-control">
+              <option value="auto">Otomatik (tüm bileşenler garantiliyse garantili)</option>
+              <option value="1">Garantili</option>
+              <option value="0">Standart</option>
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label" for="bundle-status">Durum</label>
+            <select id="bundle-status" class="form-control">
+              <option value="1">Yayında (müşteriler görür)</option>
+              <option value="0">Pasif (taslak)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-grid-2">
+          <div class="form-group"><label class="form-label" for="bundle-description-tr">Açıklama (Türkçe)</label><textarea id="bundle-description-tr" class="form-control" rows="3" maxlength="1000" placeholder="Paketin ne sunduğunu kısaca anlat."></textarea></div>
+          <div class="form-group"><label class="form-label" for="bundle-description-en">Description (English)</label><textarea id="bundle-description-en" class="form-control" rows="3" maxlength="1000"></textarea></div>
+        </div>
+
+        <details class="bundle-advanced">
+          <summary>3. Bilgi penceresi ve koşullar (isteğe bağlı)</summary>
+          <div class="form-grid-2" style="margin-top: 12px;">
+            <div class="form-group"><label class="form-label" for="bundle-start-time-tr">Başlama süresi (TR)</label><input type="text" id="bundle-start-time-tr" class="form-control" placeholder="0-30 dakika" maxlength="200"></div>
+            <div class="form-group"><label class="form-label" for="bundle-start-time-en">Start time (EN)</label><input type="text" id="bundle-start-time-en" class="form-control" placeholder="0-30 minutes" maxlength="200"></div>
+            <div class="form-group"><label class="form-label" for="bundle-speed-tr">Hız (TR)</label><input type="text" id="bundle-speed-tr" class="form-control" placeholder="Günde 5.000" maxlength="200"></div>
+            <div class="form-group"><label class="form-label" for="bundle-speed-en">Speed (EN)</label><input type="text" id="bundle-speed-en" class="form-control" placeholder="5,000 per day" maxlength="200"></div>
+            <div class="form-group"><label class="form-label" for="bundle-features-tr">Özellikler (TR, her satır bir madde)</label><textarea id="bundle-features-tr" class="form-control" rows="4" maxlength="3000"></textarea></div>
+            <div class="form-group"><label class="form-label" for="bundle-features-en">Features (EN, one per line)</label><textarea id="bundle-features-en" class="form-control" rows="4" maxlength="3000"></textarea></div>
+            <div class="form-group"><label class="form-label" for="bundle-warranty-hours">Garanti süresi (saat)</label><input type="number" id="bundle-warranty-hours" class="form-control" min="0" value="0"></div>
+            <div class="form-group" style="display:flex; align-items:center; gap:8px; margin-top: 26px;"><input type="checkbox" id="bundle-terms-required" style="width:18px;height:18px;"><label for="bundle-terms-required" class="form-label" style="margin:0;">Sipariş öncesi koşulların kabulü zorunlu</label></div>
+            <div class="form-group"><label class="form-label" for="bundle-refund-policy-tr">İade koşulları (TR)</label><textarea id="bundle-refund-policy-tr" class="form-control" rows="3" maxlength="3000"></textarea></div>
+            <div class="form-group"><label class="form-label" for="bundle-refund-policy-en">Refund policy (EN)</label><textarea id="bundle-refund-policy-en" class="form-control" rows="3" maxlength="3000"></textarea></div>
+          </div>
+        </details>
+
+        <button type="submit" class="btn btn-primary" style="width:100%; margin-top: 16px;"><i class="fa-solid fa-floppy-disk"></i> Paketi Kaydet</button>
+      </form>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="modal-add-coupon">
     <div class="modal-body glass-card">
       <div class="flex-between mb-20">
@@ -4747,7 +5000,7 @@ Canceled     iptal edildi</pre>
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260920g" defer></script>
-  <script src="/js/app.js?v=20260920g" defer></script>
+  <script src="/js/api.js?v=20260927a" defer></script>
+  <script src="/js/app.js?v=20260927a" defer></script>
 </body>
 </html>

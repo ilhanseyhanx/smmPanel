@@ -190,6 +190,13 @@ const API = {
   updateAdminService: (id, data) => API.request(`/admin/services/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteAdminService: (id) => API.request(`/admin/services/${id}`, { method: 'DELETE' }),
   setAdminServiceFavorite: (id, favorite) => API.request(`/admin/services/${id}/favorite`, { method: 'POST', body: JSON.stringify({ favorite }) }),
+  // Paket servisler (Favoriler & Paketler sekmesi)
+  getAdminBundles: () => API.request('/admin/bundles'),
+  getAdminBundle: (id) => API.request(`/admin/bundles/${id}`),
+  createAdminBundle: (data) => API.request('/admin/bundles', { method: 'POST', body: JSON.stringify(data) }),
+  updateAdminBundle: (id, data) => API.request(`/admin/bundles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  setAdminBundleStatus: (id, status) => API.request(`/admin/bundles/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  deleteAdminBundle: (id) => API.request(`/admin/bundles/${id}`, { method: 'DELETE' }),
   bulkDeleteAdminServices: (data) => API.request('/admin/services/bulk-delete', { method: 'POST', body: JSON.stringify(data) }),
   bulkStatusAdminServices: (data) => API.request('/admin/services/bulk-status', { method: 'POST', body: JSON.stringify(data) }),
   getAdminUsers: (q = '') => API.request(`/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),

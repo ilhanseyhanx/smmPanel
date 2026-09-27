@@ -40,8 +40,12 @@ router.post('/', authenticateToken, validate(createSchema), async (req, res, nex
       comments,
       termsAccepted: terms_accepted
     });
+    // Paket siparisinde iletilemeyen bilesen varsa payinin iade edildigi soylenir.
+    const failedParts = result.bundle?.failed?.length || 0;
     res.status(201).json({
-      message: 'Siparişiniz alındı ve sağlayıcıya iletildi.',
+      message: failedParts
+        ? `Paket siparişiniz alındı; ${failedParts} bileşen sağlayıcıya iletilemedi ve payı bakiyenize iade edildi.`
+        : 'Siparişiniz alındı ve sağlayıcıya iletildi.',
       order: {
         id: result.orderId,
         service_name: result.serviceName,
@@ -49,7 +53,8 @@ router.post('/', authenticateToken, validate(createSchema), async (req, res, nex
         charge: fromKurus(result.chargeKurus),
         status: result.status,
         provider_order_id: result.providerOrderId,
-        drip_runs
+        drip_runs,
+        bundle: result.bundle || null
       },
       new_balance: fromKurus(result.newBalanceKurus)
     });
@@ -73,9 +78,11 @@ router.get('/', authenticateToken, async (req, res, next) => {
     // karistiriyordu. Admin panelinde gorunmeye devam ederler.
     const total = await dbAsync.get("SELECT COUNT(*) count FROM orders WHERE user_id = ? AND status != 'failed'", [req.user.id]);
     const orders = await dbAsync.all(
-      `SELECT o.*, ${serviceNameSql} service_name, s.refill, ${categoryNameSql} category_name
+      `SELECT o.*, ${serviceNameSql} service_name, s.refill, ${categoryNameSql} category_name,
+              ${lang === 'en' ? "COALESCE(NULLIF(b.name_en, ''), NULLIF(b.name_tr, ''), b.name)" : "COALESCE(NULLIF(b.name_tr, ''), b.name)"} bundle_name
        FROM orders o JOIN services s ON o.service_id = s.id
        LEFT JOIN categories c ON s.category_id = c.id
+       LEFT JOIN services b ON b.id = o.bundle_service_id
        WHERE o.user_id = ? AND o.status != 'failed' ORDER BY o.id DESC LIMIT ? OFFSET ?`,
       [req.user.id, limit, offset]
     );

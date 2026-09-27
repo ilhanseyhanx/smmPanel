@@ -270,6 +270,7 @@ class SmmApp {
     // vurusunda istek atmamak icin 300ms bekletilir.
     this.debouncedAdminUsersSearch = this.debounce(() => this.loadAdminUsers(), 300);
     this.debouncedAdminOrdersSearch = this.debounce(() => this.loadAdminOrders(), 300);
+    this.debouncedQuickOrderUserSearch = this.debounce(() => this.quickOrderUserSearch(), 300);
     this.debouncedAdminPaymentsSearch = this.debounce(() => this.loadAdminPayments(), 300);
 
     // Oturum kontrolü asenkron tamamlanır; bekleyen işlemler bu sözü bekleyebilir.
@@ -677,12 +678,20 @@ class SmmApp {
     this.applyTranslations();
   }
 
-  formatServicePrice(service) {
+  formatServicePrice(service, { withUnit = true } = {}) {
     // Aktif kampanya indirimi varsa dusen fiyat gosterilir (duz metin).
     const rate = service?.discounted_rate_per_1000 ?? Number(service?.rate_per_1000 || 0);
     const usd = Number(service?.rate_per_1000_usd_cents || 0) / 100;
-    if (this.locale === 'en' && usd > 0 && !service?.discount_percent) return `$${usd.toFixed(2)} / ₺${rate.toFixed(2)}`;
-    return `₺${rate.toFixed(2)}${service?.discount_percent ? ` (-%${service.discount_percent})` : ''}`;
+    // Adet bazli urunlerde (abonelik, oyun, lisans, paket) fiyat tek adet icindir;
+    // sutun basligi "1000 Adet" dese de birim yaninda yazilir.
+    const unit = withUnit ? this.priceUnitSuffix(service) : '';
+    if (this.locale === 'en' && usd > 0 && !service?.discount_percent) return `$${usd.toFixed(2)} / ₺${rate.toFixed(2)}${unit}`;
+    return `₺${rate.toFixed(2)}${unit}${service?.discount_percent ? ` (-%${service.discount_percent})` : ''}`;
+  }
+
+  priceUnitSuffix(service) {
+    if (service?.pricing_model !== 'per_item') return '';
+    return Number(service?.is_bundle) === 1 ? this.ui(' / paket', ' / package') : this.ui(' / adet', ' / each');
   }
 
   // --- MOBİL MENÜ ---
@@ -1137,7 +1146,7 @@ class SmmApp {
 
   // Ustu cizili eski fiyat + indirimli fiyat + %chip (HTML dondurur).
   renderPriceHtml(service) {
-    const current = `₺${this.effectiveRate(service).toFixed(2)}`;
+    const current = `₺${this.effectiveRate(service).toFixed(2)}${this.priceUnitSuffix(service)}`;
     if (!service?.discount_percent) return current;
     return `<span class="price-strike">₺${Number(service.rate_per_1000).toFixed(2)}</span>${current}<span class="discount-chip">-%${service.discount_percent}</span>`;
   }
@@ -1418,7 +1427,13 @@ class SmmApp {
     if (service && qtyInput) {
       qtyInput.min = service.min_quantity;
       qtyInput.max = service.max_quantity;
-      qtyInput.value = this.clampMachineQty(Number(qtyInput.value) || service.min_quantity, service);
+      // Adet bazli urunde (min 1, max 5 gibi) onceki 1000'lik miktar tavana
+      // yapisip 5 kat fiyat gosteriyordu; bu urunlere gecince miktar minimumdan baslar.
+      const perItem = service.pricing_model === 'per_item';
+      const previous = Number(qtyInput.value) || 0;
+      const resetToMin = perItem && (!this.machineLastPerItem || previous > Number(service.max_quantity));
+      this.machineLastPerItem = perItem;
+      qtyInput.value = this.clampMachineQty(resetToMin ? service.min_quantity : (previous || service.min_quantity), service);
     }
     this.updateMachinePrice();
   }
@@ -1463,8 +1478,12 @@ class SmmApp {
 
     const qty = Number(qtyInput?.value) || 0;
     // Kampanya indirimi varsa makine fiyati da indirimli hesaplanir.
-    const charge = (this.effectiveRate(service) / 1000) * qty;
-    const usdCharge = (Number(service.rate_per_1000_usd_cents || 0) / 100000) * qty;
+    // Adet bazli urunlerde (abonelik, oyun, lisans, paket) fiyat 1000'e
+    // bolunmez; siparis formuyla (calculateOrderCharge) birebir ayni hesap.
+    const perItem = service.pricing_model === 'per_item';
+    const charge = perItem ? this.effectiveRate(service) * qty : (this.effectiveRate(service) / 1000) * qty;
+    const usdRate = Number(service.rate_per_1000_usd_cents || 0) / 100;
+    const usdCharge = perItem ? usdRate * qty : (usdRate / 1000) * qty;
     priceEl.textContent = this.locale === 'en' && usdCharge > 0 && !service.discount_percent
       ? `$${usdCharge.toFixed(2)}`
       : `₺${charge.toFixed(2)}`;
@@ -1474,7 +1493,8 @@ class SmmApp {
       const max = Number(service.max_quantity) || min;
       const outOfRange = qty < min || qty > max;
       limitsEl.classList.toggle('is-invalid', outOfRange);
-      limitsEl.textContent = this.ui(`Limit: ${min} - ${max}`, `Limit: ${min} - ${max}`);
+      const unitHint = perItem ? ` · ${this.ui('adet fiyatı', 'unit price')} ₺${this.effectiveRate(service).toFixed(2)}` : '';
+      limitsEl.textContent = `Limit: ${min} - ${max}${unitHint}`;
     }
   }
 
@@ -1605,7 +1625,7 @@ class SmmApp {
       return `
         <tr>
           <td class="cell-nowrap">${String(index + 1).padStart(2, '0')}</td>
-          <td class="cell-service-title" title="${this.escapeHtml(s.name)}"><span class="service-name-clamp">${this.escapeHtml(s.name)}</span></td>
+          <td class="cell-service-title" title="${this.escapeHtml(s.name)}"><span class="service-name-clamp">${this.bundleBadgeHtml(s)}${this.escapeHtml(s.name)}</span></td>
           <td class="cell-nowrap price-cell">${s.discount_percent ? this.renderPriceHtml(s) : this.formatServicePrice(s)}</td>
           <td class="cell-nowrap">${s.min_quantity} - ${s.max_quantity}</td>
           <td class="cell-nowrap">
@@ -1748,6 +1768,8 @@ class SmmApp {
         <div><small>${this.escapeHtml(stat.label)}</small><strong>${this.escapeHtml(stat.value)}</strong></div>
       </div>`).join('')}</div>`;
 
+    // Paket servislerde icerik listesi (1 paket = hangi servisten kac adet).
+    html += this.renderBundleContentsHtml(service);
     if (info.features.length) {
       html += `<div class="service-info-block"><div class="service-info-block-title"><i class="fa-solid fa-list-check"></i> ${this.t('info.features')}</div>
         <ul class="service-info-features">${info.features.map(f => `<li><i class="fa-solid fa-check"></i> ${this.escapeHtml(f)}</li>`).join('')}</ul></div>`;
@@ -1770,8 +1792,9 @@ class SmmApp {
     document.getElementById('service-info-category').textContent = service.category_name || '';
     document.getElementById('service-info-title').textContent = `#${service.id} · ${service.name}`;
     document.getElementById('service-info-modal-body').innerHTML = this.renderServiceInfoDetails(service, { withDescription: true, withLimits: true });
-    document.getElementById('service-info-price-label').textContent = service.pricing_model === 'per_item'
-      ? this.ui('1 Ürün', 'Per Item') : this.t('info.price_1000');
+    document.getElementById('service-info-price-label').textContent = Number(service.is_bundle) === 1
+      ? this.ui('1 Paket', 'Per Package')
+      : service.pricing_model === 'per_item' ? this.ui('1 Ürün', 'Per Item') : this.t('info.price_1000');
     document.getElementById('service-info-price').innerHTML = service.discount_percent ? this.renderPriceHtml(service) : this.formatServicePrice(service);
     const buyBtn = document.getElementById('service-info-buy-btn');
     if (buyBtn) buyBtn.innerHTML = `<i class="fa-solid fa-cart-shopping"></i> ${this.t('info.buy')}`;
@@ -1832,7 +1855,7 @@ class SmmApp {
     }
 
     document.getElementById('service-desc').innerText = service.description || this.ui('Hızlı ve otomatik aktarımlı sosyal medya hizmeti.', 'Fast, automatically delivered social media service.');
-    document.getElementById('service-rate').innerText = this.formatServicePrice(service);
+    document.getElementById('service-rate').innerText = this.formatServicePrice(service, { withUnit: false });
     document.getElementById('service-limits').innerText = `${service.min_quantity} - ${service.max_quantity}`;
     // Baslama suresi / hiz / ozellik kartlari (admin doldurduysa).
     const extra = document.getElementById('service-info-extra');
@@ -1872,7 +1895,7 @@ class SmmApp {
       if (customComments) quantity.value = this.orderCommentLines().length || '';
       else if (!quantity.value || Number(quantity.value) < Number(service.min_quantity) || Number(quantity.value) > Number(service.max_quantity)) quantity.value = service.min_quantity;
     }
-    if (quantityLabel) quantityLabel.innerHTML = `<i class="fa-solid fa-arrow-up-1-9"></i> ${customComments ? this.ui('Yorum Sayısı', 'Comment Count') : service.pricing_model === 'per_item' ? this.ui('Ürün Adedi', 'Item Quantity') : this.ui('Miktar', 'Quantity')}`;
+    if (quantityLabel) quantityLabel.innerHTML = `<i class="fa-solid fa-arrow-up-1-9"></i> ${customComments ? this.ui('Yorum Sayısı', 'Comment Count') : Number(service.is_bundle) === 1 ? this.ui('Paket Adedi', 'Package Quantity') : service.pricing_model === 'per_item' ? this.ui('Ürün Adedi', 'Item Quantity') : this.ui('Miktar', 'Quantity')}`;
     if (target) {
       target.type = emailInput ? 'email' : 'text';
       if (emailInput && (!target.value || target.value.includes('://'))) target.value = this.currentUser?.email || '';
@@ -1904,9 +1927,9 @@ class SmmApp {
       dripCheck.checked = false;
       this.toggleDripFeed(false);
     }
-    if (rateUnit) rateUnit.textContent = service.pricing_model === 'per_item'
-      ? this.ui('1 Ürün', 'Per Item')
-      : this.ui('1000 Adet', 'Per 1000');
+    if (rateUnit) rateUnit.textContent = Number(service.is_bundle) === 1
+      ? this.ui('1 Paket', 'Per Package')
+      : service.pricing_model === 'per_item' ? this.ui('1 Ürün', 'Per Item') : this.ui('1000 Adet', 'Per 1000');
 
     const policy = this.locale === 'en'
       ? (service.refund_policy_en || service.refund_policy_tr || '')
@@ -2208,7 +2231,7 @@ class SmmApp {
       return `
         <tr>
           <td class="cell-nowrap">#${s.id}</td>
-          <td class="cell-service-title" title="${this.escapeHtml(s.name)}"><span class="service-name-clamp">${this.escapeHtml(s.name)}</span></td>
+          <td class="cell-service-title" title="${this.escapeHtml(s.name)}"><span class="service-name-clamp">${this.bundleBadgeHtml(s)}${this.escapeHtml(s.name)}</span></td>
           <td class="cell-nowrap price-cell">${s.discount_percent ? this.renderPriceHtml(s) : this.formatServicePrice(s)}</td>
           <td class="cell-nowrap">${s.min_quantity} - ${s.max_quantity}</td>
           <td class="cell-nowrap">
@@ -2268,7 +2291,7 @@ class SmmApp {
         return `
           <tr>
             <td>#${o.id}</td>
-            <td style="font-weight: 600;">${this.escapeHtml(o.service_name)}</td>
+            <td style="font-weight: 600;">${this.escapeHtml(o.service_name)}${o.bundle_name ? `<span class="order-bundle-tag">📦 ${this.ui('Paket', 'Bundle')}: ${this.escapeHtml(o.bundle_name)}</span>` : ''}</td>
             <td>${this.renderOrderLink(o.link, 30, '0.85rem')}</td>
             <td>${o.quantity}</td>
             <td>₺${parseFloat(o.charge).toFixed(2)}</td>
@@ -3227,6 +3250,8 @@ class SmmApp {
     if (targetEl) targetEl.classList.add('active');
     const mobileNav = document.querySelector('.admin-mobile-nav');
     if (mobileNav) mobileNav.value = tabName;
+    // Aktif sekmenin menu grubu acilir; digerleri kayitli tercihine gore kalir.
+    this.syncAdminNavGroups(tabName);
 
     // Sekme listesi DOM'dan okunur. Elle yazilan listede yeni sekmeyi eklemeyi
     // unutmak tum panelleri gizleyip bos (beyaz) ekran birakiyordu.
@@ -3242,6 +3267,7 @@ class SmmApp {
     });
 
     if (tabName === 'dashboard') this.loadAdminStats();
+    if (tabName === 'favorites') this.loadAdminFavoritesTab();
     if (tabName === 'providers') this.loadAdminProviders();
     if (tabName === 'services') this.loadAdminAddedServices();
     if (tabName === 'health') this.loadHealth();
@@ -5983,7 +6009,7 @@ class SmmApp {
       <tr>
         <td class="cell-nowrap"><strong>#${o.id}</strong><small style="display:block;color:var(--text-dim);">${tarih}</small></td>
         <td>${this.escapeHtml(o.username)}</td>
-        <td class="cell-truncate" style="font-size: 0.85rem;" title="${this.escapeHtml(o.service_name)}">${this.escapeHtml(o.service_name)}${saglayici}</td>
+        <td class="cell-truncate" style="font-size: 0.85rem;" title="${this.escapeHtml(o.service_name)}">${this.escapeHtml(o.service_name)}${o.bundle_name ? `<span class="order-bundle-tag">📦 Paket: ${this.escapeHtml(o.bundle_name)}</span>` : ''}${saglayici}</td>
         <td>${this.renderOrderLink(o.link, 40, '0.8rem')}</td>
         <td class="cell-nowrap">${o.quantity}${this.providerQuantityNote(o)}</td>
         <td class="cell-nowrap" style="font-weight: 700;">₺${Number(o.charge || 0).toFixed(2)}</td>
@@ -8827,7 +8853,7 @@ print(sonuc.get("error") or sonuc.get("order"))`;
     const isRefill = this.isServiceGuaranteed(s);
     return `<tr>
       <td class="cell-nowrap">#${s.id}</td>
-      <td class="cell-service-title" title="${this.escapeHtml(s.name)}"><span class="service-name-clamp">${this.escapeHtml(s.name)}</span></td>
+      <td class="cell-service-title" title="${this.escapeHtml(s.name)}"><span class="service-name-clamp">${this.bundleBadgeHtml(s)}${this.escapeHtml(s.name)}</span></td>
       <td class="cell-nowrap price-cell">${s.discount_percent ? this.renderPriceHtml(s) : this.formatServicePrice(s)}</td>
       <td class="cell-nowrap">${s.min_quantity} - ${s.max_quantity}</td>
       <td class="cell-nowrap">${isRefill ? `<span class="badge badge-completed"><i class="fa-solid fa-shield-check"></i> ${this.t('guaranteed')}</span>` : `<span class="badge badge-pending">${this.t('standard')}</span>`}</td>
@@ -8872,7 +8898,11 @@ print(sonuc.get("error") or sonuc.get("order"))`;
     if (service && qtyInput) {
       qtyInput.min = service.min_quantity;
       qtyInput.max = service.max_quantity;
-      qtyInput.value = this.clampMachineQty(Number(qtyInput.value) || service.min_quantity, service);
+      const perItem = service.pricing_model === 'per_item';
+      const previous = Number(qtyInput.value) || 0;
+      const resetToMin = perItem && (!this.lpLastPerItem || previous > Number(service.max_quantity));
+      this.lpLastPerItem = perItem;
+      qtyInput.value = this.clampMachineQty(resetToMin ? service.min_quantity : (previous || service.min_quantity), service);
     }
     this.updateLpPrice();
   }
@@ -8906,14 +8936,18 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       return;
     }
     const qty = Number(qtyInput?.value) || 0;
-    const charge = (this.effectiveRate(service) / 1000) * qty;
-    const usdCharge = (Number(service.rate_per_1000_usd_cents || 0) / 100000) * qty;
+    // Adet bazli urunlerde fiyat 1000'e bolunmez (ana sayfa makinesiyle ayni kural).
+    const perItem = service.pricing_model === 'per_item';
+    const charge = perItem ? this.effectiveRate(service) * qty : (this.effectiveRate(service) / 1000) * qty;
+    const usdRate = Number(service.rate_per_1000_usd_cents || 0) / 100;
+    const usdCharge = perItem ? usdRate * qty : (usdRate / 1000) * qty;
     priceEl.textContent = this.locale === 'en' && usdCharge > 0 && !service.discount_percent ? `$${usdCharge.toFixed(2)}` : `₺${charge.toFixed(2)}`;
     if (limitsEl) {
       const min = Number(service.min_quantity) || 1;
       const max = Number(service.max_quantity) || min;
       limitsEl.classList.toggle('is-invalid', qty < min || qty > max);
-      limitsEl.textContent = `Limit: ${min} - ${max}`;
+      const unitHint = perItem ? ` · ${this.ui('adet fiyatı', 'unit price')} ₺${this.effectiveRate(service).toFixed(2)}` : '';
+      limitsEl.textContent = `Limit: ${min} - ${max}${unitHint}`;
     }
   }
 
@@ -10481,6 +10515,691 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       if (marked) inputsByField[(err.details?.[0]?.field) || err.field]?.focus();
       showToast(err.message, 'error');
     }
+  }
+
+  // ===================== KENAR ÇUBUĞU GRUPLARI (ADMIN) =====================
+  // Menu maddeleri basliklar altinda toplanir; baslik tiklaninca grup acilir/
+  // kapanir. Acik gruplar localStorage'da tutulur; aktif sekmenin grubu her
+  // zaman aciktir. Kapali grubun basliginda icindeki rozetlerin toplami gorunur.
+  adminNavGroupState() {
+    try { return JSON.parse(localStorage.getItem('adminNavGroups') || '{}') || {}; } catch { return {}; }
+  }
+
+  setAdminNavGroupOpen(key, open, persist = true) {
+    const group = document.querySelector(`#view-admin .admin-nav-group[data-nav-group="${key}"]`);
+    if (!group) return;
+    group.classList.toggle('open', open);
+    group.querySelector('.admin-nav-toggle')?.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (persist) {
+      const state = this.adminNavGroupState();
+      state[key] = open ? 1 : 0;
+      try { localStorage.setItem('adminNavGroups', JSON.stringify(state)); } catch {}
+    }
+    this.updateAdminNavGroupBadges();
+  }
+
+  toggleAdminNavGroup(key) {
+    const group = document.querySelector(`#view-admin .admin-nav-group[data-nav-group="${key}"]`);
+    if (!group) return;
+    this.setAdminNavGroupOpen(key, !group.classList.contains('open'));
+  }
+
+  // Aktif sekmenin grubu acilir; diger gruplar kayitli tercihlerine gore kalir.
+  syncAdminNavGroups(activeTab) {
+    const groups = document.querySelectorAll('#view-admin .admin-nav-group');
+    if (!groups.length) return;
+    const saved = this.adminNavGroupState();
+    const state = Object.keys(saved).length ? saved : { operations: 1 };
+    groups.forEach(group => {
+      const key = group.dataset.navGroup;
+      const holdsActive = Boolean(group.querySelector(`[data-admin-tab="${activeTab}"]`));
+      const open = holdsActive || state[key] === 1;
+      group.classList.toggle('open', open);
+      group.querySelector('.admin-nav-toggle')?.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    this.updateAdminNavGroupBadges();
+    if (!this.adminNavBadgeObserver && typeof MutationObserver !== 'undefined') {
+      const nav = document.querySelector('#view-admin .admin-nav-groups');
+      if (nav) {
+        this.adminNavBadgeObserver = new MutationObserver(() => this.updateAdminNavGroupBadges());
+        this.adminNavBadgeObserver.observe(nav, { subtree: true, childList: true, characterData: true });
+      }
+    }
+  }
+
+  updateAdminNavGroupBadges() {
+    document.querySelectorAll('#view-admin .admin-nav-group').forEach(group => {
+      const badge = group.querySelector('.admin-nav-group-badge');
+      if (!badge) return;
+      let total = 0;
+      group.querySelectorAll('.sidebar-item em').forEach(em => { total += Number(String(em.textContent || '').trim()) || 0; });
+      const next = total > 0 ? String(total) : '';
+      if (badge.textContent !== next) badge.textContent = next;
+    });
+  }
+
+  // ===================== FAVORİLER & PAKETLER (ADMIN) =====================
+  async loadAdminFavoritesTab() {
+    this.showFavoritesSection(this.favoritesSection || 'favorites');
+    await Promise.all([this.loadAdminFavorites(), this.loadAdminBundles()]);
+  }
+
+  showFavoritesSection(section) {
+    this.favoritesSection = section === 'bundles' ? 'bundles' : 'favorites';
+    const fav = document.getElementById('favorites-section-favorites');
+    const bundles = document.getElementById('favorites-section-bundles');
+    if (fav) fav.style.display = this.favoritesSection === 'favorites' ? '' : 'none';
+    if (bundles) bundles.style.display = this.favoritesSection === 'bundles' ? '' : 'none';
+    document.getElementById('favorites-subtab-favorites')?.classList.toggle('active', this.favoritesSection === 'favorites');
+    document.getElementById('favorites-subtab-bundles')?.classList.toggle('active', this.favoritesSection === 'bundles');
+  }
+
+  // Admin servis listesi (favori bilgisi, maliyet, ort. sure) bir kez cekilir;
+  // force ile tazelenir.
+  async ensureAdminServicesLoaded(force = false) {
+    if (!force && Array.isArray(this.currentAdminAddedServices) && this.currentAdminAddedServices.length) return this.currentAdminAddedServices;
+    const res = await API.getAdminServices();
+    this.adminUsdTryRate = Number(res.usd_try_rate) > 0 ? Number(res.usd_try_rate) : 35;
+    this.currentAdminAddedServices = (res.services || []).map(s => ({
+      ...s,
+      _searchIndex: `${s.id} ${s.name || ''} ${s.name_tr || ''} ${s.name_en || ''} ${s.category_name || ''} ${s.provider_name || ''} ${s.provider_service_id ?? ''}`.toLowerCase()
+    }));
+    return this.currentAdminAddedServices;
+  }
+
+  // "₺12.50 / 1000" veya adet bazli urunde "₺12.50 / adet".
+  adminPriceLabel(service) {
+    const rate = Number(service?.rate_per_1000 || 0);
+    if (Number(service?.is_bundle) === 1) return `₺${rate.toFixed(2)} / paket`;
+    return service?.pricing_model === 'per_item' ? `₺${rate.toFixed(2)} / adet` : `₺${rate.toFixed(2)} / 1000`;
+  }
+
+  async loadAdminFavorites() {
+    const grid = document.getElementById('admin-favorites-grid');
+    if (!grid) return;
+    grid.innerHTML = `<div class="admin-help"><i class="fa-solid fa-spinner fa-spin"></i> Favoriler yükleniyor...</div>`;
+    try {
+      await this.ensureAdminServicesLoaded(true);
+      this.renderAdminFavorites();
+    } catch (err) {
+      grid.innerHTML = `<div class="admin-help" style="color: var(--danger);">Favoriler yüklenemedi: ${this.escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  renderAdminFavorites() {
+    const grid = document.getElementById('admin-favorites-grid');
+    if (!grid) return;
+    const all = this.currentAdminAddedServices || [];
+    const favorites = all.filter(s => Number(s.is_favorite) === 1);
+    const badge = document.getElementById('favorites-count-badge');
+    if (badge) badge.textContent = favorites.length;
+
+    const search = (document.getElementById('admin-favorites-search')?.value || '').trim().toLowerCase();
+    const sort = document.getElementById('admin-favorites-sort')?.value || 'name';
+    let list = search ? favorites.filter(s => s._searchIndex.includes(search)) : favorites;
+    list = [...list].sort((a, b) => {
+      if (sort === 'orders') return (Number(b.completed_order_count) || 0) - (Number(a.completed_order_count) || 0);
+      if (sort === 'price') return Number(a.rate_per_1000 || 0) - Number(b.rate_per_1000 || 0);
+      if (sort === 'speed') return (Number(a.avg_completion_minutes) || Infinity) - (Number(b.avg_completion_minutes) || Infinity);
+      return String(a.name_tr || a.name).localeCompare(String(b.name_tr || b.name), 'tr');
+    });
+
+    if (!favorites.length) {
+      grid.innerHTML = `
+        <div class="glass-card favorites-empty">
+          <i class="fa-regular fa-star"></i>
+          <h3>Henüz favori servisin yok</h3>
+          <p>En çok kullandığın veya stabil çalışan servisleri favorilere ekle; hızlı sipariş, bilgi ve düzenleme tek tıkla elinin altında olsun.</p>
+          <button class="btn btn-primary" onclick="app.openAddFavoriteModal()"><i class="fa-solid fa-plus"></i> İlk Favoriyi Ekle</button>
+        </div>`;
+      return;
+    }
+    if (!list.length) {
+      grid.innerHTML = `<div class="admin-help">Aramayla eşleşen favori bulunamadı.</div>`;
+      return;
+    }
+
+    grid.innerHTML = list.map(s => {
+      const cost = Number(s.provider_cost_rate);
+      const currency = String(s.provider_cost_currency || 'USD').toUpperCase();
+      const costLabel = s.provider_id && Number.isFinite(cost) && cost > 0
+        ? `Maliyet ${currency === 'TRY' ? '₺' : '$'}${cost.toFixed(4)}`
+        : (s.provider_id ? 'Maliyet güncellenmedi' : 'Manuel servis');
+      const isBundle = Number(s.is_bundle) === 1;
+      return `
+        <div class="glass-card favorite-card">
+          <div class="favorite-card-head">
+            <span class="badge badge-processing">${this.escapeHtml(s.category_name || '')}</span>
+            <span class="badge ${Number(s.status) === 1 ? 'badge-completed' : 'badge-canceled'}">${Number(s.status) === 1 ? 'Aktif' : 'Pasif'}</span>
+          </div>
+          <h3>${isBundle ? '<span class="service-bundle-badge">📦 PAKET</span>' : ''}#${s.id} · ${this.escapeHtml(s.name_tr || s.name)}</h3>
+          <div class="favorite-meta">
+            <div><small>Fiyat</small><strong>${this.escapeHtml(this.adminPriceLabel(s))}</strong></div>
+            <div><small>Limit</small><strong>${s.min_quantity} - ${s.max_quantity}</strong></div>
+            <div><small>Ort. süre</small><strong>${this.formatAvgCompletion(s.avg_completion_minutes, s.completed_order_count)}</strong></div>
+            <div><small>Tamamlanan</small><strong>${Number(s.completed_order_count) || 0} sipariş</strong></div>
+          </div>
+          <div class="favorite-provider">
+            <i class="fa-solid fa-server"></i> ${this.escapeHtml(s.provider_name || 'Manuel Eklenen')}${s.provider_service_id ? ` · Servis #${this.escapeHtml(String(s.provider_service_id))}` : ''} · ${this.escapeHtml(costLabel)}
+          </div>
+          <div class="favorite-actions">
+            ${isBundle
+              ? `<button class="btn btn-primary btn-sm" onclick="app.showFavoritesSection('bundles')" title="Paketler bölümünde yönetilir"><i class="fa-solid fa-box-open"></i> Paketi Yönet</button>`
+              : `<button class="btn btn-primary btn-sm" onclick="app.openQuickOrder(${s.id})" title="Bir kullanıcı adına anında sipariş oluştur"><i class="fa-solid fa-bolt"></i> Hızlı Sipariş</button>`}
+            <button class="btn btn-cyan btn-sm" onclick="app.openAdminServiceInfo(${s.id})"><i class="fa-solid fa-circle-info"></i> Bilgi</button>
+            ${isBundle ? '' : `<button class="btn btn-outline btn-sm" onclick="app.openEditServiceDetailsModal(${s.id})"><i class="fa-solid fa-pen-to-square"></i> Düzenle</button>`}
+            <button class="btn btn-outline btn-sm" onclick="app.removeAdminFavorite(${s.id})" title="Favorilerden çıkar"><i class="fa-regular fa-star"></i> Kaldır</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // --- Favori ekleme penceresi ---
+  async openAddFavoriteModal() {
+    try { await this.ensureAdminServicesLoaded(); } catch (err) { return showToast(`Servisler yüklenemedi: ${err.message}`, 'error'); }
+    const search = document.getElementById('add-favorite-search');
+    if (search) search.value = '';
+    this.renderAddFavoriteOptions();
+    document.getElementById('modal-add-favorite')?.classList.add('active');
+    setTimeout(() => search?.focus(), 50);
+  }
+
+  renderAddFavoriteOptions() {
+    const select = document.getElementById('add-favorite-select');
+    if (!select) return;
+    const search = (document.getElementById('add-favorite-search')?.value || '').trim().toLowerCase();
+    const candidates = (this.currentAdminAddedServices || [])
+      .filter(s => Number(s.is_favorite) !== 1 && Number(s.status) === 1)
+      .filter(s => !search || s._searchIndex.includes(search))
+      .sort((a, b) => String(a.category_name || '').localeCompare(String(b.category_name || ''), 'tr') || String(a.name_tr || a.name).localeCompare(String(b.name_tr || b.name), 'tr'))
+      .slice(0, 300);
+    select.innerHTML = candidates.map(s =>
+      `<option value="${s.id}">#${s.id} — ${this.escapeHtml(s.name_tr || s.name)} · ${this.escapeHtml(s.category_name || '')} (${this.escapeHtml(this.adminPriceLabel(s))})</option>`
+    ).join('');
+    const hint = document.getElementById('add-favorite-hint');
+    if (hint) hint.textContent = candidates.length ? `${candidates.length} servis listeleniyor. Birden fazla seçmek için Ctrl (⌘) ile tıkla.` : 'Eşleşen servis yok.';
+  }
+
+  async submitAddFavorites(e) {
+    e?.preventDefault?.();
+    const select = document.getElementById('add-favorite-select');
+    const ids = [...(select?.selectedOptions || [])].map(option => Number(option.value)).filter(Boolean);
+    if (!ids.length) return showToast('Önce listeden en az bir servis seç.', 'warning');
+    let added = 0;
+    for (const id of ids) {
+      try {
+        await API.setAdminServiceFavorite(id, 1);
+        const service = (this.currentAdminAddedServices || []).find(s => s.id === id);
+        if (service) service.is_favorite = 1;
+        added += 1;
+      } catch (err) {
+        showToast(`#${id} eklenemedi: ${err.message}`, 'error');
+      }
+    }
+    if (added) showToast(`${added} servis favorilere eklendi.`, 'success');
+    this.closeModal('modal-add-favorite');
+    this.renderAdminFavorites();
+    if (document.getElementById('admin-added-services-tbody')?.children.length) this.filterAdminAddedServicesTable();
+  }
+
+  async removeAdminFavorite(serviceId) {
+    const service = (this.currentAdminAddedServices || []).find(s => s.id === serviceId);
+    const confirmed = await confirmDialog(
+      `"${service ? (service.name_tr || service.name) : '#' + serviceId}" favorilerden çıkarılacak. Servisin kendisi silinmez.`,
+      { title: 'Favoriden çıkar', icon: 'fa-star', confirmText: 'Çıkar' }
+    );
+    if (!confirmed) return;
+    try {
+      await API.setAdminServiceFavorite(serviceId, 0);
+      if (service) service.is_favorite = 0;
+      showToast('Servis favorilerden çıkarıldı.', 'success');
+      this.renderAdminFavorites();
+    } catch (err) {
+      showToast(`Kaldırılamadı: ${err.message}`, 'error');
+    }
+  }
+
+  // --- Hızlı sipariş: favori servisle bir kullanıcı adına anında sipariş ---
+  async openQuickOrder(serviceId) {
+    const service = (this.currentAdminAddedServices || []).find(s => s.id === serviceId);
+    if (!service) return showToast('Servis bulunamadı.', 'error');
+    if (Number(service.is_bundle) === 1) return showToast('Paket servisler hızlı siparişle atanamaz; müşteri paketi kendi panelinden alır.', 'warning');
+    this.quickOrderService = service;
+    document.getElementById('quick-order-service-name').textContent = `#${service.id} · ${service.name_tr || service.name}`;
+    document.getElementById('quick-order-service-summary').innerHTML =
+      `${this.escapeHtml(service.category_name || '')} · ${this.escapeHtml(this.adminPriceLabel(service))} · Limit ${service.min_quantity} - ${service.max_quantity}` +
+      (service.provider_name ? ` · ${this.escapeHtml(service.provider_name)}` : '');
+    document.getElementById('quick-order-link').value = '';
+    const qty = document.getElementById('quick-order-qty');
+    qty.min = service.min_quantity; qty.max = service.max_quantity; qty.value = service.min_quantity;
+    document.getElementById('quick-order-charge').value = 'gift';
+    const search = document.getElementById('quick-order-user-search');
+    if (search) search.value = '';
+    // Varsayilan hedef: yoneticinin kendi hesabi (kendine test/hizli siparis).
+    const select = document.getElementById('quick-order-user-select');
+    if (select && this.currentUser) {
+      select.innerHTML = `<option value="${this.currentUser.id}" selected>${this.escapeHtml(this.currentUser.username)} (sen)</option>`;
+    }
+    const hint = document.getElementById('quick-order-user-hint');
+    if (hint) hint.textContent = 'Başka bir kullanıcı için üstteki kutuya kullanıcı adı veya e-posta yaz.';
+    this.onQuickOrderChange();
+    document.getElementById('modal-quick-order')?.classList.add('active');
+    setTimeout(() => document.getElementById('quick-order-link')?.focus(), 50);
+  }
+
+  async quickOrderUserSearch() {
+    const q = (document.getElementById('quick-order-user-search')?.value || '').trim();
+    const select = document.getElementById('quick-order-user-select');
+    const hint = document.getElementById('quick-order-user-hint');
+    if (!select) return;
+    if (!q) {
+      if (this.currentUser) select.innerHTML = `<option value="${this.currentUser.id}" selected>${this.escapeHtml(this.currentUser.username)} (sen)</option>`;
+      if (hint) hint.textContent = 'Başka bir kullanıcı için üstteki kutuya kullanıcı adı veya e-posta yaz.';
+      return;
+    }
+    try {
+      const res = await API.getAdminUsers(q);
+      const users = (res.users || []).filter(u => !u.banned).slice(0, 30);
+      select.innerHTML = users.map((u, i) =>
+        `<option value="${u.id}" ${i === 0 ? 'selected' : ''}>${this.escapeHtml(u.username)} · ${this.escapeHtml(u.email || '')} · ₺${Number(u.balance || 0).toFixed(2)}</option>`
+      ).join('');
+      if (hint) hint.textContent = users.length ? `${users.length} kullanıcı bulundu; listeden seç.` : 'Eşleşen kullanıcı yok.';
+    } catch (err) {
+      if (hint) hint.textContent = `Arama yapılamadı: ${err.message}`;
+    }
+  }
+
+  onQuickOrderChange() {
+    const service = this.quickOrderService;
+    const totalEl = document.getElementById('quick-order-total');
+    const limitsEl = document.getElementById('quick-order-limits');
+    if (!service || !totalEl) return;
+    const qty = Number(document.getElementById('quick-order-qty')?.value) || 0;
+    const chargeMode = document.getElementById('quick-order-charge')?.value;
+    const rate = Number(service.rate_per_1000 || 0);
+    const total = chargeMode === 'charge' ? (service.pricing_model === 'per_item' ? rate * qty : (rate * qty) / 1000) : 0;
+    totalEl.textContent = `₺${total.toFixed(2)}`;
+    if (limitsEl) {
+      const outOfRange = qty < Number(service.min_quantity) || qty > Number(service.max_quantity);
+      limitsEl.textContent = `Limit: ${service.min_quantity} - ${service.max_quantity}${outOfRange ? ' — miktar sınır dışında' : ''}`;
+      limitsEl.style.color = outOfRange ? 'var(--danger)' : '';
+    }
+  }
+
+  async submitQuickOrder(e) {
+    e.preventDefault();
+    const service = this.quickOrderService;
+    const select = document.getElementById('quick-order-user-select');
+    const userId = Number(select?.value);
+    const username = select?.selectedOptions?.[0]?.textContent?.split(' · ')[0]?.replace(' (sen)', '') || '';
+    if (!service || !userId) return showToast('Önce bir kullanıcı seç.', 'warning');
+    const link = document.getElementById('quick-order-link').value.trim();
+    const quantity = Number(document.getElementById('quick-order-qty').value);
+    const charge_user = document.getElementById('quick-order-charge').value === 'charge';
+    const confirmed = await confirmDialog(
+      `"${service.name_tr || service.name}" servisinden ${quantity} adet, "${username}" kullanıcısı adına oluşturulacak ve sağlayıcıya iletilecek.\n\nÜcretlendirme: ${charge_user ? 'kullanıcının bakiyesinden düşülecek' : 'HEDİYE (ücret alınmayacak)'}.`,
+      { title: 'Hızlı siparişi onayla', icon: 'fa-bolt', confirmText: 'Oluştur ve Gönder' }
+    );
+    if (!confirmed) return;
+    try {
+      const res = await API.assignUserOrder(userId, { service_id: service.id, link, quantity, charge_user });
+      showToast(res.message, 'success');
+      this.closeModal('modal-quick-order');
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
+    }
+  }
+
+  // --- Servis bilgi kartı (admin gözüyle: maliyet, kâr, tüm alanlar) ---
+  openAdminServiceInfo(serviceId) {
+    const s = (this.currentAdminAddedServices || []).find(item => item.id === serviceId);
+    if (!s) return showToast('Servis bulunamadı.', 'error');
+    const esc = value => this.escapeHtml(value ?? '');
+    const cost = Number(s.provider_cost_rate);
+    const currency = String(s.provider_cost_currency || 'USD').toUpperCase();
+    const usdTry = Number(this.adminUsdTryRate || 35);
+    const costTry = Number.isFinite(cost) && cost > 0 ? (currency === 'TRY' ? cost : cost * usdTry) : 0;
+    const profit = costTry > 0 ? ((Number(s.rate_per_1000 || 0) / costTry) - 1) * 100 : null;
+    const bundle = Number(s.is_bundle) === 1 ? (this.adminBundles || []).find(b => b.id === s.id) : null;
+    const row = (label, value) => value === '' || value === null || value === undefined
+      ? '' : `<div class="admin-info-row"><small>${esc(label)}</small><div>${value}</div></div>`;
+    const lines = value => String(value || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    document.getElementById('admin-service-info-title').textContent = `#${s.id} · ${s.name_tr || s.name}`;
+    document.getElementById('admin-service-info-body').innerHTML = `
+      <div class="admin-info-grid">
+        ${row('Durum', `<span class="badge ${Number(s.status) === 1 ? 'badge-completed' : 'badge-canceled'}">${Number(s.status) === 1 ? 'Aktif' : 'Pasif'}</span> ${Number(s.is_favorite) === 1 ? '<span class="badge badge-processing">⭐ Favori</span>' : ''}`)}
+        ${row('Kategori', esc(s.category_name))}
+        ${row('İngilizce ad', esc(s.name_en))}
+        ${row('Sağlayıcı', s.provider_name ? `${esc(s.provider_name)} · Servis #${esc(s.provider_service_id || '-')}` : 'Manuel eklenen')}
+        ${row('Satış fiyatı', `<strong>${esc(this.adminPriceLabel(s))}</strong>${Number(s.rate_per_1000_usd_cents) > 0 ? ` · $${(Number(s.rate_per_1000_usd_cents) / 100).toFixed(2)}` : ''}`)}
+        ${row('Sağlayıcı maliyeti', costTry > 0 ? `${currency === 'TRY' ? '₺' : '$'}${cost.toFixed(4)} ≈ ₺${costTry.toFixed(2)}${s.provider_cost_updated_at ? ` <small>(${new Date(s.provider_cost_updated_at).toLocaleString('tr-TR')})</small>` : ''}` : 'Güncellenmedi')}
+        ${row('Kâr', profit === null ? '—' : `<span class="badge ${profit >= 0 ? 'badge-completed' : 'badge-canceled'}">%${profit.toFixed(1)}</span>`)}
+        ${row('Limitler', `${s.min_quantity} - ${s.max_quantity}`)}
+        ${row('Fiyat modeli', s.pricing_model === 'per_item' ? 'Adet başı' : '1000 adet başı')}
+        ${row('Sipariş türü', esc(s.order_input_type || 'link'))}
+        ${row('Ort. tamamlanma', `${this.formatAvgCompletion(s.avg_completion_minutes, s.completed_order_count)} · ${Number(s.completed_order_count) || 0} tamamlanan sipariş`)}
+        ${row('Garanti', Number(s.refill) === 1 ? `Garantili${Number(s.warranty_hours) > 0 ? ` · ${s.warranty_hours} saat` : ''}` : 'Standart')}
+        ${row('Başlama süresi', esc(s.start_time_tr))}
+        ${row('Hız', esc(s.speed_tr))}
+        ${row('Fazla gönderim', Number(s.provider_overage_percent) > 0 ? `%${Number(s.provider_overage_percent)}` : '')}
+        ${row('Çarpan', Number(s.provider_quantity_multiplier) > 1 ? `x${s.provider_quantity_multiplier}` : '')}
+      </div>
+      ${bundle ? `<div class="admin-info-block"><small>Paket içeriği</small><ul class="service-info-bundle">${bundle.items.map(item => `<li><span>${esc(item.name)}</span><strong>${item.quantity} adet</strong></li>`).join('')}</ul></div>` : ''}
+      ${lines(s.features_tr).length ? `<div class="admin-info-block"><small>Özellikler</small><ul>${lines(s.features_tr).map(line => `<li>${esc(line)}</li>`).join('')}</ul></div>` : ''}
+      ${s.description_tr || s.description ? `<div class="admin-info-block"><small>Açıklama</small><p>${esc(s.description_tr || s.description)}</p></div>` : ''}
+      ${s.refund_policy_tr ? `<div class="admin-info-block"><small>İade koşulları</small><p>${esc(s.refund_policy_tr)}</p></div>` : ''}`;
+    const foot = document.getElementById('admin-service-info-actions');
+    if (foot) {
+      foot.innerHTML = Number(s.is_bundle) === 1
+        ? `<button class="btn btn-primary btn-sm" onclick="app.closeModal('modal-admin-service-info'); app.openBundleEditor(${s.id})"><i class="fa-solid fa-pen-to-square"></i> Paketi Düzenle</button>`
+        : `<button class="btn btn-primary btn-sm" onclick="app.closeModal('modal-admin-service-info'); app.openQuickOrder(${s.id})"><i class="fa-solid fa-bolt"></i> Hızlı Sipariş</button>
+           <button class="btn btn-outline btn-sm" onclick="app.closeModal('modal-admin-service-info'); app.openEditServiceDetailsModal(${s.id})"><i class="fa-solid fa-pen-to-square"></i> Düzenle</button>`;
+    }
+    document.getElementById('modal-admin-service-info')?.classList.add('active');
+  }
+
+  // --- Paket servisler ---
+  async loadAdminBundles() {
+    const tbody = document.getElementById('admin-bundles-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center"><i class="fa-solid fa-spinner fa-spin"></i> Paketler yükleniyor...</td></tr>`;
+    try {
+      const res = await API.getAdminBundles();
+      this.adminBundles = res.bundles || [];
+      this.renderAdminBundles();
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center" style="color: var(--danger);">Paketler yüklenemedi: ${this.escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+
+  renderAdminBundles() {
+    const tbody = document.getElementById('admin-bundles-tbody');
+    if (!tbody) return;
+    const list = this.adminBundles || [];
+    const badge = document.getElementById('bundles-count-badge');
+    if (badge) badge.textContent = list.length;
+    if (!list.length) {
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center">Henüz paket yok. "Yeni Paket Oluştur" ile görüntüleme + beğeni + kaydetme gibi servisleri tek üründe birleştir.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = list.map(b => {
+      const chips = (b.items || []).map(item => {
+        const ok = Number(item.status) === 1 && item.provider_ok;
+        return `<span class="bundle-chip ${ok ? '' : 'is-warning'}" title="${ok ? '' : 'Bu servis pasif veya sağlayıcısı yok'}">${ok ? '' : '⚠️ '}${item.quantity} × ${this.escapeHtml(item.name)}</span>`;
+      }).join('');
+      const saving = b.standalone_value > 0 ? ((1 - Number(b.price) / Number(b.standalone_value)) * 100) : null;
+      const savingLabel = saving === null ? '' : (saving >= 0
+        ? `<small style="display:block;color:var(--success);">Tek tek: ₺${Number(b.standalone_value).toFixed(2)} · müşteri %${saving.toFixed(0)} kazançlı</small>`
+        : `<small style="display:block;color:var(--danger);">Tek tek: ₺${Number(b.standalone_value).toFixed(2)} · paket %${Math.abs(saving).toFixed(0)} daha pahalı</small>`);
+      const warnings = (b.warnings || []).length
+        ? `<div style="font-size:.72rem;color:var(--danger);margin-top:4px;max-width:260px;white-space:normal;line-height:1.35;">${b.warnings.map(w => this.escapeHtml(w)).join('<br>')}</div>` : '';
+      return `
+      <tr>
+        <td class="cell-nowrap">#${b.id}</td>
+        <td style="min-width: 180px; max-width: 260px; white-space: normal;">
+          <strong>${this.escapeHtml(b.name_tr || b.name)}</strong>
+          <small style="display:block;color:var(--text-dim);">${this.escapeHtml(b.name_en || '')}</small>
+          <span class="badge badge-processing" style="margin-top:4px;">${this.escapeHtml(b.category_name || '')}</span>
+          ${Number(b.is_favorite) === 1 ? '<span class="badge badge-pending" style="margin-top:4px;">⭐ Favori</span>' : ''}
+        </td>
+        <td style="min-width: 210px; max-width: 300px; white-space: normal;">${chips || '<span class="badge badge-canceled">İçerik yok</span>'}</td>
+        <td style="min-width: 140px; max-width: 190px; white-space: normal; font-weight:700; color: var(--success);">₺${Number(b.price).toFixed(2)}${Number(b.price_usd) > 0 ? `<small style="display:block;color:var(--accent-cyan);">$${Number(b.price_usd).toFixed(2)}</small>` : ''}${savingLabel}</td>
+        <td class="cell-nowrap">${b.min_quantity} - ${b.max_quantity} paket</td>
+        <td class="cell-nowrap">${Number(b.order_count) || 0}${b.last_order_at ? `<small style="display:block;color:var(--text-dim);">${new Date(b.last_order_at).toLocaleDateString('tr-TR')}</small>` : ''}</td>
+        <td><span class="badge ${Number(b.status) === 1 ? 'badge-completed' : 'badge-canceled'}">${Number(b.status) === 1 ? 'Yayında' : 'Pasif'}</span>${warnings}</td>
+        <td class="cell-actions">
+          <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
+            <button class="btn btn-cyan btn-sm" onclick="app.openBundleEditor(${b.id})"><i class="fa-solid fa-pen-to-square"></i> Düzenle</button>
+            <button class="btn btn-outline btn-sm" onclick="app.toggleBundleStatus(${b.id}, ${Number(b.status) === 1 ? 0 : 1})">${Number(b.status) === 1 ? 'Pasife Al' : 'Yayınla'}</button>
+            <button class="btn btn-outline btn-sm admin-fav-btn ${Number(b.is_favorite) === 1 ? 'is-fav' : ''}" onclick="app.toggleBundleFavorite(${b.id})" title="${Number(b.is_favorite) === 1 ? 'Favorilerden çıkar' : 'Favorilere ekle'}"><i class="fa-${Number(b.is_favorite) === 1 ? 'solid' : 'regular'} fa-star"></i></button>
+            <button class="btn btn-outline btn-sm" onclick="app.deleteBundle(${b.id})" style="color: var(--danger);"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  bundleEligibleServices() {
+    return (this.currentAdminAddedServices || []).filter(s =>
+      Number(s.status) === 1 && Number(s.is_bundle) !== 1 && (s.order_input_type || 'link') === 'link');
+  }
+
+  async openBundleEditor(bundleId = null) {
+    try { await this.ensureAdminServicesLoaded(); } catch (err) { return showToast(`Servisler yüklenemedi: ${err.message}`, 'error'); }
+    const bundle = bundleId ? (this.adminBundles || []).find(b => b.id === bundleId) : null;
+    if (bundleId && !bundle) return showToast('Paket bulunamadı.', 'error');
+    const val = (id, value) => { const el = document.getElementById(id); if (el) el.value = value ?? ''; };
+    const categories = [...new Set((this.currentAdminAddedServices || []).map(s => s.category_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr'));
+    const datalist = document.getElementById('bundle-category-list');
+    if (datalist) datalist.innerHTML = categories.map(c => `<option value="${this.escapeHtml(c)}"></option>`).join('');
+
+    document.getElementById('bundle-editor-title').textContent = bundle ? `📦 Paketi Düzenle: #${bundle.id}` : '📦 Yeni Paket Oluştur';
+    val('bundle-id', bundle?.id || '');
+    val('bundle-name-tr', bundle?.name_tr || bundle?.name || '');
+    val('bundle-name-en', bundle?.name_en || '');
+    val('bundle-category', bundle?.category_name || 'Paketler');
+    val('bundle-category-en', bundle?.category_name_en || '');
+    val('bundle-description-tr', bundle?.description_tr || bundle?.description || '');
+    val('bundle-description-en', bundle?.description_en || '');
+    val('bundle-price', bundle ? Number(bundle.price).toFixed(2) : '');
+    val('bundle-price-usd', bundle && Number(bundle.price_usd) > 0 ? Number(bundle.price_usd).toFixed(2) : '');
+    val('bundle-min', bundle?.min_quantity || 1);
+    val('bundle-max', bundle?.max_quantity || 10);
+    val('bundle-refill', bundle ? String(Number(bundle.refill) === 1 ? 1 : 0) : 'auto');
+    val('bundle-status', bundle ? String(Number(bundle.status)) : '1');
+    val('bundle-start-time-tr', bundle?.start_time_tr || '');
+    val('bundle-start-time-en', bundle?.start_time_en || '');
+    val('bundle-speed-tr', bundle?.speed_tr || '');
+    val('bundle-speed-en', bundle?.speed_en || '');
+    val('bundle-features-tr', bundle?.features_tr || '');
+    val('bundle-features-en', bundle?.features_en || '');
+    val('bundle-warranty-hours', bundle?.warranty_hours || 0);
+    val('bundle-refund-policy-tr', bundle?.refund_policy_tr || '');
+    val('bundle-refund-policy-en', bundle?.refund_policy_en || '');
+    const terms = document.getElementById('bundle-terms-required');
+    if (terms) terms.checked = Number(bundle?.terms_required) === 1;
+
+    const rows = document.getElementById('bundle-items');
+    if (rows) rows.innerHTML = '';
+    const items = bundle?.items?.length ? bundle.items : [null, null];
+    items.forEach(item => this.addBundleItemRow(item));
+    this.updateBundleSummary();
+    document.getElementById('modal-bundle-editor')?.classList.add('active');
+  }
+
+  addBundleItemRow(item = null) {
+    const rows = document.getElementById('bundle-items');
+    if (!rows) return;
+    if (rows.children.length >= 10) return showToast('Bir pakete en fazla 10 servis eklenebilir.', 'warning');
+    const row = document.createElement('div');
+    row.className = 'bundle-item-row';
+    row.innerHTML = `
+      <input type="text" class="form-control bundle-item-search" placeholder="🔍 Servis ara (ad, ID, kategori)" autocomplete="off" oninput="app.filterBundleItemOptions(this)">
+      <select class="form-control bundle-item-service" onchange="app.onBundleItemChange(this)"></select>
+      <input type="number" class="form-control bundle-item-qty" min="1" placeholder="Adet" title="Bir pakette bu servisten kaç adet olacak" oninput="app.updateBundleSummary()">
+      <button type="button" class="btn btn-outline btn-sm" onclick="app.removeBundleItemRow(this)" title="Satırı kaldır"><i class="fa-solid fa-xmark"></i></button>
+      <span class="bundle-item-meta"></span>`;
+    rows.appendChild(row);
+    this.renderBundleItemOptions(row.querySelector('.bundle-item-service'), '', item?.service_id || null);
+    const qty = row.querySelector('.bundle-item-qty');
+    if (item) qty.value = item.quantity;
+    this.onBundleItemChange(row.querySelector('.bundle-item-service'), !item);
+  }
+
+  removeBundleItemRow(button) {
+    button.closest('.bundle-item-row')?.remove();
+    this.updateBundleSummary();
+  }
+
+  filterBundleItemOptions(input) {
+    const row = input.closest('.bundle-item-row');
+    const select = row?.querySelector('.bundle-item-service');
+    if (!select) return;
+    this.renderBundleItemOptions(select, input.value, Number(select.value) || null);
+    this.onBundleItemChange(select, true);
+  }
+
+  renderBundleItemOptions(select, search, selectedId) {
+    const q = String(search || '').trim().toLowerCase();
+    let list = this.bundleEligibleServices();
+    if (q) list = list.filter(s => s._searchIndex.includes(q));
+    list = list.slice(0, 200);
+    if (selectedId && !list.some(s => s.id === selectedId)) {
+      const selected = (this.currentAdminAddedServices || []).find(s => s.id === selectedId);
+      if (selected) list.unshift(selected);
+    }
+    const placeholder = list.length ? '<option value="">— Servis seç —</option>' : '<option value="">Eşleşen servis yok</option>';
+    select.innerHTML = placeholder + list.map(s =>
+      `<option value="${s.id}" ${s.id === selectedId ? 'selected' : ''}>#${s.id} — ${this.escapeHtml(s.name_tr || s.name)} · ${this.escapeHtml(s.category_name || '')} (${this.escapeHtml(this.adminPriceLabel(s))})</option>`
+    ).join('');
+    if (selectedId && list.some(s => s.id === selectedId)) select.value = String(selectedId);
+  }
+
+  onBundleItemChange(select, resetQty = false) {
+    const row = select.closest('.bundle-item-row');
+    const service = (this.currentAdminAddedServices || []).find(s => s.id === Number(select.value));
+    const qty = row?.querySelector('.bundle-item-qty');
+    const meta = row?.querySelector('.bundle-item-meta');
+    if (service && qty) {
+      qty.min = service.min_quantity;
+      qty.max = service.max_quantity;
+      if (resetQty || !qty.value) qty.value = service.min_quantity;
+    } else if (qty && resetQty) {
+      qty.value = '';
+    }
+    if (meta) {
+      meta.textContent = service
+        ? `Limit ${service.min_quantity} - ${service.max_quantity} · ${this.adminPriceLabel(service)} · ${service.provider_name || 'Manuel'}${Number(service.refill) === 1 ? ' · Garantili' : ''}`
+        : '';
+    }
+    this.updateBundleSummary();
+  }
+
+  collectBundleItems() {
+    return [...document.querySelectorAll('#bundle-items .bundle-item-row')].map(row => ({
+      service_id: Number(row.querySelector('.bundle-item-service')?.value) || 0,
+      quantity: Number(row.querySelector('.bundle-item-qty')?.value) || 0
+    })).filter(item => item.service_id > 0);
+  }
+
+  updateBundleSummary() {
+    const box = document.getElementById('bundle-summary');
+    if (!box) return;
+    const items = this.collectBundleItems();
+    let standalone = 0;
+    let allRefill = items.length > 0;
+    for (const item of items) {
+      const service = (this.currentAdminAddedServices || []).find(s => s.id === item.service_id);
+      if (!service) continue;
+      const rate = Number(service.rate_per_1000 || 0);
+      standalone += service.pricing_model === 'per_item' ? rate * item.quantity : (rate * item.quantity) / 1000;
+      if (Number(service.refill) !== 1) allRefill = false;
+    }
+    const price = Number(document.getElementById('bundle-price')?.value) || 0;
+    const diff = standalone > 0 && price > 0 ? (1 - price / standalone) * 100 : null;
+    box.innerHTML = `
+      <span><small>Bileşen</small><strong>${items.length} servis</strong></span>
+      <span><small>Tek tek alınsa</small><strong>₺${standalone.toFixed(2)}</strong></span>
+      <span><small>Paket fiyatı</small><strong>${price > 0 ? `₺${price.toFixed(2)}` : '—'}</strong></span>
+      <span><small>Müşteri kazancı</small><strong style="color:${diff === null ? 'inherit' : diff >= 0 ? 'var(--success)' : 'var(--danger)'};">${diff === null ? '—' : `%${diff.toFixed(1)}`}</strong></span>
+      <span><small>Garanti önerisi</small><strong>${items.length ? (allRefill ? 'Garantili' : 'Standart') : '—'}</strong></span>`;
+  }
+
+  async saveBundle(e) {
+    e.preventDefault();
+    const get = id => document.getElementById(id)?.value ?? '';
+    const items = this.collectBundleItems();
+    if (items.length < 2) return showToast('Paket en az 2 servisten oluşmalı.', 'warning');
+    if (items.some(item => item.quantity <= 0)) return showToast('Her bileşen için adet girin.', 'warning');
+    const refill = get('bundle-refill');
+    const data = {
+      name_tr: get('bundle-name-tr'), name_en: get('bundle-name-en'),
+      category_name: get('bundle-category') || 'Paketler', category_name_en: get('bundle-category-en'),
+      description_tr: get('bundle-description-tr'), description_en: get('bundle-description-en'),
+      price: get('bundle-price'), price_usd: get('bundle-price-usd') || 0,
+      min_packages: get('bundle-min') || 1, max_packages: get('bundle-max') || 10,
+      status: get('bundle-status'),
+      start_time_tr: get('bundle-start-time-tr'), start_time_en: get('bundle-start-time-en'),
+      speed_tr: get('bundle-speed-tr'), speed_en: get('bundle-speed-en'),
+      features_tr: get('bundle-features-tr'), features_en: get('bundle-features-en'),
+      warranty_hours: get('bundle-warranty-hours') || 0,
+      refund_policy_tr: get('bundle-refund-policy-tr'), refund_policy_en: get('bundle-refund-policy-en'),
+      terms_required: Boolean(document.getElementById('bundle-terms-required')?.checked),
+      items
+    };
+    if (refill !== 'auto') data.refill = refill;
+    const bundleId = Number(get('bundle-id'));
+    try {
+      const res = bundleId ? await API.updateAdminBundle(bundleId, data) : await API.createAdminBundle(data);
+      showToast(res.message, 'success');
+      this.closeModal('modal-bundle-editor');
+      await this.loadAdminBundles();
+      await this.ensureAdminServicesLoaded(true);
+      this.renderAdminFavorites();
+      this.loadServicesData();
+    } catch (err) {
+      showToast(`Paket kaydedilemedi: ${err.message}`, 'error');
+    }
+  }
+
+  async toggleBundleStatus(bundleId, status) {
+    try {
+      const res = await API.setAdminBundleStatus(bundleId, status);
+      showToast(res.message, 'success');
+      await this.loadAdminBundles();
+      this.loadServicesData();
+    } catch (err) {
+      showToast(`Durum değiştirilemedi: ${err.message}`, 'error');
+    }
+  }
+
+  async toggleBundleFavorite(bundleId) {
+    const bundle = (this.adminBundles || []).find(b => b.id === bundleId);
+    if (!bundle) return;
+    const next = Number(bundle.is_favorite) === 1 ? 0 : 1;
+    try {
+      const res = await API.setAdminServiceFavorite(bundleId, next);
+      bundle.is_favorite = next;
+      const service = (this.currentAdminAddedServices || []).find(s => s.id === bundleId);
+      if (service) service.is_favorite = next;
+      showToast(res.message, 'success');
+      this.renderAdminBundles();
+      this.renderAdminFavorites();
+    } catch (err) {
+      showToast(`Favori güncellenemedi: ${err.message}`, 'error');
+    }
+  }
+
+  async deleteBundle(bundleId) {
+    const bundle = (this.adminBundles || []).find(b => b.id === bundleId);
+    const confirmed = await confirmDialog(
+      `"${bundle ? (bundle.name_tr || bundle.name) : '#' + bundleId}" paketi silinecek. Sipariş geçmişi varsa silinmez, pasife alınır. Bileşen servisler etkilenmez.`,
+      { title: 'Paketi sil', icon: 'fa-trash', danger: true, confirmText: 'Sil' }
+    );
+    if (!confirmed) return;
+    try {
+      const res = await API.deleteAdminBundle(bundleId);
+      showToast(res.message, 'success');
+      await this.loadAdminBundles();
+      await this.ensureAdminServicesLoaded(true);
+      this.renderAdminFavorites();
+      this.loadServicesData();
+    } catch (err) {
+      showToast(`Silinemedi: ${err.message}`, 'error');
+    }
+  }
+
+  // Katalog satiri / bilgi penceresi: paket rozeti.
+  bundleBadgeHtml(service) {
+    return Number(service?.is_bundle) === 1 ? `<span class="service-bundle-badge">📦 ${this.ui('PAKET', 'BUNDLE')}</span>` : '';
+  }
+
+  // Bilgi penceresi ve siparis formu: paketin icerigi listesi.
+  renderBundleContentsHtml(service) {
+    const items = Array.isArray(service?.bundle_items) ? service.bundle_items : [];
+    if (Number(service?.is_bundle) !== 1 || !items.length) return '';
+    return `<div class="service-info-block"><div class="service-info-block-title"><i class="fa-solid fa-box-open"></i> ${this.ui('Paket İçeriği (1 paket)', 'Bundle Contents (per package)')}</div>
+      <ul class="service-info-bundle">${items.map(item => `<li><span>${this.escapeHtml(this.localizedName(item))}</span><strong>${Number(item.quantity).toLocaleString(this.locale === 'en' ? 'en-US' : 'tr-TR')} ${this.ui('adet', 'pcs')}</strong></li>`).join('')}</ul></div>`;
   }
 }
 

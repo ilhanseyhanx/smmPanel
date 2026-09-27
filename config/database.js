@@ -201,6 +201,8 @@ async function runMigrations() {
   await addColumnIfMissing('services', 'features_en', 'TEXT');
   // Admin panel "Favori Servislerim" sekmesi: sik kullanilan servislere hizli erisim.
   await addColumnIfMissing('services', 'is_favorite', 'INTEGER NOT NULL DEFAULT 0');
+  // Paket servis: birden fazla servisin tek urun olarak satildigi satir (bkz. services/bundles.js).
+  await addColumnIfMissing('services', 'is_bundle', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing('services', 'rate_per_1000_usd_cents', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing('services', 'provider_cost_rate', 'REAL');
   await addColumnIfMissing('services', 'provider_cost_currency', "TEXT DEFAULT 'USD'");
@@ -253,6 +255,21 @@ async function runMigrations() {
   await addColumnIfMissing('orders', 'delivery_status', "TEXT NOT NULL DEFAULT 'none'");
   await addColumnIfMissing('orders', 'delivery_received_at', 'DATETIME');
   await addColumnIfMissing('orders', 'terms_accepted_at', 'DATETIME');
+  // Paket siparisi: her bilesen ayri siparistir; ayni bundle_group ile baglanir.
+  await addColumnIfMissing('orders', 'bundle_service_id', 'INTEGER');
+  await addColumnIfMissing('orders', 'bundle_group', 'TEXT');
+  await dbAsync.exec(`
+    CREATE TABLE IF NOT EXISTS service_bundle_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      bundle_service_id INTEGER NOT NULL REFERENCES services(id),
+      component_service_id INTEGER NOT NULL REFERENCES services(id),
+      quantity INTEGER NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_bundle_items_bundle ON service_bundle_items(bundle_service_id, sort_order);
+    CREATE INDEX IF NOT EXISTS idx_bundle_items_component ON service_bundle_items(component_service_id);
+    CREATE INDEX IF NOT EXISTS idx_orders_bundle_group ON orders(bundle_group) WHERE bundle_group IS NOT NULL;
+  `);
   await dbAsync.exec(`
     CREATE TABLE IF NOT EXISTS email_deliveries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

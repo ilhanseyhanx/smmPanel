@@ -196,7 +196,7 @@ async function fetchPage(dbAsync, slug, { lang = 'tr', includeDraft = false } = 
   const catCol = lang === 'en' ? 'COALESCE(c.name_en, c.name_tr, c.name)' : 'COALESCE(c.name_tr, c.name)';
   const services = page.category_ids.length
     ? await dbAsync.all(`SELECT s.id, s.category_id, ${nameCol} name, s.rate_per_1000, s.rate_per_1000_usd_cents,
-        s.min_quantity, s.max_quantity, s.refill, ${catCol} category_name
+        s.min_quantity, s.max_quantity, s.refill, s.pricing_model, s.is_bundle, ${catCol} category_name
       FROM services s JOIN categories c ON s.category_id = c.id
       WHERE s.status = 1 AND s.category_id IN (${page.category_ids.map(() => '?').join(',')})
       ORDER BY c.sort_order ASC, s.rate_per_1000 ASC, s.id ASC`, page.category_ids)
@@ -258,7 +258,10 @@ function isGuaranteed(s) {
 function priceText(s, lang) {
   const usd = Number(s.rate_per_1000_usd_cents || 0) / 100;
   const tl = Number(s.rate_per_1000 || 0);
-  return lang === 'en' && usd > 0 ? `$${usd.toFixed(2)} / ₺${tl.toFixed(2)}` : `₺${tl.toFixed(2)}`;
+  // Adet bazli urunlerde (abonelik, oyun, lisans, paket) fiyat 1000 icin degil
+  // tek adet icindir; sutun basligi "1000 Adet" dese de yanina birim yazilir.
+  const unit = s.pricing_model === 'per_item' ? (lang === 'en' ? ' / each' : ' / adet') : '';
+  return (lang === 'en' && usd > 0 ? `$${usd.toFixed(2)} / ₺${tl.toFixed(2)}` : `₺${tl.toFixed(2)}`) + unit;
 }
 
 /**
@@ -384,7 +387,7 @@ function buildLandingJsonLd({ page, services, base, siteName = 'Jet SMM Panel', 
             '@type': 'UnitPriceSpecification',
             price: Number(s.rate_per_1000 || 0).toFixed(2),
             priceCurrency: 'TRY',
-            referenceQuantity: { '@type': 'QuantitativeValue', value: 1000 }
+            referenceQuantity: { '@type': 'QuantitativeValue', value: s.pricing_model === 'per_item' ? 1 : 1000 }
           },
           availability: 'https://schema.org/InStock'
         }))

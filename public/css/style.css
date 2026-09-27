@@ -172,22 +172,31 @@ body.neo-app-active .price-cell { color: #0e7490; }
 
   /* table-layout: fixed dar ekranda hizmet adi sutununu 0 genislige
      sikistirip gorunmez yapiyordu; mobilde dogal genislik + yatay kaydirma. */
-  .table-fit-screen { table-layout: auto; }
+  .table-responsive .table-fit-screen { table-layout: auto; }
   /* Hizmet adi mobilde GENIS bir sutunda gorunur (isim kisa kalmasin) ve
-     EN FAZLA 2 satira sarar; nadiren sigmayan kisim "..." ile kesilir. */
+     EN FAZLA 3 satira sarar; nadiren sigmayan kisim "..." ile kesilir. */
   .table-fit-screen .cell-service-title {
     max-width: none;
-    min-width: 440px;
+    min-width: 0;
     white-space: normal;
     overflow: visible;
     text-overflow: clip;
     line-height: 1.4;
   }
+  /* Genislik hucreye (td min-width) degil icindeki bloga verilir: bazi mobil
+     tarayicilar td'nin min-width'ini yok sayip sutunu 50px'e sikistiriyor,
+     ad 2 satirda kirpilip okunmuyordu. Blok ekranin ~%76'si kadar genis;
+     ad en fazla 3 satira sarar. */
   .table-fit-screen .cell-service-title .service-name-clamp {
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    width: min(76vw, 560px);
+    min-width: 300px;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    font-size: .96rem;
+    line-height: 1.35;
+    word-break: break-word;
   }
   #landing-services-table, #full-services-table { min-width: 920px; }
 
@@ -4607,3 +4616,153 @@ body.neo-app-active .service-editor-step { background: #ffde17; color: #090909; 
   #view-services .tab-btn-popular::after { display: none; }
   #view-services > .main-content { padding-left: 12px; padding-right: 12px; }
 }
+
+/* =====================================================================
+   27 Eyl 2026 — Admin kenar cubugu gruplari, Favoriler & Paketler sekmesi,
+   katalogda paket rozeti ve siparis listelerinde paket etiketi.
+   ===================================================================== */
+
+/* Kenar cubugu gruplari: baslik tiklaninca acilir/kapanir. Kapali grubun
+   basliginda icindeki rozetlerin (destek, odeme bildirimi...) toplami gorunur. */
+.admin-nav-group { margin-top: 4px; }
+.admin-nav-toggle {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 18px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  margin: 3px 0 1px;
+  padding: 8px 11px;
+  color: #8a9bb5;
+  font-family: inherit;
+  font-size: .64rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  white-space: nowrap;
+  text-transform: uppercase;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  cursor: pointer;
+}
+.admin-nav-toggle > i:first-child { width: 18px; color: #667791; font-size: .78rem; text-align: center; }
+.admin-nav-toggle:hover { color: #e2e8f0; background: rgba(148, 163, 184, .06); }
+.admin-nav-caret { justify-self: end; font-size: .58rem !important; transition: transform .2s ease; }
+.admin-nav-group.open .admin-nav-caret { transform: rotate(180deg); }
+.admin-nav-items { display: none; padding-left: 6px; }
+.admin-nav-group.open .admin-nav-items { display: block; }
+.admin-nav-group-badge {
+  display: none;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  color: #fff;
+  font-size: .62rem;
+  font-style: normal;
+  letter-spacing: 0;
+  border-radius: 999px;
+  background: #dc2626;
+}
+.admin-nav-group:not(.open) .admin-nav-group-badge:not(:empty) { display: inline-flex; }
+#view-admin .admin-nav-toggle { color: #999; border: 2px solid transparent; border-radius: 0; font-family: 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; }
+#view-admin .admin-nav-toggle:hover { color: #fff; border-color: #444; background: #161616; }
+#view-admin .admin-nav-group.open .admin-nav-toggle { color: #ffde17; }
+#view-admin .admin-nav-items { margin-left: 9px; padding-left: 8px; border-left: 2px solid #333; }
+
+/* Favori servis kartlari */
+.favorites-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.favorite-card { display: flex; flex-direction: column; gap: 10px; padding: 18px; }
+.favorite-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.favorite-card h3 { margin: 0; font-size: 1rem; line-height: 1.35; overflow-wrap: anywhere; }
+.favorite-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.favorite-meta small { display: block; color: var(--text-muted); font-size: .68rem; letter-spacing: .05em; text-transform: uppercase; }
+.favorite-meta strong { font-size: .93rem; }
+.favorite-provider { color: var(--text-muted); font-size: .78rem; }
+.favorite-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+.favorites-empty { grid-column: 1 / -1; text-align: center; padding: 40px 20px; }
+.favorites-empty > i { font-size: 2.4rem; color: #f5b301; margin-bottom: 12px; }
+.favorites-empty h3 { margin-bottom: 8px; }
+.favorites-empty p { max-width: 520px; margin: 0 auto 16px; color: var(--text-muted); font-size: .9rem; }
+#view-admin .favorite-meta small, #view-admin .favorite-provider, #view-admin .favorites-empty p { color: #444; }
+
+/* Admin servis bilgi karti */
+.modal-body.admin-info-modal { max-width: 720px; width: 94vw; max-height: 90vh; overflow-y: auto; }
+.admin-info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px 16px; }
+.admin-info-row small { display: block; color: var(--text-muted); font-size: .68rem; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 2px; }
+.admin-info-block { margin-top: 16px; }
+.admin-info-block > small { display: block; color: var(--text-muted); font-size: .68rem; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 6px; }
+.admin-info-block ul { padding-left: 18px; margin: 0; font-size: .88rem; }
+.admin-info-block p { margin: 0; font-size: .88rem; white-space: pre-wrap; }
+#view-admin .admin-info-row small, #view-admin .admin-info-block > small { color: #444; }
+
+/* Paket servisler: icerik cipleri, duzenleyici satirlari, ozet */
+.bundle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 2px 4px 2px 0;
+  padding: 3px 8px;
+  font-size: .74rem;
+  border: 1px solid rgba(139, 92, 246, .35);
+  border-radius: 999px;
+  background: rgba(139, 92, 246, .1);
+}
+.bundle-chip.is-warning { border-color: #ef4444; background: rgba(239, 68, 68, .12); }
+#view-admin .bundle-chip { border: 2px solid #090909; border-radius: 0; background: #fff8b8; color: #090909; }
+#view-admin .bundle-chip.is-warning { background: #ffd1d1; }
+.modal-body.bundle-editor-modal { max-width: 960px; width: 96vw; max-height: 92vh; overflow-y: auto; }
+.bundle-editor-section { margin: 18px 0 8px; font-size: 1rem; }
+.bundle-item-row { display: grid; grid-template-columns: 1fr 1.6fr 110px auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+.bundle-item-row .bundle-item-meta { grid-column: 1 / -1; margin-top: -4px; font-size: .74rem; color: var(--text-muted); }
+#view-admin .bundle-item-row .bundle-item-meta { color: #444; }
+.bundle-summary {
+  display: flex;
+  gap: 18px 26px;
+  flex-wrap: wrap;
+  margin: 14px 0 4px;
+  padding: 12px 14px;
+  font-size: .85rem;
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  background: rgba(7, 10, 18, .4);
+}
+.bundle-summary small { display: block; color: var(--text-muted); font-size: .66rem; letter-spacing: .05em; text-transform: uppercase; }
+#view-admin .bundle-summary, body.neo-app-active .bundle-summary { border: 2px solid #090909; border-radius: 0; background: #fff8b8; color: #090909; }
+#view-admin .bundle-summary small, body.neo-app-active .bundle-summary small { color: #444; }
+body.neo-app-active .bundle-item-row .bundle-item-meta, body.neo-app-active .admin-info-row small, body.neo-app-active .admin-info-block > small { color: #444; }
+body.neo-app-active .bundle-chip { border: 2px solid #090909; border-radius: 0; background: #fff8b8; color: #090909; }
+.bundle-advanced { margin-top: 12px; }
+.bundle-advanced > summary { cursor: pointer; font-weight: 700; padding: 8px 0; }
+.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+@media (max-width: 700px) {
+  .form-grid-2 { grid-template-columns: 1fr; }
+  .bundle-item-row { grid-template-columns: 1fr 1fr; }
+  .bundle-item-row .bundle-item-service { grid-column: 1 / -1; }
+}
+
+/* Katalogda paket rozeti; siparis listelerinde paket etiketi; bilgi
+   penceresinde paket icerigi. */
+.service-bundle-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 6px;
+  padding: 2px 7px;
+  color: #fff;
+  font-size: .66rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  border-radius: 6px;
+  background: #7c3aed;
+  vertical-align: middle;
+}
+body.neo-app-active .service-bundle-badge, #view-admin .service-bundle-badge { border: 2px solid #090909; border-radius: 0; background: #ffde17; color: #090909; }
+.order-bundle-tag { display: block; margin-top: 3px; font-size: .72rem; font-weight: 600; color: var(--accent-cyan); }
+#view-admin .order-bundle-tag, body.neo-app-active .order-bundle-tag { color: #1769e8; }
+.service-info-bundle { list-style: none; margin: 0; padding: 0; }
+.service-info-bundle li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--border-glass); font-size: .88rem; }
+.service-info-bundle li:last-child { border-bottom: 0; }
+.service-info-bundle strong { white-space: nowrap; }

@@ -126,7 +126,7 @@ async function tenantCatalog(tenant, { includeHidden = false } = {}) {
        FROM services s
        LEFT JOIN categories c ON c.id = s.category_id
        LEFT JOIN tenant_service_prices tp ON tp.service_id = s.id AND tp.tenant_id = ?
-      WHERE s.status = 1
+      WHERE s.status = 1 AND s.is_bundle = 0
       ORDER BY COALESCE(c.sort_order, 0), s.category_id, s.id`,
     [tenant.id]
   );
@@ -147,12 +147,13 @@ async function tenantCatalog(tenant, { includeHidden = false } = {}) {
 async function tenantPriceForService(tenant, serviceId) {
   const settings = await getResellerSettings();
   const row = await dbAsync.get(
-    `SELECT s.id, s.rate_per_1000_kurus, s.rate_per_1000, s.status, tp.enabled, tp.markup_percent, tp.fixed_rate_kurus
+    `SELECT s.id, s.rate_per_1000_kurus, s.rate_per_1000, s.status, s.is_bundle, tp.enabled, tp.markup_percent, tp.fixed_rate_kurus
        FROM services s LEFT JOIN tenant_service_prices tp ON tp.service_id = s.id AND tp.tenant_id = ?
       WHERE s.id = ?`,
     [tenant.id, serviceId]
   );
-  if (!row || Number(row.status) !== 1) return null;
+  // Paket servisler bayi kanalinda satilmaz (bkz. services/bundles.js).
+  if (!row || Number(row.status) !== 1 || Number(row.is_bundle) === 1) return null;
   const discountPercent = effectiveDiscountPercent(tenant, settings);
   const costKurus = resellerCostRate(serviceRateKurus(row), discountPercent);
   const priceRow = row.enabled === null || row.enabled === undefined ? null : row;

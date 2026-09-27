@@ -75,7 +75,7 @@ async function services() {
       COALESCE(NULLIF(s.speed_en, ''), s.speed_tr, '') AS speed,
       COALESCE(NULLIF(s.features_en, ''), s.features_tr, '') AS features
     FROM services s LEFT JOIN categories c ON c.id = s.category_id
-    WHERE s.status = 1
+    WHERE s.status = 1 AND s.is_bundle = 0
     ORDER BY COALESCE(c.sort_order, 0), s.category_id, s.id`);
   return rows.map(row => {
     const inputType = normalizeOrderInputType(row.order_input_type);

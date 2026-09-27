@@ -642,6 +642,8 @@ const { authenticateToken: saglikAuth, requireAdmin: saglikAdmin } = require('./
 app.use('/api/admin/health', saglikAuth, saglikAdmin, require('./routes/adminHealth'));
 // Bayi yonetimi de ayni sekilde ana admin zincirinden once baglanir.
 app.use('/api/admin/resellers', saglikAuth, saglikAdmin, require('./routes/adminResellers'));
+// Paket servis yonetimi (favoriler & paketler sekmesi).
+app.use('/api/admin/bundles', saglikAuth, saglikAdmin, require('./routes/adminBundles'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/account', accountRoutes);
@@ -960,14 +962,14 @@ async function buildServicesSsr(base) {
   let reviewsHtml = '';
   try {
     const { dbAsync } = require('./config/database');
-    const services = await dbAsync.all(`SELECT s.id, COALESCE(s.name_tr, s.name) name, s.rate_per_1000,
+    const services = await dbAsync.all(`SELECT s.id, COALESCE(s.name_tr, s.name) name, s.rate_per_1000, s.pricing_model,
         s.min_quantity, s.max_quantity, s.refill, COALESCE(c.name_tr, c.name) category
       FROM services s JOIN categories c ON s.category_id = c.id
       WHERE s.status = 1 ORDER BY c.sort_order ASC, s.id ASC LIMIT 25`);
     rows = services.map(s => `<tr>`
       + `<td>${Number(s.id)}</td>`
       + `<td>${escapeHtmlText(s.name)}</td>`
-      + `<td>₺${Number(s.rate_per_1000 || 0).toFixed(2)}</td>`
+      + `<td>₺${Number(s.rate_per_1000 || 0).toFixed(2)}${s.pricing_model === 'per_item' ? ' / adet' : ''}</td>`
       + `<td>${Number(s.min_quantity) || 0} / ${Number(s.max_quantity) || 0}</td>`
       + `<td>${s.refill ? 'Evet' : 'Hayır'}</td><td></td></tr>`).join('');
 

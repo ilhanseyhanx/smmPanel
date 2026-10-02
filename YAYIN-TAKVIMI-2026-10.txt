@@ -1,0 +1,142 @@
+===============================================================================
+  JET SMM PANEL - YAYIN TAKVİMİ (2 GÜNDE 1 İÇERİK)
+  Hazırlanma: 2 Ekim 2026  |  Dayanak: SEO-ANALIZ-2026-10-02.md
+  Önceki takvim: YAYIN-TAKVIMI.txt (Gün 1-12 tamamlandı)
+===============================================================================
+
+TOPLAM: 15 içerik = 6 blog yazısı + 4 eski taslak satış sayfası + 5 YENİ satış
+sayfası. 2 günde bir yayınla: 4 Ekim - 1 Kasım.
+
+Kasım'dan sonra 3 günde bir, Aralık'tan sonra 4 günde bir (kendi planın).
+
+YAYINLAMA
+  Blog yazıları  : Admin > "Ana Sayfa & Blog" > Blog Yazıları tablosu
+  Satış sayfaları: Admin > "Satış Sayfaları" sekmesi > "Yayınla"
+
+HER YAYINDAN SONRA
+  [ ] Adresi tarayıcıda aç, açıldığını gör
+  [ ] Google Search Console > URL İnceleme > "Dizine eklenmeyi iste"
+  [ ] Bing Webmaster Tools > URL Submission
+
+"YENİ" YAZAN SAYFAYI YAYINLADIKTAN SONRA (yalnızca 5 sayfa için)
+  Yayındaki ilgili sayfalara o yeni sayfaya giden link cümlesi eklenir.
+  Sunucuda tek komut (aynı komut her seferinde, kaç kez çalışırsa çalışsın
+  zarar vermez; yalnızca yayında olan sayfaların linkini ekler):
+
+     cd /var/www/smmjet
+     node scripts/link-yeni-sayfalar-2026-10.js
+
+  Komutla uğraşmak istemezsen Claude'a "link betiğini çalıştır" demen yeter.
+
+
+===============================================================================
+  SIRA
+===============================================================================
+
+ 1) 4 EKİM ------------------------------------------------------------- BLOG
+    gercek-takipci-ile-bot-takipci-farki
+    https://jetsmmpanel.com/blog/gercek-takipci-ile-bot-takipci-farki
+    Neden ilk: yayındaki 2 yazı bu yazıya link veriyor, şu an /blog'a düşüyor.
+
+ 2) 6 EKİM ------------------------------------------------------ SATIŞ (YENİ)
+    turk-begeni-satin-al
+    https://jetsmmpanel.com/turk-begeni-satin-al
+    Hedef: "türk beğeni satın al", "tiktok türk beğeni"
+    Sonra: link betiğini çalıştır (3 sayfaya link ekler).
+
+ 3) 8 EKİM ------------------------------------------------------------- BLOG
+    turk-takipci-mi-yabanci-takipci-mi
+    https://jetsmmpanel.com/blog/turk-takipci-mi-yabanci-takipci-mi
+    Not: eski takvimdeki "TEK ELLE İŞ" (Türk takipçi linki) 2 Ekim'de
+    taslağa eklendi; elle bir şey yapmana gerek kalmadı.
+
+ 4) 10 EKİM ----------------------------------------------------- SATIŞ (YENİ)
+    youtube-canli-yayin-izleyici-satin-al
+    https://jetsmmpanel.com/youtube-canli-yayin-izleyici-satin-al
+    Hedef: "youtube canlı yayın izleyici satın al"
+    Sonra: link betiğini çalıştır (3 sayfaya link ekler).
+
+ 5) 12 EKİM ------------------------------------------------------------ BLOG
+    instagram-takipci-fiyatlari-2026-1000-takipci-kac-tl
+    https://jetsmmpanel.com/blog/instagram-takipci-fiyatlari-2026-1000-takipci-kac-tl
+    Bu yazıyla birlikte yayındaki yazılardan taslağa giden link kalmaz.
+
+ 6) 14 EKİM ----------------------------------------------------- SATIŞ (YENİ)
+    tiktok-kaydetme-satin-al
+    https://jetsmmpanel.com/tiktok-kaydetme-satin-al
+    Hedef: "tiktok kaydetme satın al", "tiktok paylaşım satın al"
+    Sonra: link betiğini çalıştır (3 sayfaya link ekler).
+
+ 7) 16 EKİM ------------------------------------------------------------ BLOG
+    smm-panel-bayilik-nasil-yapilir
+    https://jetsmmpanel.com/blog/smm-panel-bayilik-nasil-yapilir
+
+ 8) 18 EKİM ------------------------------------------------------------ BLOG
+    smm-panel-api-entegrasyonu-rehberi
+    https://jetsmmpanel.com/blog/smm-panel-api-entegrasyonu-rehberi
+    7 ve 8 birbirine link veriyor; arka arkaya yayınlanmalı.
+
+ 9) 20 EKİM ----------------------------------------------------- SATIŞ (YENİ)
+    instagram-erisim-satin-al
+    https://jetsmmpanel.com/instagram-erisim-satin-al
+    Hedef: "instagram erişim satın al", "profil ziyareti satın al"
+    Sonra: link betiğini çalıştır (2 sayfaya link ekler).
+
+10) 22 EKİM ------------------------------------------------------------ BLOG
+    smm-panel-nasil-secilir
+    https://jetsmmpanel.com/blog/smm-panel-nasil-secilir
+    Hedef: "panel sitesi", "smm panel nasıl seçilir"
+
+11) 24 EKİM ----------------------------------------------------------- SATIŞ
+    facebook-grup-uye-satin-al
+    https://jetsmmpanel.com/facebook-grup-uye-satin-al
+
+12) 26 EKİM ----------------------------------------------------------- SATIŞ
+    facebook-yorum-satin-al
+    https://jetsmmpanel.com/facebook-yorum-satin-al
+
+13) 28 EKİM ----------------------------------------------------- SATIŞ (YENİ)
+    facebook-smm-panel
+    https://jetsmmpanel.com/facebook-smm-panel
+    Hedef: "facebook smm panel", "facebook beğeni paneli"
+    Önkoşul: 11 ve 12 yayında olmalı (çatı sayfası ikisine link alacak).
+    Sonra: link betiğini çalıştır (3 sayfaya link ekler, çatı sayfasına da
+    grup üye ve yorum sayfalarının linkini koyar).
+
+14) 30 EKİM ----------------------------------------------------------- SATIŞ
+    twitch-takipci-satin-al
+    https://jetsmmpanel.com/twitch-takipci-satin-al
+    Not: /twitch-izleyici-satin-al sitenin en iyi sıralanan satış sayfası
+    (5,6. sıra, 58 gösterim).
+
+15) 1 KASIM ----------------------------------------------------------- SATIŞ
+    telegram-bot-baslatma-satin-al
+    https://jetsmmpanel.com/telegram-bot-baslatma-satin-al
+
+
+===============================================================================
+  SIRA DEĞİŞTİRMEK İSTERSEN
+===============================================================================
+
+  Serbestçe yer değiştirebilenler: 2, 4, 6, 9, 10, 14, 15.
+  Sıraya bağlı olanlar:
+    - 1, 3, 5 erken kalmalı (yayındaki yazılar bunlara link veriyor).
+    - 7 ile 8 arka arkaya.
+    - 13, mutlaka 11 ve 12'den sonra.
+
+
+===============================================================================
+  HAFTALIK TAKİP
+===============================================================================
+
+  GSC'yi her zaman şu filtreyle aç: Ülke = Türkiye, son 28 gün / önceki 28 gün.
+
+  Bakılacak üç rakam (2 Ekim'deki değerler):
+     1. Ana sayfanın pozisyonu ................. 5,3
+     2. Haftalık gösterim ...................... 180 (23-29 Eylül)
+     3. Haftalık tıklama ....................... 4
+
+  Yeni sayfalar ilk 2-3 hafta 50-70. sıralarda görünür; bu normaldir.
+  Googlebot günde yaklaşık 5 sayfa geziyor, yayınladığın sayfanın GSC'ye
+  yansıması 1-3 hafta sürer.
+===============================================================================

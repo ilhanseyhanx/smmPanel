@@ -104,10 +104,10 @@ module.exports = { stripGatedMarkup, sessionState, BLOKLAR };
 // tamamen cikarir. CSS ile gizleme (display:none) yeterli degildir — bot
 // kaynagi okur, gizli metni de sayar.
 //
-// NEYIN CIKARILDIGI: yalnizca kendi basina metin tasiyan tanitim/sozlesme
-// gorunumleri. Bos kabuk olan gorunumler (hizmet tablosu, blog listesi,
-// giris formu...) yerinde kalir; bunlar SPA icinde aninda gecis yapilan sik
-// yollar ve HTML'e kayda deger metin eklemezler.
+// NEYIN CIKARILDIGI: kendi basina metin tasiyan tanitim/sozlesme gorunumleri
+// ve blog listesi. Hizmet tablosu gorunumu yerinde kalir (panelin her
+// yerinden aninda gecis yapilan yol); onun yalnizca aciklama metni cikarilir
+// (bkz. SEO_BLOKLARI).
 const ICERIK_GORUNUMLERI = [
   'view-landing',   // hero, tanitim, nasil calisir, blog onizleme, CTA, SSS
   'view-about',     // hakkimizda + editoryal politika
@@ -116,10 +116,23 @@ const ICERIK_GORUNUMLERI = [
   'view-refund',    // iade politikasi
   'view-smm-panel-api',  // API dokumantasyonu (tam teknik metin)
   'view-hizmet-sayfalari', // satis sayfalari vitrini (kart listesi yalnizca kendi adresinde)
+  // Blog listesi 20 Eyl 2026'da tanitim metni aldi ve sag sutunu butun satis
+  // sayfalarina link tasiyor; "bos kabuk" olmaktan cikti. Olculen durum
+  // (canli, 2 Eki 2026): bu gorunum ve hizmet listesinin aciklama metni 93
+  // adresin hepsine gizli olarak gidiyordu (~670 kelime; /twitch sayfasinin
+  // kendi icerigi 470 kelimeydi). app.js navigate() gorunumu bulamayinca
+  // /blog adresini sunucudan ister.
+  'view-blog',
   // Kimlik formu markali satis sayfalarinin HTML'inde bulunmamali. Google
   // Safe Browsing; or. "WhatsApp ... satin al" metniyle sifre alanini ayni
   // dokumanda gorurse sayfayi sahte giris/phishing olarak yorumlayabilir.
   'view-auth'
+];
+
+// Gorunumu yerinde kalan ama icinde o adrese ozgu metin tasiyan bloklar.
+// Yalnizca sahibi olan gorunumun adresinde gonderilir.
+const SEO_BLOKLARI = [
+  { gorunum: 'view-services', bas: '<!--SEO-SERVICES-INTRO-START-->', son: '<!--SEO-SERVICES-INTRO-END-->', yerTutucu: '' }
 ];
 
 const AUTH_MODAL = {
@@ -165,6 +178,9 @@ function stripInactiveViews(html, aktifGorunum) {
     // Gorunum yoksa navigate() dogru sayfayi sunucudan ister (tam yukleme).
     sonuc = sonuc.slice(0, sinir.bas) + sonuc.slice(sinir.son);
   }
+  for (const blok of SEO_BLOKLARI) {
+    if (blok.gorunum !== aktifGorunum) sonuc = blokSil(sonuc, blok);
+  }
   // Modal, <section> olmadigi icin yukaridaki gorunum ayiklayicisi onu
   // kapsamaz. Yalnizca noindex kimlik rotalarinda form olarak gonderilir.
   if (aktifGorunum !== 'view-auth') sonuc = blokSil(sonuc, AUTH_MODAL);
@@ -173,4 +189,5 @@ function stripInactiveViews(html, aktifGorunum) {
 
 module.exports.stripInactiveViews = stripInactiveViews;
 module.exports.ICERIK_GORUNUMLERI = ICERIK_GORUNUMLERI;
+module.exports.SEO_BLOKLARI = SEO_BLOKLARI;
 

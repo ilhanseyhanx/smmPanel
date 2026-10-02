@@ -190,6 +190,44 @@ test('indekslenebilir sayfaların HTML kaynağında şifre formu bulunmaz', asyn
   }
 });
 
+// 2 Eki 2026: /services ve /blog gorunumlerine eklenen tanitim metinleri
+// butun adreslerin kaynagina gizli olarak gidiyordu (yinelenen icerik).
+test('hizmet listesi ve blog tanıtım metinleri yalnızca kendi adreslerinde gönderilir', async () => {
+  const HIZMET_METNI = 'SMM panel fiyat listesi nasıl okunur?';
+  const BLOG_METNI = 'Bu blogda ne bulacaksınız?';
+
+  const hizmetler = (await sayfa('/services')).text;
+  assert.ok(hizmetler.includes(HIZMET_METNI), '/services kendi açıklama metnini kaybetti');
+  assert.ok(!hizmetler.includes(BLOG_METNI), '/services kaynağında blog tanıtım metni var');
+  assert.ok(!hizmetler.includes('id="view-blog"'), '/services kaynağında blog listesi görünümü var');
+
+  const blog = (await sayfa('/blog')).text;
+  assert.ok(blog.includes(BLOG_METNI), '/blog kendi tanıtım metnini kaybetti');
+  assert.ok(blog.includes('id="view-blog"'), '/blog kendi görünümünü kaybetti');
+  assert.ok(!blog.includes(HIZMET_METNI), '/blog kaynağında hizmet listesi açıklaması var');
+
+  for (const url of ['/', '/terms', '/smm-panel-api', '/hizmet-sayfalari', '/boyle-bir-sayfa-yok']) {
+    const html = (await sayfa(url)).text;
+    assert.ok(!html.includes(HIZMET_METNI), `${url} kaynağında hizmet listesi açıklaması var`);
+    assert.ok(!html.includes(BLOG_METNI), `${url} kaynağında blog tanıtım metni var`);
+    assert.ok(!html.includes('id="view-blog"'), `${url} kaynağında blog listesi görünümü var`);
+    // Hizmet tablosu kabugu yerinde kalir: panelden aninda gecis icin gerekli.
+    assert.ok(html.includes('id="view-services"'), `${url} hizmet tablosu görünümünü kaybetti`);
+  }
+
+  // Dinamik blog yazısı ve satış sayfası yolları aynı ayıklayıcıdan geçer.
+  const kaynak = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  const ziyaretci = stripGatedMarkup(kaynak, { admin: false, authenticated: false });
+  for (const gorunum of ['view-blog-detail', 'view-landing-page']) {
+    const html = stripInactiveViews(ziyaretci, gorunum);
+    assert.ok(!html.includes(HIZMET_METNI), `${gorunum} kaynağında hizmet listesi açıklaması var`);
+    assert.ok(!html.includes(BLOG_METNI), `${gorunum} kaynağında blog tanıtım metni var`);
+    assert.ok(!html.includes('SEO-SERVICES-INTRO'), `${gorunum} kaynağında blok işareti kaldı`);
+    assert.ok(!html.includes('id="view-blog"'), `${gorunum} kaynağında blog listesi görünümü var`);
+    assert.ok(html.includes('id="view-services"'), `${gorunum} hizmet tablosu görünümünü kaybetti`);
+  }
+});
+
 test('kimlik rotaları formu korur ve noindex kalır', async () => {
   for (const url of ['/auth', '/register', '/reset-password']) {
     const html = (await sayfa(url)).text;

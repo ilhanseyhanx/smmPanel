@@ -28,7 +28,10 @@ const DOSYALAR = [
   { kaynak: 'public/js/api.js', hedef: 'public/js/api.min.js', tur: 'js' },
   { kaynak: 'public/js/app.js', hedef: 'public/js/app.min.js', tur: 'js' },
   // Yalnizca admin "Bayiler" sekmesini acinca yuklenir (tembel).
-  { kaynak: 'public/js/admin-resellers.js', hedef: 'public/js/admin-resellers.min.js', tur: 'js' }
+  { kaynak: 'public/js/admin-resellers.js', hedef: 'public/js/admin-resellers.min.js', tur: 'js' },
+  // Yalnizca /egitimler sayfalarinda ve admin "Egitimler" sekmesinde yuklenir.
+  { kaynak: 'public/js/courses.js', hedef: 'public/js/courses.min.js', tur: 'js' },
+  { kaynak: 'public/js/admin-courses.js', hedef: 'public/js/admin-courses.min.js', tur: 'js' }
 ];
 
 async function kucult(icerik, tur) {

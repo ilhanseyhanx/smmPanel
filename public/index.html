@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20260927a">
+  <link rel="stylesheet" href="/css/style.css?v=20261004a">
 </head>
 <body>
 
@@ -75,6 +75,7 @@
       <!-- Profilim: masaustunde sag ustteki kullanici adi butonu var; bu madde
            yalnizca mobil hamburger menusunde gorunur (CSS ile). -->
       <li class="auth-required nav-mobile-only" style="display:none;"><a class="nav-link" href="/profile" onclick="app.navigate('profile'); return false;"><i class="fa-solid fa-user-circle" aria-hidden="true"></i> Profilim</a></li>
+      <li><a class="nav-link" href="/egitimler"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i> Eğitimler</a></li>
       <li><a class="nav-link" href="/blog" onclick="app.navigate('blog'); return false;"><i class="fa-solid fa-newspaper" aria-hidden="true"></i> Blog</a></li>
       <li><a class="nav-link" href="/smm-panel-api" onclick="app.navigate('smm-panel-api'); return false;"><i class="fa-solid fa-code" aria-hidden="true"></i> API</a></li>
       <li class="admin-only" style="display:none;"><a class="nav-link" href="/admin" style="color: var(--accent-cyan);" onclick="app.navigate('admin'); return false;">
@@ -1232,6 +1233,13 @@ Canceled     iptal edildi</pre>
       <div class="main-content lp-page" id="landing-page-root"></div>
     </section>
 
+    <!-- EĞİTİMLER (/egitimler, /egitimler/:egitim, /egitimler/:egitim/:ders):
+         içerik sunucuda basılır (server.js); satın alma penceresi ve okuma
+         takibi /js/courses.js'te (yalnızca bu sayfalarda yüklenir). -->
+    <section id="view-egitimler" class="app-view" style="display: none;">
+      <div class="main-content crs-page" id="egitim-root"></div>
+    </section>
+
     <!-- 6.7b. HİZMET SAYFALARI VİTRİNİ (/hizmet-sayfalari): yayındaki satış
          sayfalarının kart listesi. Kartlar sunucu tarafında basılır
          (server.js applyLandingLinks); bölüm SEO ayıklaması gereği yalnızca
@@ -1384,6 +1392,7 @@ Canceled     iptal edildi</pre>
 
           <select class="form-control admin-mobile-nav" aria-label="Yönetim bölümü seç" onchange="app.switchAdminTab(this.value)">
             <option value="dashboard">Genel Bakış</option>
+            <option value="courses">Eğitimler</option>
             <optgroup label="Siparişler &amp; Servisler">
               <option value="orders">Siparişler</option>
               <option value="completion">Tamamlanma Süreleri</option>
@@ -1423,6 +1432,7 @@ Canceled     iptal edildi</pre>
                Aktif sekmenin grubu her zaman aciktir; tercihler localStorage'da tutulur. -->
           <nav class="admin-nav-groups">
             <button type="button" class="sidebar-item active" data-admin-tab="dashboard" onclick="app.switchAdminTab('dashboard', event)"><i class="fa-solid fa-chart-pie"></i><span>Genel Bakış</span></button>
+            <button type="button" class="sidebar-item" data-admin-tab="courses" onclick="app.switchAdminTab('courses', event)"><i class="fa-solid fa-graduation-cap"></i><span>Eğitimler</span></button>
 
             <div class="admin-nav-group" data-nav-group="operations">
               <button type="button" class="admin-nav-toggle" onclick="app.toggleAdminNavGroup('operations')" aria-expanded="false" aria-controls="admin-nav-items-operations">
@@ -3286,6 +3296,34 @@ Canceled     iptal edildi</pre>
 
           </div>
 
+          <!-- EĞİTİMLER: eğitim/ders yönetimi, okuma istatistikleri ve satışlar.
+               Bölüm içerikleri /js/admin-courses.js tarafından çizilir (sekme
+               açılınca tembel yüklenir). -->
+          <div id="admin-tab-courses" style="display: none;">
+            <div class="flex-between mb-20" style="gap: 16px; flex-wrap: wrap;">
+              <div>
+                <h2 style="margin-bottom: 6px;">🎓 Eğitimler</h2>
+                <p style="color: var(--text-muted); font-size: .9rem; max-width: 720px;">Yazılı + görselli eğitim serileri (<b>/egitimler</b>). Her eğitimin ilk dersleri herkese açıktır, kalanı satın alana açılır. Satın alma bakiyeden yapılır; bakiye yetmezse eksik tutar Shopier'den ödenir ve eğitim otomatik açılır.</p>
+              </div>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <a class="btn btn-outline btn-sm" href="/egitimler" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i> Sitede Gör</a>
+                <button type="button" class="btn btn-primary btn-sm" onclick="app.openCourseEditor()"><i class="fa-solid fa-plus"></i> Yeni Eğitim</button>
+              </div>
+            </div>
+
+            <div class="settings-subtabs" id="course-subtabs" role="tablist">
+              <button type="button" class="settings-subtab active" role="tab" aria-selected="true" data-course-section="list" onclick="app.showCourseSection('list')"><i class="fa-solid fa-list" aria-hidden="true"></i> Eğitimler</button>
+              <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-course-section="editor" onclick="app.openCourseEditor(app.courseEditorId)"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i> <span id="course-subtab-editor-label">Eğitim Ekle</span></button>
+              <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-course-section="stats" onclick="app.showCourseSection('stats')"><i class="fa-solid fa-chart-line" aria-hidden="true"></i> İstatistikler</button>
+              <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-course-section="sales" onclick="app.showCourseSection('sales')"><i class="fa-solid fa-receipt" aria-hidden="true"></i> Satışlar &amp; Ödemeler</button>
+            </div>
+
+            <div class="course-admin-section" data-course-panel="list" id="course-panel-list"><p class="health-loading">Yükleniyor…</p></div>
+            <div class="course-admin-section" data-course-panel="editor" id="course-panel-editor" style="display: none;"></div>
+            <div class="course-admin-section" data-course-panel="stats" id="course-panel-stats" style="display: none;"></div>
+            <div class="course-admin-section" data-course-panel="sales" id="course-panel-sales" style="display: none;"></div>
+          </div>
+
           <!-- SATIŞ SAYFALARI (platform bazlı landing page yönetimi) -->
           <div id="admin-tab-landing-pages" style="display: none;">
             <div class="flex-between mb-20" style="gap: 16px; flex-wrap: wrap;">
@@ -3880,7 +3918,7 @@ Canceled     iptal edildi</pre>
   <footer class="neo-footer">
     <div class="brand-wordmark">SMM<span>JET</span></div>
     <p>Hızlı. Güvenli. Ölçülebilir.<br>Sosyal büyümede yeni standart.</p>
-    <nav class="footer-links" aria-label="Alt bilgi menüsü"><a href="/about" onclick="app.navigate('about');return false;">Hakkımızda</a><a href="/services" onclick="app.navigate('services');return false;">Hizmetler</a><a href="/hizmet-sayfalari" onclick="app.navigate('hizmet-sayfalari');return false;">Hizmet Sayfaları</a><a href="/blog" onclick="app.navigate('blog');return false;">Blog</a><a href="/smm-panel-api" onclick="app.navigate('smm-panel-api');return false;">API</a><a href="/tickets" onclick="app.navigate('tickets');return false;">Destek</a><a href="/terms" onclick="app.navigate('terms');return false;">Kullanım Şartları</a><a href="/privacy" onclick="app.navigate('privacy');return false;">Gizlilik &amp; KVKK</a><a href="/refund" onclick="app.navigate('refund');return false;">İade Politikası</a></nav>
+    <nav class="footer-links" aria-label="Alt bilgi menüsü"><a href="/about" onclick="app.navigate('about');return false;">Hakkımızda</a><a href="/services" onclick="app.navigate('services');return false;">Hizmetler</a><a href="/hizmet-sayfalari" onclick="app.navigate('hizmet-sayfalari');return false;">Hizmet Sayfaları</a><a href="/egitimler">Eğitimler</a><a href="/blog" onclick="app.navigate('blog');return false;">Blog</a><a href="/smm-panel-api" onclick="app.navigate('smm-panel-api');return false;">API</a><a href="/tickets" onclick="app.navigate('tickets');return false;">Destek</a><a href="/terms" onclick="app.navigate('terms');return false;">Kullanım Şartları</a><a href="/privacy" onclick="app.navigate('privacy');return false;">Gizlilik &amp; KVKK</a><a href="/refund" onclick="app.navigate('refund');return false;">İade Politikası</a></nav>
     <!-- Sosyal profiller: admin panelde adres girilen kanallar app.js
          tarafindan eklenir; Telegram varsayilan olarak burada durur ki
          JavaScript calismadan da (arama motoru botlari) gorunsun. -->
@@ -4998,7 +5036,7 @@ Canceled     iptal edildi</pre>
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20260927a" defer></script>
-  <script src="/js/app.js?v=20260927a" defer></script>
+  <script src="/js/api.js?v=20261004a" defer></script>
+  <script src="/js/app.js?v=20261004a" defer></script>
 </body>
 </html>

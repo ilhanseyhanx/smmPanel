@@ -1583,6 +1583,8 @@ router.delete('/users/:id', requireIdParam, async (req, res) => {
       await tx.run('DELETE FROM payment_intents WHERE user_id = ?', [userId]);
       await tx.run('DELETE FROM payment_notifications WHERE user_id = ?', [userId]);
       await tx.run('DELETE FROM user_coupons WHERE user_id = ?', [userId]);
+      await tx.run('DELETE FROM course_purchases WHERE user_id = ?', [userId]);
+      await tx.run('DELETE FROM course_reading WHERE user_id = ?', [userId]);
       // Bu kullaniciyi referans gosterenlerin baglantisi koparilir.
       await tx.run('UPDATE users SET referrer_id = NULL WHERE referrer_id = ?', [userId]);
       await tx.run('DELETE FROM users WHERE id = ?', [userId]);

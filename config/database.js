@@ -709,6 +709,86 @@ async function runMigrations() {
   await addColumnIfMissing('site_visits', 'referrer_path', 'TEXT');
   await dbAsync.run('CREATE INDEX IF NOT EXISTS idx_site_visits_source ON site_visits(source_type, visit_date)');
 
+  // --- EGITIMLER (4 Eki 2026) ---------------------------------------------
+  // Kendi urunumuz: yazi + gorselden olusan egitim serileri. Ilk N ders
+  // (free_lesson_count) herkese acik ve indekslenir; kalanlar satin alana
+  // acilir. Satin alma bakiyeden yapilir; bakiye yetmezse eksik tutar
+  // Shopier'den odenir ve odeme gelince egitim otomatik alinir
+  // (payment_intents.course_id). Okuma suresi istemciden gelen kalp
+  // atislariyla course_reading'e yazilir.
+  await dbAsync.exec(`
+    CREATE TABLE IF NOT EXISTS courses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'published')),
+      title TEXT NOT NULL,
+      subtitle TEXT,
+      description TEXT,
+      cover_image_url TEXT,
+      level TEXT,
+      price_kurus INTEGER NOT NULL DEFAULT 0 CHECK(price_kurus >= 0),
+      free_lesson_count INTEGER NOT NULL DEFAULT 2 CHECK(free_lesson_count >= 0),
+      seo_title TEXT,
+      seo_description TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      published_at DATETIME
+    );
+    CREATE TABLE IF NOT EXISTS course_lessons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      slug TEXT NOT NULL,
+      title TEXT NOT NULL,
+      summary TEXT,
+      content TEXT,
+      reading_minutes INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(course_id, slug)
+    );
+    CREATE TABLE IF NOT EXISTS course_purchases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      course_id INTEGER NOT NULL REFERENCES courses(id),
+      price_kurus INTEGER NOT NULL DEFAULT 0,
+      source TEXT NOT NULL DEFAULT 'balance' CHECK(source IN ('balance', 'shopier', 'gift')),
+      payment_intent_id INTEGER,
+      consent_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, course_id)
+    );
+    CREATE TABLE IF NOT EXISTS course_reading (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      lesson_id INTEGER NOT NULL REFERENCES course_lessons(id) ON DELETE CASCADE,
+      viewer_key TEXT NOT NULL,
+      user_id INTEGER,
+      seconds INTEGER NOT NULL DEFAULT 0,
+      completed INTEGER NOT NULL DEFAULT 0,
+      first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(lesson_id, viewer_key)
+    );
+    CREATE TABLE IF NOT EXISTS course_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      type TEXT NOT NULL CHECK(type IN ('page_view', 'buy_open', 'checkout_start')),
+      viewer_key TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_courses_status ON courses(status, sort_order);
+    CREATE INDEX IF NOT EXISTS idx_course_lessons_course ON course_lessons(course_id, sort_order);
+    CREATE INDEX IF NOT EXISTS idx_course_purchases_course ON course_purchases(course_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_course_reading_course ON course_reading(course_id, lesson_id);
+    CREATE INDEX IF NOT EXISTS idx_course_reading_last ON course_reading(last_seen_at);
+    CREATE INDEX IF NOT EXISTS idx_course_events_course ON course_events(course_id, type, created_at);
+  `);
+  // Eksik bakiyeyi tamamlamak icin baslatilan Shopier odemesi hangi egitim
+  // icinse; odeme gelince bakiye yazilir ve egitim ayni islemde alinir.
+  await addColumnIfMissing('payment_intents', 'course_id', 'INTEGER');
+
   const admins = await dbAsync.all("SELECT id, password FROM users WHERE role = 'admin' AND must_change_password = 0");
   for (const admin of admins) {
     if (await bcrypt.compare('admin123', admin.password)) {
@@ -1153,6 +1233,11 @@ async function clearAllDemoData(keepAdmin = true) {
   await dbAsync.run(`DELETE FROM tickets`);
   await dbAsync.run(`DELETE FROM user_coupons`);
   await dbAsync.run(`DELETE FROM payment_notifications`);
+  // Egitim icerigi (courses/course_lessons) blog gibi icerik sayilir ve kalir;
+  // kullaniciya bagli satin alma ve okuma kayitlari silinir.
+  await dbAsync.run(`DELETE FROM course_purchases`);
+  await dbAsync.run(`DELETE FROM course_reading`);
+  await dbAsync.run(`DELETE FROM course_events`);
   await dbAsync.run(`DELETE FROM payment_intents`);
   await dbAsync.run(`DELETE FROM payment_webhooks`);
   await dbAsync.run(`DELETE FROM payments`);

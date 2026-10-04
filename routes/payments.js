@@ -11,6 +11,7 @@ const QRCode = require('qrcode');
 const NowPayments = require('../services/nowpayments');
 const Shopier = require('../services/shopier');
 const telegram = require('../services/telegramNotifier');
+const Courses = require('../services/courses');
 const { activeDepositBonus } = require('../services/campaigns');
 // Saglik telemetrisi: yalnizca kategori + kaynak + maskelenmis kisa neden.
 // Kullanici, tutar, siparis/odeme kimligi ve ham govde KAYDA GIRMEZ.
@@ -187,12 +188,30 @@ async function settleShopierOrder(order, source = 'webhook') {
       await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)',
         [intent.user_id, 'payment', 'Ödeme tamamlandı', `₺${fromKurus(intent.amount_kurus).toFixed(2)} bakiyenize eklendi.`]);
       const bonusKurus = await applyDepositBonus(tx, intent.user_id, intent.amount_kurus, 'SHOPIER');
+      // Egitim icin eksik tutar odemesi: bakiye yazildi, egitim AYNI islemde
+      // bakiyeden alinir. Alinamazsa (fiyat artti, egitim silindi) tutar
+      // bakiyede kalir ve kullanici bilgilendirilir; para kaybolmaz.
+      let course = null;
+      if (intent.course_id) {
+        course = await Courses.purchaseWithBalance(tx, {
+          userId: intent.user_id, courseId: intent.course_id, source: 'shopier', intentId: intent.id, consentAt: intent.created_at
+        });
+        if (course.status === 'insufficient' || course.status === 'not_found') {
+          await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)', [
+            intent.user_id, 'payment', 'Eğitim açılamadı',
+            `Ödemen bakiyene eklendi ama eğitim otomatik alınamadı${course.status === 'insufficient' ? ' (fiyat değişmiş olabilir)' : ''}. Eğitim sayfasından bakiyenle tekrar deneyebilirsin.`
+          ]);
+        }
+      }
       const user = await tx.get('SELECT username FROM users WHERE id = ?', [intent.user_id]);
-      completed.push({ productId: intent.provider_ref, username: user?.username || `#${intent.user_id}`, amount: fromKurus(intent.amount_kurus), bonus: fromKurus(bonusKurus) });
+      completed.push({ productId: intent.provider_ref, username: user?.username || `#${intent.user_id}`, amount: fromKurus(intent.amount_kurus), bonus: fromKurus(bonusKurus), course });
     }
   });
   for (const item of completed) {
     telegram.notifyDeposit({ username: item.username, amount: item.amount, bonus: item.bonus, method: 'Shopier (Kart)' });
+    if (item.course?.status === 'purchased') {
+      Courses.notifySale({ username: item.course.username, courseTitle: item.course.course_title, priceKurus: item.course.price_kurus, source: 'shopier' });
+    }
     Shopier.deleteProduct(item.productId).catch(() => {});
   }
   return completed;
@@ -260,7 +279,53 @@ router.post('/shopier/create', authenticateToken, odemeBaslatmaLimiter, validate
   } catch (err) { next(err); }
 });
 
+// EGITIM: bakiye yetmiyorsa eksik tutar Shopier'den odenir. Niyete egitim
+// kimligi yazilir; odeme gelince settleShopierOrder bakiyeyi yukler ve
+// egitimi ayni islemde bakiyeden alir. Tutar istemciden ALINMAZ, sunucuda
+// fiyat - bakiye olarak hesaplanir (Shopier alt sinirinin altindaysa alt
+// sinir odetilir, artani bakiyede kalir).
+router.post('/shopier/course-checkout', authenticateToken, odemeBaslatmaLimiter, validate(z.object({
+  course_slug: z.string().trim().min(1).max(120),
+  consent: z.literal(true, { message: 'Satın almak için dijital içerik onayını işaretlemelisin.' })
+})), async (req, res, next) => {
+  try {
+    const course = await dbAsync.get("SELECT * FROM courses WHERE slug = ? AND status = 'published'", [req.body.course_slug]);
+    if (!course) return res.status(404).json({ error: 'Eğitim bulunamadı.' });
+    if (await Courses.isOwned(dbAsync, req.user.id, course.id)) {
+      return res.status(409).json({ error: 'Bu eğitim zaten senin.', code: 'already_owned' });
+    }
+    const q = Courses.quote(course, req.user.balance_kurus);
+    if (!q.pay_kurus) {
+      return res.status(409).json({ error: 'Bakiyen bu eğitim için yeterli; bakiyenle satın alabilirsin.', code: 'enough_balance' });
+    }
+    const merchantOid = createOpaqueToken('SH').replace(/[^a-zA-Z0-9]/g, '').slice(0, 40);
+    const intent = await dbAsync.run(
+      "INSERT INTO payment_intents (user_id, provider, merchant_oid, amount_kurus, course_id) VALUES (?, 'shopier', ?, ?, ?)",
+      [req.user.id, merchantOid, q.pay_kurus, course.id]
+    );
+    try {
+      const product = await Shopier.createTopUpProduct({ amountKurus: q.pay_kurus, merchantOid, courseTitle: course.title });
+      await dbAsync.run('UPDATE payment_intents SET provider_ref = ? WHERE id = ?', [product.productId, intent.id]);
+      Courses.recordEvent({ courseId: course.id, type: 'checkout_start', key: `u:${req.user.id}` }).catch(() => {});
+      telegram.notifyPaymentEvent('🎓 Eğitim Ödemesi Başlatıldı (Shopier)', [
+        `👤 Kullanıcı: ${req.user.username}`,
+        `📚 Eğitim: ${course.title}`,
+        `➕ Ödenecek: ₺${fromKurus(q.pay_kurus).toFixed(2)} (bakiye: ₺${fromKurus(q.balance_kurus).toFixed(2)})`,
+        '⏳ Kart ödemesi bekleniyor…'
+      ]);
+      res.status(201).json({ merchant_oid: merchantOid, payment_url: product.url, amount: fromKurus(q.pay_kurus) });
+    } catch (err) {
+      healthEvents.recordError({ category: 'payment_error', source: 'shopier_create', error: err });
+      await dbAsync.run("UPDATE payment_intents SET status = 'failed', failure_reason = ? WHERE id = ?",
+        [normalizePlainText(err.message, 500), intent.id]);
+      throw err;
+    }
+    Shopier.sweepAbandonedProducts().catch(() => {});
+  } catch (err) { next(err); }
+});
+
 // Kullanicinin kendi odeme niyetinin durumu (donus sayfasinin yoklamasi icin).
+// Egitim odemesinde course_owned: egitimin hesaba gecip gecmedigi.
 router.get('/shopier/status/:oid', authenticateToken, async (req, res, next) => {
   try {
     const oid = String(req.params.oid || '').slice(0, 64);
@@ -269,15 +334,18 @@ router.get('/shopier/status/:oid', authenticateToken, async (req, res, next) => 
       [oid, req.user.id]
     );
     if (!intent) return res.status(404).json({ error: 'Ödeme kaydı bulunamadı.' });
+    const courseInfo = async () => (intent.course_id
+      ? { course_owned: await Courses.isOwned(dbAsync, req.user.id, intent.course_id) }
+      : {});
     if (intent.status === 'pending') {
       await reconcileShopierIntent(intent).catch(err => {
         console.error('Shopier durum mutabakati:', err.message);
         healthEvents.recordError({ category: 'payment_worker_error', source: 'shopier_status', error: err });
       });
       const refreshed = await dbAsync.get('SELECT status, amount_kurus, failure_reason FROM payment_intents WHERE id = ?', [intent.id]);
-      return res.json({ status: refreshed.status, amount: fromKurus(refreshed.amount_kurus), failure_reason: refreshed.failure_reason });
+      return res.json({ status: refreshed.status, amount: fromKurus(refreshed.amount_kurus), failure_reason: refreshed.failure_reason, ...await courseInfo() });
     }
-    res.json({ status: intent.status, amount: fromKurus(intent.amount_kurus), failure_reason: intent.failure_reason });
+    res.json({ status: intent.status, amount: fromKurus(intent.amount_kurus), failure_reason: intent.failure_reason, ...await courseInfo() });
   } catch (err) { next(err); }
 });
 

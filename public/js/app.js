@@ -247,7 +247,7 @@ const SPA_ROTALARI = [
   'landing', 'services', 'blog', 'blog-detail', 'landing-page', 'hizmet-sayfalari', 'smm-panel-api',
   'about', 'terms', 'privacy', 'refund', 'register', 'auth', 'tickets',
   'orders', 'new-order', 'add-funds', 'profile', 'admin', 'not-found',
-  'payment-success', 'payment-failed', 'reset-password', 'verify-email'
+  'payment-success', 'payment-failed', 'reset-password', 'verify-email', 'egitimler'
 ];
 
 class SmmApp {
@@ -884,6 +884,7 @@ class SmmApp {
     const [route, query = ''] = raw.split('?');
     this.referralCode = new URLSearchParams(query).get('ref');
     if (route.startsWith('blog/')) await this.loadBlogPostDetail(decodeURIComponent(route.slice(5)), false);
+    else if (route === 'egitimler' || route.startsWith('egitimler/')) await this.openCoursesPage();
     else if (route === 'register') this.showAuthPage('register');
     else if (route === 'reset-password') await this.completePasswordReset(new URLSearchParams(query).get('token'));
     else if (route === 'verify-email') await this.completeEmailVerification(new URLSearchParams(query).get('token'));
@@ -914,6 +915,8 @@ class SmmApp {
       const path = window.location.pathname.replace(/^\/+|\/+$/g, '') || 'landing';
       const [popRoute] = path.split('?');
       if (popRoute.startsWith('blog/')) this.loadBlogPostDetail(decodeURIComponent(popRoute.slice(5)), false);
+      // Egitim sayfalari her zaman sunucudan basilir; icerik adrese baglidir.
+      else if (popRoute === 'egitimler' || popRoute.startsWith('egitimler/')) window.location.reload();
       else if (!SPA_ROTALARI.includes(popRoute) && /^[a-z0-9-]+$/.test(popRoute)) this.openLandingPage(popRoute, false);
       else this.navigate(popRoute, false);
     });
@@ -3281,6 +3284,7 @@ class SmmApp {
     if (tabName === 'reviews') this.loadAdminReviews();
     if (tabName === 'landing-design') this.loadAdminLandingDesign();
     if (tabName === 'landing-pages') this.loadAdminLandingPages();
+    if (tabName === 'courses') this.openAdminCoursesTab();
     if (tabName === 'ai-studio') this.loadAiStudio();
     if (tabName === 'users') { this.showAdminUsersList(); this.loadAdminUsers(); }
     if (tabName === 'resellers') this.openAdminResellersTab();
@@ -5418,6 +5422,49 @@ class SmmApp {
       document.head.appendChild(script);
     });
     return this.resellerModulePromise;
+  }
+
+  // Tembel yuklenen ek ekran dosyalari (/js/<ad>.js). Surum ve kucultulmus
+  // surum bilgisi app.js'in kendi adresinden okunur (bkz. loadResellerAdminModule).
+  loadLazyModule(name) {
+    this.lazyModules = this.lazyModules || {};
+    if (this.lazyModules[name]) return this.lazyModules[name];
+    const appSrc = Array.from(document.scripts).map(el => el.getAttribute('src') || '')
+      .find(src => /\/js\/app(\.min)?\.js/.test(src)) || '/js/app.js';
+    const min = appSrc.includes('app.min.js') ? '.min' : '';
+    const version = (appSrc.split('?v=')[1] || '').split('&')[0];
+    this.lazyModules[name] = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = `/js/${name}${min}.js${version ? `?v=${version}` : ''}`;
+      script.onload = () => resolve(true);
+      script.onerror = () => { this.lazyModules[name] = null; reject(new Error(`${name} yüklenemedi.`)); };
+      document.head.appendChild(script);
+    });
+    return this.lazyModules[name];
+  }
+
+  // Egitim sayfalari (/egitimler...): icerik sunucudan basili gelir; burada
+  // gorunum isaretlenir ve satin alma / okuma takibi modulu yuklenir.
+  async openCoursesPage() {
+    this.currentView = 'egitimler';
+    document.body.classList.add('neo-app-active');
+    document.body.dataset.activeView = 'egitimler';
+    if (!document.querySelector('#egitim-root .crs-wrap')) return;
+    try {
+      await this.loadLazyModule('courses');
+      this.initCoursePage();
+    } catch {
+      showToast('Sayfa bileşenleri yüklenemedi. Sayfayı yenileyip tekrar deneyin.', 'error');
+    }
+  }
+
+  async openAdminCoursesTab() {
+    try {
+      await this.loadLazyModule('admin-courses');
+      this.showCourseSection(this.courseSection || 'list');
+    } catch {
+      showToast('Eğitim yönetim ekranı yüklenemedi. Sayfayı yenileyip tekrar deneyin.', 'error');
+    }
   }
 
   async openAdminResellersTab() {
@@ -10481,6 +10528,15 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       // sessionStorage'a alınır; init() sayfa açılınca geri okur.
       if (this.pendingMachineOrder) {
         try { sessionStorage.setItem('bekleyenMakineSecimi', JSON.stringify(this.pendingMachineOrder)); } catch {}
+      }
+
+      // Egitim sayfasindan "satin al" ile girise gelindiyse ayni sayfaya donulur
+      // ve satin alma penceresi kaldigi yerden acilir (bkz. courses.js).
+      let donusAdresi = '';
+      try { donusAdresi = sessionStorage.getItem('girisSonrasiAdres') || ''; sessionStorage.removeItem('girisSonrasiAdres'); } catch {}
+      if (/^\/egitimler(\/|\?|$)/.test(donusAdresi)) {
+        window.location.assign(donusAdresi);
+        return;
       }
 
       if (this.currentUser.role === 'admin') {

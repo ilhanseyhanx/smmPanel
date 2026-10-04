@@ -123,6 +123,9 @@ const ICERIK_GORUNUMLERI = [
   // kendi icerigi 470 kelimeydi). app.js navigate() gorunumu bulamayinca
   // /blog adresini sunucudan ister.
   'view-blog',
+  // Egitim sayfalari (katalog / egitim / ders) yalnizca /egitimler
+  // adreslerinde basilir; baska adreste bos kabugu da gonderilmez.
+  'view-egitimler',
   // Kimlik formu markali satis sayfalarinin HTML'inde bulunmamali. Google
   // Safe Browsing; or. "WhatsApp ... satin al" metniyle sifre alanini ayni
   // dokumanda gorurse sayfayi sahte giris/phishing olarak yorumlayabilir.

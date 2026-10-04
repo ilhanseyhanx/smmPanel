@@ -78,6 +78,25 @@ async function authenticateToken(req, res, next) {
   }
 }
 
+// Oturum varsa kullaniciyi dondurur, yoksa (veya gecersizse) null. Herkese
+// acik sayfalarda "giris yapan kisiye farkli goster" icin kullanilir
+// (or. satin alinmis egitim dersleri); istegi asla reddetmez, cerezi silmez.
+async function optionalUser(req) {
+  const token = getRequestToken(req);
+  if (!token) return null;
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET, { issuer: 'smmpanel', audience: 'smmpanel-web' });
+    const user = await dbAsync.get(
+      'SELECT id, username, role, balance_kurus, token_version, banned FROM users WHERE id = ?',
+      [decoded.id]
+    );
+    if (!user || user.banned || user.role !== decoded.role || user.token_version !== decoded.ver) return null;
+    return user;
+  } catch {
+    return null;
+  }
+}
+
 function requireAdmin(req, res, next) {
   if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Bu işlem için yetkiniz bulunmuyor.' });
   if (req.user.must_change_password && req.path !== '/change-password') {
@@ -86,4 +105,4 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { authenticateToken, requireAdmin, JWT_SECRET, signSession, setSessionCookie };
+module.exports = { authenticateToken, optionalUser, requireAdmin, JWT_SECRET, signSession, setSessionCookie };

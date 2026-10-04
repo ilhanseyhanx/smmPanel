@@ -114,20 +114,32 @@ async function purchaseWithBalance(tx, { userId, courseId, source = 'balance', i
     price_kurus: price,
     balance_kurus: Number(user?.balance_kurus || 0),
     username: user?.username || `#${userId}`,
+    course_id: course.id,
     course_title: course.title
   };
 }
 
-/** Telegram'a satis bildirimi (beklenmez, hata yutulur). */
-function notifySale({ username, courseTitle, priceKurus, source }) {
+/**
+ * Telegram'a satis bildirimi (beklenmez, hata yutulur). Odeme bildirimleri
+ * anahtarina (Ayarlar > Telegram) baglidir. courseId verilirse egitimin
+ * toplam satis sayisi da yazilir.
+ */
+async function notifySale({ username, courseTitle, priceKurus, source, courseId = null }) {
   try {
     const sourceLabel = { balance: 'Bakiye', shopier: 'Shopier (eksik tutar) + bakiye', gift: 'Hediye (admin)' }[source] || source;
-    require('./telegramNotifier').notifyPaymentEvent('🎓 Eğitim Satıldı', [
+    const lines = [
       `👤 Kullanıcı: ${username}`,
       `📚 Eğitim: ${courseTitle}`,
-      `💰 Tutar: ₺${fromKurus(priceKurus).toFixed(2)}`,
+      source === 'gift' ? '🎁 Ücretsiz tanımlandı' : `💰 Tutar: ₺${fromKurus(priceKurus).toFixed(2)}`,
       `💳 Ödeme: ${sourceLabel}`
-    ]);
+    ];
+    if (courseId) {
+      const row = await dbAsync.get(
+        "SELECT COUNT(*) n, COALESCE(SUM(price_kurus), 0) k FROM course_purchases WHERE course_id = ? AND source != 'gift'", [courseId]
+      ).catch(() => null);
+      if (row) lines.push(`📊 Bu eğitimin toplam satışı: ${row.n} (₺${fromKurus(row.k).toFixed(2)})`);
+    }
+    await require('./telegramNotifier').notifyPaymentEvent(source === 'gift' ? '🎁 Eğitim Hediye Edildi' : '🎓 Eğitim Satıldı', lines);
   } catch { /* bildirim sart degil */ }
 }
 

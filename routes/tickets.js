@@ -50,6 +50,7 @@ router.post('/', authenticateToken, async (req, res) => {
       [tResult.id, userId, normalizePlainText(message, 5000)]
     );
 
+    require('../services/footprint').serverEvent({ req, userId, kind: 'ticket_created', label: normalizePlainText(subject, 120), path: '/tickets' });
     // Yeni destek talebi Telegram'dan haber verilir (beklenmez, hata yutulur).
     telegram.notifyTicketEvent('🎫 Yeni Destek Talebi', [
       `👤 Kullanıcı: ${req.user.username}`,

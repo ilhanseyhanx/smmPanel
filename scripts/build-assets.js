@@ -31,7 +31,10 @@ const DOSYALAR = [
   { kaynak: 'public/js/admin-resellers.js', hedef: 'public/js/admin-resellers.min.js', tur: 'js' },
   // Yalnizca /egitimler sayfalarinda ve admin "Egitimler" sekmesinde yuklenir.
   { kaynak: 'public/js/courses.js', hedef: 'public/js/courses.min.js', tur: 'js' },
-  { kaynak: 'public/js/admin-courses.js', hedef: 'public/js/admin-courses.min.js', tur: 'js' }
+  { kaynak: 'public/js/admin-courses.js', hedef: 'public/js/admin-courses.min.js', tur: 'js' },
+  // Ziyaretci ayak izi: track.js her sayfada, admin-footprint.js yalnizca admin sekmesinde.
+  { kaynak: 'public/js/track.js', hedef: 'public/js/track.min.js', tur: 'js' },
+  { kaynak: 'public/js/admin-footprint.js', hedef: 'public/js/admin-footprint.min.js', tur: 'js' }
 ];
 
 async function kucult(icerik, tur) {

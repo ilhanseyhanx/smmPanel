@@ -798,6 +798,99 @@ async function runMigrations() {
   }
   await addColumnIfMissing('course_lessons', 'reading_minutes_en', 'INTEGER');
 
+  // --- ZIYARETCI AYAK IZI (5 Eki 2026) -------------------------------------
+  // Oturum + adim akisi (services/footprint.js). Cerez onayi veren ziyaretcide
+  // visitor_id kalicidir (tekrar gelisler ayni kisiye baglanir); onay vermeyende
+  // NULL kalir ve oturum anonimdir. Ham IP saklanmaz (ip_hash = HMAC).
+  // Botlar ve yonetici trafigi hic yazilmaz.
+  await dbAsync.exec(`
+    CREATE TABLE IF NOT EXISTS track_sessions (
+      id TEXT PRIMARY KEY,
+      visitor_id TEXT,
+      user_id INTEGER,
+      consent INTEGER NOT NULL DEFAULT 0,
+      started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      duration_sec INTEGER NOT NULL DEFAULT 0,
+      pageviews INTEGER NOT NULL DEFAULT 0,
+      event_count INTEGER NOT NULL DEFAULT 0,
+      interacted INTEGER NOT NULL DEFAULT 0,
+      entry_path TEXT,
+      exit_path TEXT,
+      channel TEXT,
+      source TEXT,
+      referrer TEXT,
+      referrer_host TEXT,
+      utm_source TEXT,
+      utm_medium TEXT,
+      utm_campaign TEXT,
+      utm_term TEXT,
+      utm_content TEXT,
+      click_id TEXT,
+      ref_code TEXT,
+      lang TEXT,
+      device TEXT,
+      os TEXT,
+      browser TEXT,
+      screen TEXT,
+      timezone TEXT,
+      country TEXT,
+      city TEXT,
+      ip_hash TEXT,
+      is_new INTEGER NOT NULL DEFAULT 1,
+      did_register INTEGER NOT NULL DEFAULT 0,
+      did_login INTEGER NOT NULL DEFAULT 0,
+      did_topup INTEGER NOT NULL DEFAULT 0,
+      did_order INTEGER NOT NULL DEFAULT 0,
+      did_course INTEGER NOT NULL DEFAULT 0,
+      had_error INTEGER NOT NULL DEFAULT 0,
+      topup_kurus INTEGER NOT NULL DEFAULT 0,
+      order_kurus INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS track_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      user_id INTEGER,
+      kind TEXT NOT NULL,
+      path TEXT,
+      label TEXT,
+      value_kurus INTEGER,
+      meta TEXT,
+      source TEXT NOT NULL DEFAULT 'client',
+      occurred_ms INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS user_acquisition (
+      user_id INTEGER PRIMARY KEY,
+      first_session_id TEXT,
+      first_seen_at DATETIME,
+      first_channel TEXT,
+      first_source TEXT,
+      first_referrer TEXT,
+      first_campaign TEXT,
+      first_landing TEXT,
+      reg_session_id TEXT,
+      reg_channel TEXT,
+      reg_source TEXT,
+      reg_referrer TEXT,
+      reg_campaign TEXT,
+      reg_landing TEXT,
+      sessions_before INTEGER NOT NULL DEFAULT 1,
+      registered_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS track_bot_daily (
+      day TEXT PRIMARY KEY,
+      hits INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_track_sessions_started ON track_sessions(started_at);
+    CREATE INDEX IF NOT EXISTS idx_track_sessions_last ON track_sessions(last_seen_at);
+    CREATE INDEX IF NOT EXISTS idx_track_sessions_visitor ON track_sessions(visitor_id);
+    CREATE INDEX IF NOT EXISTS idx_track_sessions_user ON track_sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_track_sessions_channel ON track_sessions(channel, started_at);
+    CREATE INDEX IF NOT EXISTS idx_track_events_session ON track_events(session_id, occurred_ms);
+    CREATE INDEX IF NOT EXISTS idx_track_events_kind ON track_events(kind, created_at);
+  `);
+
   const admins = await dbAsync.all("SELECT id, password FROM users WHERE role = 'admin' AND must_change_password = 0");
   for (const admin of admins) {
     if (await bcrypt.compare('admin123', admin.password)) {
@@ -1247,6 +1340,9 @@ async function clearAllDemoData(keepAdmin = true) {
   await dbAsync.run(`DELETE FROM course_purchases`);
   await dbAsync.run(`DELETE FROM course_reading`);
   await dbAsync.run(`DELETE FROM course_events`);
+  await dbAsync.run(`DELETE FROM track_events`);
+  await dbAsync.run(`DELETE FROM track_sessions`);
+  await dbAsync.run(`DELETE FROM user_acquisition`);
   await dbAsync.run(`DELETE FROM payment_intents`);
   await dbAsync.run(`DELETE FROM payment_webhooks`);
   await dbAsync.run(`DELETE FROM payments`);

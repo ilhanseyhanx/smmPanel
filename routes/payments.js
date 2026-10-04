@@ -12,6 +12,7 @@ const NowPayments = require('../services/nowpayments');
 const Shopier = require('../services/shopier');
 const telegram = require('../services/telegramNotifier');
 const Courses = require('../services/courses');
+const footprint = require('../services/footprint');
 const { activeDepositBonus } = require('../services/campaigns');
 // Saglik telemetrisi: yalnizca kategori + kaynak + maskelenmis kisa neden.
 // Kullanici, tutar, siparis/odeme kimligi ve ham govde KAYDA GIRMEZ.
@@ -92,6 +93,7 @@ router.post('/paytr/callback', async (req, res) => {
         const paytrUser = await tx.get('SELECT username FROM users WHERE id = ?', [intent.user_id]);
         // Bildirim beklenmez; hatalari servis icinde yutulur.
         telegram.notifyDeposit({ username: paytrUser?.username || `#${intent.user_id}`, amount: fromKurus(intent.amount_kurus), method: 'PayTR (Kart)', bonus: fromKurus(paytrBonus) });
+        footprint.serverEvent({ userId: intent.user_id, kind: 'topup_success', label: 'PayTR', valueKurus: intent.amount_kurus, path: '/add-funds' });
       } else {
         await tx.run("UPDATE payment_intents SET status = 'failed', failure_reason = ? WHERE id = ? AND status = 'pending'", [normalizePlainText(req.body.failed_reason_msg || 'Ödeme reddedildi.', 500), intent.id]);
       }
@@ -204,13 +206,15 @@ async function settleShopierOrder(order, source = 'webhook') {
         }
       }
       const user = await tx.get('SELECT username FROM users WHERE id = ?', [intent.user_id]);
-      completed.push({ productId: intent.provider_ref, username: user?.username || `#${intent.user_id}`, amount: fromKurus(intent.amount_kurus), bonus: fromKurus(bonusKurus), course });
+      completed.push({ productId: intent.provider_ref, userId: intent.user_id, amountKurus: intent.amount_kurus, username: user?.username || `#${intent.user_id}`, amount: fromKurus(intent.amount_kurus), bonus: fromKurus(bonusKurus), course });
     }
   });
   for (const item of completed) {
     telegram.notifyDeposit({ username: item.username, amount: item.amount, bonus: item.bonus, method: 'Shopier (Kart)' });
+    footprint.serverEvent({ userId: item.userId, kind: 'topup_success', label: item.course ? 'Shopier (eğitim)' : 'Shopier', valueKurus: item.amountKurus, path: '/add-funds' });
     if (item.course?.status === 'purchased') {
-      Courses.notifySale({ username: item.course.username, courseTitle: item.course.course_title, priceKurus: item.course.price_kurus, source: 'shopier' });
+      Courses.notifySale({ username: item.course.username, courseTitle: item.course.course_title, priceKurus: item.course.price_kurus, source: 'shopier', courseId: item.course.course_id });
+      footprint.serverEvent({ userId: item.userId, kind: 'course_purchase', label: item.course.course_title, valueKurus: item.course.price_kurus, path: '/egitimler' });
     }
     Shopier.deleteProduct(item.productId).catch(() => {});
   }
@@ -505,7 +509,7 @@ router.post('/nowpayments/callback', async (req, res) => {
         await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)', [intent.user_id, 'payment', 'Kripto ödemesi tamamlandı 🪙', `₺${fromKurus(intent.amount_kurus).toFixed(2)} bakiyenize eklendi.`]);
         const bonusKurus = await applyDepositBonus(tx, intent.user_id, intent.amount_kurus, 'CRYPTO');
         const user = await tx.get('SELECT username FROM users WHERE id = ?', [intent.user_id]);
-        completedInfo = { username: user?.username || `#${intent.user_id}`, amount: fromKurus(intent.amount_kurus), bonus: fromKurus(bonusKurus) };
+        completedInfo = { userId: intent.user_id, amountKurus: intent.amount_kurus, username: user?.username || `#${intent.user_id}`, amount: fromKurus(intent.amount_kurus), bonus: fromKurus(bonusKurus) };
       } else if (['failed', 'expired', 'refunded'].includes(paymentStatus)) {
         const changed = await tx.run("UPDATE payment_intents SET status = 'failed', failure_reason = ? WHERE id = ? AND status = 'pending'", [normalizePlainText(`NOWPayments: ${paymentStatus}`, 500), intent.id]);
         if (changed.changes === 1) {
@@ -534,7 +538,10 @@ router.post('/nowpayments/callback', async (req, res) => {
       // waiting / confirming / confirmed / sending ara durumlardir; dokunulmaz.
     });
 
-    if (completedInfo) telegram.notifyDeposit({ ...completedInfo, method: 'Kripto (NOWPayments)' });
+    if (completedInfo) {
+      telegram.notifyDeposit({ username: completedInfo.username, amount: completedInfo.amount, bonus: completedInfo.bonus, method: 'Kripto (NOWPayments)' });
+      footprint.serverEvent({ userId: completedInfo.userId, kind: 'topup_success', label: 'Kripto', valueKurus: completedInfo.amountKurus, path: '/add-funds' });
+    }
     if (problemInfo) telegram.notifyPaymentEvent(problemInfo.title, problemInfo.lines);
     return res.type('text').send('OK');
   } catch (err) {
@@ -616,6 +623,7 @@ router.post('/coupon/redeem', authenticateToken, validate(z.object({ code: z.str
       `🎫 Kod: ${cleanCode}`,
       `➕ Eklenen: ₺${fromKurus(result.amountKurus).toFixed(2)}`
     ]);
+    footprint.serverEvent({ req, userId: req.user.id, kind: 'coupon_redeemed', label: cleanCode, valueKurus: result.amountKurus, path: '/add-funds' });
     res.json({ message: `₺${fromKurus(result.amountKurus).toFixed(2)} kupon bakiyesi eklendi.`, new_balance: fromKurus(result.user.balance_kurus) });
   } catch (err) { next(err); }
 });

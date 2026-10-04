@@ -1585,6 +1585,10 @@ router.delete('/users/:id', requireIdParam, async (req, res) => {
       await tx.run('DELETE FROM user_coupons WHERE user_id = ?', [userId]);
       await tx.run('DELETE FROM course_purchases WHERE user_id = ?', [userId]);
       await tx.run('DELETE FROM course_reading WHERE user_id = ?', [userId]);
+      // Ayak izi: kullaniciya bagli oturumlar anonimlesir, kazanim kaydi silinir.
+      await tx.run('UPDATE track_sessions SET user_id = NULL WHERE user_id = ?', [userId]);
+      await tx.run('UPDATE track_events SET user_id = NULL WHERE user_id = ?', [userId]);
+      await tx.run('DELETE FROM user_acquisition WHERE user_id = ?', [userId]);
       // Bu kullaniciyi referans gosterenlerin baglantisi koparilir.
       await tx.run('UPDATE users SET referrer_id = NULL WHERE referrer_id = ?', [userId]);
       await tx.run('DELETE FROM users WHERE id = ?', [userId]);
@@ -2355,6 +2359,8 @@ router.post('/payment-notifications/:id/approve', requireIdParam, async (req, re
       await tx.run('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)', [req.user.id, 'payment_approved', 'payment_notification', String(notifId), JSON.stringify({ amount_kurus: amountKurus, user_id: notif.user_id }), req.ip]);
       const bankUser = await tx.get('SELECT username FROM users WHERE id = ?', [notif.user_id]);
       telegram.notifyDeposit({ username: bankUser?.username || `#${notif.user_id}`, amount: fromKurus(amountKurus), method: `Banka/Papara (onaylandı)`, bonus: fromKurus(bankBonus) });
+      // Ayak izi: musterinin son oturumuna yazilir (admin istegine degil).
+      require('../services/footprint').serverEvent({ userId: notif.user_id, kind: 'topup_success', label: 'Banka/Papara', valueKurus: amountKurus, path: '/add-funds' });
       return amountKurus;
     });
     res.json({ message: `₺${fromKurus(approved).toFixed(2)} ödeme onaylandı.` });

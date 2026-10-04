@@ -131,7 +131,11 @@ const rateLimitHandler = (req, res, next, options) => {
   securityMonitor.logEvent('rate_limit', req);
   res.status(options.statusCode).send(options.message);
 };
-const apiLimiter = rateLimit({ windowMs: 60_000, limit: 180, standardHeaders: 'draft-8', legacyHeaders: false, handler: rateLimitHandler });
+// Ayak izi paketleri (/api/track) genel sinirdan sayilmaz: her sekme birkac
+// saniyede bir paket gonderir; ayni cikis IP'sini paylasan (CGNAT) mobil
+// kullanicilar yuzunden siparis/odeme istekleri limite takilmasin. Kendi
+// siniri routes/track.js icinde.
+const apiLimiter = rateLimit({ windowMs: 60_000, limit: 180, standardHeaders: 'draft-8', legacyHeaders: false, handler: rateLimitHandler, skip: req => req.path === '/track' });
 const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, handler: rateLimitHandler });
 app.use('/api', apiLimiter);
 app.use('/api/auth/login', authLimiter);
@@ -836,12 +840,16 @@ app.use('/api/admin/resellers', saglikAuth, saglikAdmin, require('./routes/admin
 app.use('/api/admin/bundles', saglikAuth, saglikAdmin, require('./routes/adminBundles'));
 // Egitim yonetimi (Egitimler sekmesi).
 app.use('/api/admin/courses', saglikAuth, saglikAdmin, require('./routes/adminCourses'));
+// Ziyaretci ayak izi (Izleme > Ziyaretci Ayak Izi sekmesi).
+app.use('/api/admin/footprint', saglikAuth, saglikAdmin, require('./routes/adminFootprint'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/campaigns', require('./routes/campaigns'));
 app.use('/api/landing-pages', require('./routes/landingPages'));
 app.use('/api/courses', require('./routes/courses'));
+// Ziyaretci ayak izi paketleri (public/js/track.js).
+app.use('/api/track', require('./routes/track'));
 // Jet kullanicisinin bayilik basvurusu ve durumu.
 app.use('/api/reseller', require('./routes/reseller'));
 
@@ -1106,6 +1114,7 @@ const ANNOUNCEMENT_BLOCK = /<div id="announcement-bar"[\s\S]*?<\/div>/;
 // ----------------------------------------------------
 const MIN_VARLIKLAR = [
   ['/css/style.css', '/css/style.min.css'],
+  ['/js/track.js', '/js/track.min.js'],
   ['/js/api.js', '/js/api.min.js'],
   ['/js/app.js', '/js/app.min.js']
 ];
@@ -1568,6 +1577,8 @@ async function startServer() {
     require('./services/crawlerTracker').startCrawlerTracking();
     // Egitim fiyatlarinin dolar karsiligi icin canli USD/TRY kuru (6 saatte bir).
     require('./services/fx').startFxWorker();
+    // Ayak izi: acilista yonetici izleri temizlenir, 90 gunden eski kayitlar gunluk silinir.
+    require('./services/footprint').startFootprintWorker();
     // Her aksam 21:00'de (TR) Telegram'a gunun ozeti gider.
     require('./services/telegramNotifier').startDailySummaryScheduler();
   });

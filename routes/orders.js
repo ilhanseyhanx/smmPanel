@@ -23,6 +23,7 @@ const createSchema = z.object({
 });
 
 const { placeOrder } = require('../services/placeOrder');
+const footprint = require('../services/footprint');
 
 router.post('/', authenticateToken, validate(createSchema), async (req, res, next) => {
   try {
@@ -39,6 +40,10 @@ router.post('/', authenticateToken, validate(createSchema), async (req, res, nex
       lang,
       comments,
       termsAccepted: terms_accepted
+    });
+    footprint.serverEvent({
+      req, userId: req.user.id, kind: 'order_created', label: result.serviceName, valueKurus: result.chargeKurus,
+      path: '/new-order', meta: { order_id: result.orderId, service_id, quantity: result.quantity }
     });
     // Paket siparisinde iletilemeyen bilesen varsa payinin iade edildigi soylenir.
     const failedParts = result.bundle?.failed?.length || 0;

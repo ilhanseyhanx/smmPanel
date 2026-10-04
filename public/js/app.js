@@ -650,6 +650,7 @@ class SmmApp {
     this.locale = locale === 'en' ? 'en' : 'tr';
     localStorage.setItem('smm_language', this.locale);
     this.syncLanguageCookie();
+    this.jt('lang_change', { label: this.locale });
     // Egitim sayfalari sunucuda dile gore basilir: ayni sayfa secilen dilde yeniden acilir.
     if (this.currentView === 'egitimler') {
       const url = new URL(window.location.href);
@@ -773,6 +774,7 @@ class SmmApp {
 
   setCookieConsent(deger) {
     try { localStorage.setItem('cerezOnayi', deger); } catch {}
+    try { window.JT?.consentChanged(deger); } catch {}
     const bant = document.getElementById('cookie-consent');
     if (bant) bant.hidden = true;
     if (deger === 'accepted') this.loadAnalytics();
@@ -874,6 +876,7 @@ class SmmApp {
       try {
         const res = await API.getMe();
         this.currentUser = res.user;
+        if (this.currentUser?.role === 'admin') { try { window.JT?.disable(); } catch {} }
         this.updateUserHeader();
         await this.loadAccountSummary();
       } catch (err) {
@@ -894,7 +897,10 @@ class SmmApp {
       history.replaceState(null, '', '/' + legacyHash);
     }
     if (!raw) raw = 'landing';
-    const [route, query = ''] = raw.split('?');
+    // "/?utm_source=..." gibi sorgulu ana sayfa adresinde yol bostur: ana sayfa
+    // sayilir (eskiden bos rota sayfayi "/"e yeniden yukleyip UTM'i siliyordu).
+    const [rawRoute, query = ''] = raw.split('?');
+    const route = rawRoute || 'landing';
     this.referralCode = new URLSearchParams(query).get('ref');
     if (route.startsWith('blog/')) await this.loadBlogPostDetail(decodeURIComponent(route.slice(5)), false);
     else if (route === 'egitimler' || route.startsWith('egitimler/')) await this.openCoursesPage();
@@ -905,6 +911,12 @@ class SmmApp {
     else if (!document.getElementById(`view-${route}`) && document.getElementById('view-landing-page')?.dataset.lpSlug === route) {
       // Satis sayfasi (sunucu SSR ile basti); makine ve tablo canli veriyle hidrate edilir.
       await this.openLandingPage(route, false);
+    }
+    else if (!SPA_ROTALARI.includes(route) && !document.getElementById(`view-${route}`)) {
+      // Sunucu bu adres icin 404 basti. Eskiden navigate(route) gorunumu
+      // bulamayinca ayni adresi yeniden yukluyordu: tarayici sonsuz donguye
+      // girip saniyede onlarca istek atiyordu (5 Eki 2026'da tespit edildi).
+      this.navigate('not-found', false);
     }
     else {
       this.navigate(route, false);
@@ -973,6 +985,11 @@ class SmmApp {
     this.applyTranslations();
   }
 
+  // Ayak izi adimi (public/js/track.js yoksa ya da kapaliysa sessizce atlanir).
+  jt(kind, props) {
+    try { if (window.JT) window.JT.event(kind, props); } catch {}
+  }
+
   async logout() {
     try { await API.logout(); } catch {}
     this.currentUser = null;
@@ -1026,6 +1043,7 @@ class SmmApp {
     }
 
     this.currentView = viewName;
+    if (viewName === 'not-found') this.jt('not_found', { label: window.location.pathname.slice(0, 150) });
     // Temiz adres: #hash yerine gercek yol (ana sayfa "/", digerleri "/gorunum").
     if (push) history.pushState({ view: viewName }, '', viewName === 'landing' ? '/' : `/${viewName}`);
     document.body.classList.toggle('admin-view-active', viewName === 'admin');
@@ -1520,6 +1538,7 @@ class SmmApp {
     if (!service) return showToast(this.ui('Önce bir hizmet seçin.', 'Please choose a service first.'), 'warning');
 
     const qty = this.clampMachineQty(document.getElementById('landing-machine-qty')?.value, service);
+    this.jt('order_click', { label: `#${service.id} ${service.name}`.slice(0, 150), meta: { id: service.id, quantity: qty, from: 'makine' } });
 
     if (!this.currentUser) {
       try { await this.ready; } catch {}
@@ -1805,6 +1824,7 @@ class SmmApp {
     const service = this.allServices.find(s => s.id === serviceId);
     if (!service) return;
     this.serviceInfoModalId = serviceId;
+    this.jt('service_view', { label: `#${service.id} ${service.name}`.slice(0, 150), meta: { id: service.id, category: service.category_name || null } });
     document.getElementById('service-info-category').textContent = service.category_name || '';
     document.getElementById('service-info-title').textContent = `#${service.id} · ${service.name}`;
     document.getElementById('service-info-modal-body').innerHTML = this.renderServiceInfoDetails(service, { withDescription: true, withLimits: true });
@@ -2084,6 +2104,8 @@ class SmmApp {
     const dripRuns = isDrip ? parseInt(document.getElementById('drip-runs-input').value, 10) : 1;
     const dripInterval = isDrip ? parseInt(document.getElementById('drip-interval-input').value, 10) : null;
 
+    const orderService = this.allServices.find(s => s.id === service_id);
+    this.jt('order_submit', { label: orderService ? `#${orderService.id} ${orderService.name}`.slice(0, 150) : `#${service_id}`, meta: { id: service_id, quantity, drip: Boolean(isDrip) } });
     try {
       const res = await API.createOrder(service_id, link, quantity, dripRuns, dripInterval, this.locale === 'en' ? 'en' : 'tr', comments, termsAccepted);
       showToast(res.message, 'success');
@@ -2230,6 +2252,12 @@ class SmmApp {
       filtered = filtered.filter(s => s._searchIndex ? s._searchIndex.includes(search) : (s.name || '').toLowerCase().includes(search));
     }
 
+    if (search && search.length >= 2 && search !== this.lastTrackedSearch) {
+      this.lastTrackedSearch = search;
+      clearTimeout(this.searchTrackTimer);
+      const results = filtered.length;
+      this.searchTrackTimer = setTimeout(() => this.jt('service_search', { label: search.slice(0, 60), meta: { results, platform: this.selectedPlatform || 'all' } }), 1200);
+    }
     if (filtered.length === 0) {
       tbody.innerHTML = `<tr><td colspan="7" class="text-center">${this.ui('Aramanızla eşleşen servis bulunamadı.', 'No services matched your search.')}</td></tr>`;
       const pagination = document.getElementById('services-pagination');
@@ -2665,6 +2693,7 @@ class SmmApp {
     }
 
     const submitBtn = document.getElementById('deposit-submit-btn');
+    this.jt('topup_start', { label: this.selectedPayMethod || 'kart', value_kurus: Math.round(amount * 100), meta: { method: this.selectedPayMethod || null } });
     try {
       if (this.selectedPayMethod === 'crypto') {
         if (!this.selectedCoin) {
@@ -3298,6 +3327,7 @@ class SmmApp {
     if (tabName === 'landing-design') this.loadAdminLandingDesign();
     if (tabName === 'landing-pages') this.loadAdminLandingPages();
     if (tabName === 'courses') this.openAdminCoursesTab();
+    if (tabName === 'footprint') this.openAdminFootprintTab();
     if (tabName === 'ai-studio') this.loadAiStudio();
     if (tabName === 'users') { this.showAdminUsersList(); this.loadAdminUsers(); }
     if (tabName === 'resellers') this.openAdminResellersTab();
@@ -5497,6 +5527,15 @@ class SmmApp {
     }
   }
 
+  async openAdminFootprintTab() {
+    try {
+      await this.loadLazyModule('admin-footprint');
+      this.showFootprintSection(this.footprintSection || 'overview');
+    } catch {
+      showToast('Ayak izi ekranı yüklenemedi. Sayfayı yenileyip tekrar deneyin.', 'error');
+    }
+  }
+
   async openAdminCoursesTab() {
     try {
       await this.loadLazyModule('admin-courses');
@@ -6870,6 +6909,7 @@ class SmmApp {
     const email = document.getElementById('auth-email').value.trim();
     const totp = document.getElementById('auth-totp')?.value.trim();
 
+    this.jt(this.authMode === 'register' ? 'register_submit' : 'login_submit', { label: this.authMode });
     try {
       let res;
       if (this.authMode === 'register') {
@@ -6879,6 +6919,7 @@ class SmmApp {
       }
 
       this.currentUser = res.user;
+      if (this.currentUser?.role === 'admin') { try { window.JT?.disable(); } catch {} }
       this.updateUserHeader();
       this.closeModal('modal-auth');
       showToast(`Hoş geldin ${res.user.username}!`, 'success');
@@ -9741,6 +9782,7 @@ print(sonuc.get("error") or sonuc.get("order"))`;
   }
 
   showAuthPage(mode = 'register') {
+    this.jt('auth_view', { label: mode });
     // Indekslenebilir sayfalarda kimlik formlari HTML'den ayiklanir. Boyle
     // bir sayfadan giris/kayit istenirse formu ayni DOM'da acmak yerine
     // yalnizca kimlik formunu tasiyan noindex rotaya tam gecis yapilir.
@@ -10548,6 +10590,7 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       }
     }
 
+    this.jt(this.authMode === 'register' ? 'register_submit' : 'login_submit', { label: this.authMode });
     try {
       let res;
       if (this.authMode === 'register') {
@@ -10557,6 +10600,7 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       }
 
       this.currentUser = res.user;
+      if (this.currentUser?.role === 'admin') { try { window.JT?.disable(); } catch {} }
       this.updateUserHeader();
       this.closeModal('modal-auth');
 

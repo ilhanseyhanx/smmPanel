@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20261004b">
+  <link rel="stylesheet" href="/css/style.css?v=20261005a">
 </head>
 <body>
 
@@ -1421,6 +1421,7 @@ Canceled     iptal edildi</pre>
             <optgroup label="İzleme">
               <option value="health">Sistem Sağlığı</option>
               <option value="statistics">İstatistik</option>
+              <option value="footprint">Ziyaretçi Ayak İzi</option>
             </optgroup>
             <optgroup label="Sistem">
               <option value="site-settings">Site Ayarları</option>
@@ -1490,6 +1491,7 @@ Canceled     iptal edildi</pre>
               <div class="admin-nav-items" id="admin-nav-items-monitoring">
                 <button type="button" class="sidebar-item" data-admin-tab="health" onclick="app.switchAdminTab('health', event)"><i class="fa-solid fa-heart-pulse"></i><span>Sistem Sağlığı</span></button>
                 <button type="button" class="sidebar-item" data-admin-tab="statistics" onclick="app.switchAdminTab('statistics', event)"><i class="fa-solid fa-chart-simple"></i><span>İstatistik</span></button>
+                <button type="button" class="sidebar-item" data-admin-tab="footprint" onclick="app.switchAdminTab('footprint', event)"><i class="fa-solid fa-shoe-prints"></i><span>Ziyaretçi Ayak İzi</span></button>
               </div>
             </div>
 
@@ -1672,6 +1674,28 @@ Canceled     iptal edildi</pre>
           <!-- Baslik ve Yenile dugmesi hero seridinin icinde cizilir       -->
           <!-- (app.js renderHealthScore); ayri bir baslik blogu tutulmaz   -->
           <!-- ki ekranin ustunde gereksiz bosluk olusmasin.                -->
+          <!-- ZİYARETÇİ AYAK İZİ: içerik /js/admin-footprint.js tarafından çizilir
+               (sekme açılınca tembel yüklenir). Botlar ve yönetici trafiği hiç kaydedilmez. -->
+          <div id="admin-tab-footprint" style="display: none;">
+            <div class="flex-between mb-20" style="gap: 16px; flex-wrap: wrap;">
+              <div>
+                <h2 style="margin-bottom: 6px;">👣 Ziyaretçi Ayak İzi</h2>
+                <p style="color: var(--text-muted); font-size: .9rem; max-width: 760px;">Ziyaretçiler nereden geliyor, sitede neler yapıyor, nerede takılıyor ve kim neyi satın alıyor. Botlar ve yönetici gezintisi kaydedilmez. Çerez onayı veren ziyaretçinin tekrar gelişleri aynı kişiye bağlanır; onay vermeyen anonim oturum olarak sayılır. Kayıtlar 90 gün saklanır.</p>
+              </div>
+            </div>
+            <div class="settings-subtabs" id="fp-subtabs" role="tablist">
+              <button type="button" class="settings-subtab active" role="tab" aria-selected="true" data-fp-section="overview" onclick="app.showFootprintSection('overview')"><i class="fa-solid fa-chart-line" aria-hidden="true"></i> Genel Bakış</button>
+              <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-fp-section="live" onclick="app.showFootprintSection('live')"><i class="fa-solid fa-circle-dot" aria-hidden="true"></i> Canlı</button>
+              <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-fp-section="sessions" onclick="app.showFootprintSection('sessions')"><i class="fa-solid fa-route" aria-hidden="true"></i> Oturumlar</button>
+              <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-fp-section="users" onclick="app.showFootprintSection('users')"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Kullanıcılar (Kazanım)</button>
+            </div>
+            <div data-fp-panel="overview" id="fp-panel-overview"><p class="health-loading">Yükleniyor…</p></div>
+            <div data-fp-panel="live" id="fp-panel-live" style="display: none;"></div>
+            <div data-fp-panel="sessions" id="fp-panel-sessions" style="display: none;"></div>
+            <div data-fp-panel="users" id="fp-panel-users" style="display: none;"></div>
+            <div data-fp-panel="detail" id="fp-panel-detail" style="display: none;"></div>
+          </div>
+
           <div id="admin-tab-health" style="display: none;">
             <div id="health-score-strip" class="glass-card health-hero" aria-live="polite">
               <p class="health-loading">Yükleniyor…</p>
@@ -5036,7 +5060,9 @@ Canceled     iptal edildi</pre>
   </div>
 
   <!-- App Main Scripts -->
-  <script src="/js/api.js?v=20261004b" defer></script>
-  <script src="/js/app.js?v=20261004b" defer></script>
+  <!-- Ziyaretci ayak izi: api.js ve app.js'ten once yuklenir (window.JT). -->
+  <script src="/js/track.js?v=20261005a" defer></script>
+  <script src="/js/api.js?v=20261005a" defer></script>
+  <script src="/js/app.js?v=20261005a" defer></script>
 </body>
 </html>

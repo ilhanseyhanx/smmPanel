@@ -28,6 +28,9 @@ const API = {
 
   headers: () => {
     const headers = { 'Content-Type': 'application/json' };
+    // Ayak izi: sunucunun yazdigi basari adimlari (kayit, siparis, odeme)
+    // bu sekmenin oturumuna baglansin (bkz. public/js/track.js).
+    try { const sid = window.JT && window.JT.sid(); if (sid) headers['X-Track-Sid'] = sid; } catch {}
     return headers;
   },
 
@@ -56,6 +59,15 @@ const API = {
         error.status = res.status;
         // Hangi alanda ne sorun oldugu: form alanlarinin altina yazilir.
         error.field = data.field || null;
+        // Ayak izi: kullanicinin karsilastigi hata (ucun kimlikleri ayiklanir).
+        if (window.JT && !(endpoint === '/auth/me' && res.status === 401) && !endpoint.startsWith('/track')) {
+          try {
+            window.JT.event('api_error', {
+              label: `${res.status} ${(config.method || 'GET').toUpperCase()} ${endpoint.split('?')[0].replace(/\/\d+/g, '/:id').slice(0, 60)}`,
+              meta: { code: data.code || null, msg: String(data.error || '').slice(0, 120) }
+            });
+          } catch {}
+        }
         error.details = Array.isArray(data.details)
           ? data.details.map(item => ({
             field: item.field,

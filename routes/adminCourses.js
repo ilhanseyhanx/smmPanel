@@ -369,6 +369,7 @@ router.post('/:id/grant', idParam(), validate(z.object({ username: z.string().tr
     await dbAsync.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)',
       [user.id, 'payment', 'Hediye eğitim 🎁', `"${course.title}" eğitimi hesabına tanımlandı. Tüm derslere erişebilirsin.`]);
     await audit(req, 'course_granted', course.id, { user_id: user.id });
+    require('../services/courses').notifySale({ username: user.username, courseTitle: course.title, priceKurus: 0, source: 'gift', courseId: course.id });
     res.json({ message: `"${course.title}" eğitimi ${user.username} kullanıcısına tanımlandı.` });
   } catch (err) { next(err); }
 });

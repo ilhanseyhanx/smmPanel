@@ -83,7 +83,8 @@ router.post('/:slug/purchase', authenticateToken, validate(z.object({
       });
     }
     if (result.status !== 'purchased') return res.status(404).json({ error: 'Eğitim bulunamadı.' });
-    Courses.notifySale({ username: result.username, courseTitle: result.course_title, priceKurus: result.price_kurus, source: 'balance' });
+    Courses.notifySale({ username: result.username, courseTitle: result.course_title, priceKurus: result.price_kurus, source: 'balance', courseId: course.id });
+    require('../services/footprint').serverEvent({ req, userId: req.user.id, kind: 'course_purchase', label: course.title, valueKurus: result.price_kurus, path: `/egitimler/${course.slug}` });
     res.status(201).json({
       message: isFreeCourse(course) ? 'Eğitime kaydoldun!' : 'Eğitim satın alındı, tüm dersler açıldı!',
       balance: fromKurus(result.balance_kurus)

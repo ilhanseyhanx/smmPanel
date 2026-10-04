@@ -186,6 +186,7 @@ Object.assign(SmmApp.prototype, {
     if (!ctx?.slug) return;
     if (ctx.owned) { window.location.reload(); return; }
     API.courseEvent({ course_id: ctx.id, type: 'buy_open', visitor_id: this.courseVisitorId() }).catch(() => {});
+    this.jt('course_buy_open', { label: ctx.title, meta: { slug: ctx.slug } });
 
     if (!this.currentUser) {
       this.courseModal(`${this.courseBuyHead(this.ui(
@@ -292,6 +293,7 @@ Object.assign(SmmApp.prototype, {
     // Yeni sekme TIKLAMA ANINDA acilir; istek bittikten sonra acilmaya
     // calisilsa tarayici acilir pencere engelleyicisine takilir.
     const win = window.open('about:blank', '_blank');
+    this.jt('course_checkout', { label: this.courseCtx.title, value_kurus: Math.round(Number(q.pay_amount || 0) * 100), meta: { slug: this.courseCtx.slug } });
     btn.disabled = true;
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${this.ui('Ödeme sayfası hazırlanıyor…', 'Preparing payment page…')}`;
     try {

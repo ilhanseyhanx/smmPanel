@@ -5056,3 +5056,60 @@ body.neo-app-active #view-egitimler #egitim-root .crs-prose .crs-task li { color
 body.neo-app-active #view-egitimler #egitim-root .crs-prose .crs-task strong { color: #ffde17; }
 
 html[lang="en"] #view-egitimler .main-content::before { content: '08 / COURSES'; }
+
+/* ========================================================================== */
+/* Admin > Ziyaretçi Ayak İzi                                                 */
+/* ========================================================================== */
+.fp-toolbar, .fp-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; padding: 12px 14px !important; }
+.fp-toolbar label { font: 800 .74rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; }
+.fp-filters .form-control { width: auto; min-width: 140px; max-width: 220px; min-height: 40px !important; padding: 8px 10px !important; font-size: .85rem; }
+.fp-filters input[type="search"] { flex: 1 1 280px; max-width: none; }
+.fp-custom { display: inline-flex; gap: 6px; }
+.fp-custom .form-control { width: auto; min-height: 40px !important; }
+.fp-muted { color: #666 !important; }
+.fp-card { margin-bottom: 18px; padding: 0 !important; }
+.fp-card > .fp-facts, .fp-card > .fp-funnel, .fp-card > .fp-pills, .fp-card > .fp-timeline { padding: 4px 18px 16px; }
+.fp-card-title { margin: 0; padding: 14px 18px 10px; font-size: 1.02rem; }
+.fp-card-title small { font: 600 .7rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; color: #666; text-transform: none; }
+.fp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 0 18px; }
+.fp-grid-3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.fp-table td, .fp-table th { padding: 9px 11px !important; font-size: .84rem; vertical-align: top; }
+.fp-wrap { max-width: 340px; overflow-wrap: anywhere; }
+.fp-ext { color: #1769e8; font-weight: 700; text-decoration: underline; overflow-wrap: anywhere; }
+.fp-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 2px solid #090909; background: #fff; font: 800 .7rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; white-space: nowrap; }
+.fp-chip::before { content: ''; width: 9px; height: 9px; background: var(--fp-c, #999); border: 1px solid #090909; }
+.fp-flag { display: inline-block; margin: 1px 0; padding: 0 6px; border: 2px solid #090909; background: #f3f3f3; font: 800 .66rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; white-space: nowrap; }
+.fp-flag.good { background: #9af0b4; }
+.fp-flag.bad { background: #ffb3b3; }
+.fp-flag.mid { background: #ffde17; }
+.fp-row-bad td { background: #fff1f1 !important; }
+.fp-pager { display: flex; justify-content: center; align-items: center; gap: 12px; padding: 12px; }
+.fp-funnel { display: grid; gap: 8px; }
+.fp-funnel-row { display: grid; grid-template-columns: minmax(150px, 220px) 1fr minmax(150px, auto); align-items: center; gap: 12px; }
+.fp-funnel-label { font-weight: 700; font-size: .88rem; }
+.fp-funnel-bar { height: 26px; border: 2px solid #090909; background: #fff; }
+.fp-funnel-bar i { display: block; height: 100%; background: #1769e8; border-right: 2px solid #090909; }
+.fp-funnel-n small { color: #666; font-size: .72rem; }
+.fp-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.fp-pill { padding: 4px 10px; border: 2px solid #090909; background: #fffef8; font-size: .82rem; }
+.fp-detail-head { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.fp-facts { display: grid; gap: 8px; }
+.fp-fact { display: grid; grid-template-columns: 150px 1fr; gap: 10px; align-items: start; padding-bottom: 6px; border-bottom: 1px dashed #c9c9c9; font-size: .86rem; }
+.fp-fact:last-child { border-bottom: 0; }
+.fp-fact > span { color: #555; font-weight: 600; }
+.fp-fact > strong { font-weight: 700; overflow-wrap: anywhere; }
+.fp-fact code, .fp-step code { padding: 0 5px; border: 1px solid #090909; background: #f5f5f5; font-size: .8rem; overflow-wrap: anywhere; }
+.fp-timeline { list-style: none; margin: 0; display: grid; gap: 0; }
+.fp-step { display: grid; grid-template-columns: 62px 30px 1fr; gap: 8px; align-items: start; padding: 8px 0; border-bottom: 1px solid #ececec; font-size: .86rem; }
+.fp-step:last-child { border-bottom: 0; }
+.fp-step.page { background: #f7fbff; }
+.fp-step.good { background: #e9fbef; }
+.fp-step.bad { background: #fff1f1; }
+.fp-step-time { font: 700 .74rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; color: #555; padding-top: 2px; }
+.fp-step-icon { font-size: 1rem; text-align: center; }
+.fp-step-body { overflow-wrap: anywhere; line-height: 1.45; }
+@media (max-width: 700px) {
+  .fp-funnel-row { grid-template-columns: 1fr; gap: 4px; }
+  .fp-fact { grid-template-columns: 1fr; gap: 2px; }
+  .fp-filters .form-control { max-width: none; flex: 1 1 140px; }
+}

@@ -11,6 +11,7 @@ const { fromKurus } = require('../utils/money');
 const { sendMail } = require('../services/mailer');
 const { transactionalEmail, verificationCodeEmail } = require('../services/emailTemplates');
 const telegram = require('../services/telegramNotifier');
+const footprint = require('../services/footprint');
 const securityMonitor = require('../services/securityMonitor');
 
 async function getSiteName() {
@@ -117,6 +118,8 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
     // Bildirim beklenmez: Telegram yavaslarsa veya hata verirse kayit yaniti
     // gecikmemelidir. notifyNewUser kendi hatalarini yutup loglar.
     telegram.notifyNewUser(user, { referral });
+    // Ayak izi: kayit adimi + kullanicinin geldigi kaynak (ilk temas) kaydedilir.
+    footprint.serverEvent({ req, userId: user.id, kind: 'register_success', label: user.username, path: '/register' });
     res.status(201).json({ message: 'Hesabınız oluşturuldu.', user: publicUser(user) });
   } catch (err) { next(err); }
 });
@@ -164,6 +167,7 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
               last_login_ip = ?, login_count = login_count + 1 WHERE id = ?`,
       [String(securityMonitor.clientIp(req) || '').slice(0, 64) || null, user.id]
     ).catch(() => {});
+    footprint.serverEvent({ req, userId: user.id, kind: 'login_success', label: user.username, path: '/auth' });
     res.json({ message: 'Giriş başarılı.', user: publicUser(user) });
   } catch (err) { next(err); }
 });

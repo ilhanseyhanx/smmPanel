@@ -51,15 +51,20 @@ router.get('/', async (req, res, next) => {
   try {
     const courses = await dbAsync.all(`
       SELECT c.id, c.slug, c.status, c.title, c.subtitle, c.level, c.price_kurus, c.free_lesson_count,
-             c.cover_image_url, c.sort_order, c.updated_at, c.published_at,
+             c.cover_image_url, c.sort_order, c.updated_at, c.published_at, c.title_en,
              (SELECT COUNT(*) FROM course_lessons l WHERE l.course_id = c.id) lesson_count,
+             (SELECT COUNT(*) FROM course_lessons l WHERE l.course_id = c.id AND COALESCE(l.content_en, '') != '') lessons_en,
              (SELECT COUNT(*) FROM course_purchases p WHERE p.course_id = c.id) sales,
              (SELECT COALESCE(SUM(price_kurus), 0) FROM course_purchases p WHERE p.course_id = c.id) revenue_kurus,
              (SELECT COUNT(DISTINCT viewer_key) FROM course_events e WHERE e.course_id = c.id AND e.type = 'page_view') visitors,
              (SELECT COUNT(DISTINCT viewer_key) FROM course_reading r WHERE r.course_id = c.id) readers
       FROM courses c ORDER BY c.sort_order ASC, c.id ASC`);
+    // TL fiyat sabittir; dolar karsiligi gunluk kurla gosterilir (Ingilizce sayfa).
+    const fx = await require('../services/fx').getUsdTry();
+    const { tryToUsd } = require('../services/fx');
     res.json({
-      courses: courses.map(c => ({ ...c, price: fromKurus(c.price_kurus), revenue: fromKurus(c.revenue_kurus) }))
+      fx,
+      courses: courses.map(c => ({ ...c, price: fromKurus(c.price_kurus), price_usd: tryToUsd(c.price_kurus, fx.rate), revenue: fromKurus(c.revenue_kurus) }))
     });
   } catch (err) { next(err); }
 });
@@ -219,7 +224,9 @@ router.get('/:id', idParam(), async (req, res, next) => {
     const course = await dbAsync.get('SELECT * FROM courses WHERE id = ?', [req.recordId]);
     if (!course) return res.status(404).json({ error: 'Eğitim bulunamadı.' });
     const lessons = await dbAsync.all('SELECT * FROM course_lessons WHERE course_id = ? ORDER BY sort_order ASC, id ASC', [course.id]);
+    const fx = await require('../services/fx').getUsdTry();
     res.json({
+      fx,
       course: { ...course, price: fromKurus(course.price_kurus) },
       lessons: lessons.map((l, i) => ({ ...l, is_free: isLessonFree(course, i) }))
     });
@@ -381,10 +388,10 @@ router.post('/:id/lessons', idParam(), async (req, res, next) => {
       return res.status(409).json({ error: `"${f.slug}" adresli bir ders bu eğitimde zaten var.` });
     }
     const max = await dbAsync.get('SELECT COALESCE(MAX(sort_order), 0) m FROM course_lessons WHERE course_id = ?', [course.id]);
+    const cols = Object.keys(f);
     const ins = await dbAsync.run(
-      `INSERT INTO course_lessons (course_id, slug, title, summary, content, reading_minutes, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [course.id, f.slug, f.title, f.summary, f.content, f.reading_minutes, max.m + 1]
+      `INSERT INTO course_lessons (course_id, ${cols.join(', ')}, sort_order) VALUES (?, ${cols.map(() => '?').join(', ')}, ?)`,
+      [course.id, ...cols.map(c => f[c]), max.m + 1]
     );
     await dbAsync.run('UPDATE courses SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [course.id]);
     res.status(201).json({ message: 'Ders eklendi.', id: ins.id });
@@ -401,9 +408,10 @@ router.put('/lessons/:lessonId', idParam('lessonId'), async (req, res, next) => 
     if (f.slug !== current.slug && await dbAsync.get('SELECT id FROM course_lessons WHERE course_id = ? AND slug = ? AND id != ?', [current.course_id, f.slug, current.id])) {
       return res.status(409).json({ error: `"${f.slug}" adresli bir ders bu eğitimde zaten var.` });
     }
+    const cols = Object.keys(f);
     await dbAsync.run(
-      `UPDATE course_lessons SET slug = ?, title = ?, summary = ?, content = ?, reading_minutes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-      [f.slug, f.title, f.summary, f.content, f.reading_minutes, current.id]
+      `UPDATE course_lessons SET ${cols.map(c => `${c} = ?`).join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [...cols.map(c => f[c]), current.id]
     );
     await dbAsync.run('UPDATE courses SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [current.course_id]);
     res.json({ message: 'Ders kaydedildi.' });

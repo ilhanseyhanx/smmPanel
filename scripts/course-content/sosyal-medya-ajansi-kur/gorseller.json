@@ -1,0 +1,40 @@
+{
+  "cover": {
+    "tr": "/egitim/sosyal-medya-ajansi-kur/kapak-tr-ac62a03e.png",
+    "en": "/egitim/sosyal-medya-ajansi-kur/kapak-en-3cfdde20.png"
+  },
+  "lessons": {
+    "is-modeli-ve-nis-secimi": {
+      "tr": "/egitim/sosyal-medya-ajansi-kur/ders-01-tr-fcd346b5.webp",
+      "en": "/egitim/sosyal-medya-ajansi-kur/ders-01-en-ef7eef28.webp"
+    },
+    "hizmet-paketleri-tasarimi": {
+      "tr": "/egitim/sosyal-medya-ajansi-kur/ders-02-tr-fffae693.webp",
+      "en": "/egitim/sosyal-medya-ajansi-kur/ders-02-en-192d9d85.webp"
+    },
+    "fiyatlandirma-hesabi": {
+      "tr": "/egitim/sosyal-medya-ajansi-kur/ders-03-tr-b4d64d3b.webp",
+      "en": "/egitim/sosyal-medya-ajansi-kur/ders-03-en-d2547d2d.webp"
+    },
+    "ilk-musterileri-bulma": {
+      "tr": "/egitim/sosyal-medya-ajansi-kur/ders-04-tr-bd5dc53b.webp",
+      "en": "/egitim/sosyal-medya-ajansi-kur/ders-04-en-c649d452.webp"
+    },
+    "teklif-sunum-ve-sozlesme": {
+      "tr": "/egitim/sosyal-medya-ajansi-kur/ders-05-tr-614b3816.webp",
+      "en": "/egitim/sosyal-medya-ajansi-kur/ders-05-en-5b26558c.webp"
+    },
+    "onboarding-ve-icerik-is-akisi": {
+      "tr": "/egitim/sosyal-medya-ajansi-kur/ders-06-tr-63a32141.webp",
+      "en": "/egitim/sosyal-medya-ajansi-kur/ders-06-en-e521acd7.webp"
+    },
+    "raporlama-ve-musteri-elde-tutma": {
+      "tr": "/egitim/sosyal-medya-ajansi-kur/ders-07-tr-a09bd48e.webp",
+      "en": "/egitim/sosyal-medya-ajansi-kur/ders-07-en-a6954749.webp"
+    },
+    "yasal-temeller-buyume-ve-90-gun-plani": {
+      "tr": "/egitim/sosyal-medya-ajansi-kur/ders-08-tr-482b57f3.webp",
+      "en": "/egitim/sosyal-medya-ajansi-kur/ders-08-en-70d87008.webp"
+    }
+  }
+}

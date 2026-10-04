@@ -87,9 +87,9 @@ Object.assign(SmmApp.prototype, {
       const free = Number(c.price) === 0 ? 'Tümü' : Math.min(Number(c.free_lesson_count || 0), Number(c.lesson_count || 0));
       return `<tr>
         <td>${cover}</td>
-        <td><strong>${this.escapeHtml(c.title)}</strong><br><small style="color: var(--text-dim);">${this.escapeHtml(url)}</small></td>
+        <td><strong>${this.escapeHtml(c.title)}</strong>${c.title_en ? ` <span class="badge badge-processing" title="İngilizce sürüm var">EN ${Number(c.lessons_en || 0)}/${Number(c.lesson_count || 0)}</span>` : ''}<br><small style="color: var(--text-dim);">${this.escapeHtml(url)}</small></td>
         <td>${c.status === 'published' ? '<span class="badge badge-completed">Yayında</span>' : '<span class="badge badge-pending">Taslak</span>'}</td>
-        <td>${Number(c.price) === 0 ? 'Ücretsiz' : this.courseTL(c.price)}</td>
+        <td>${Number(c.price) === 0 ? 'Ücretsiz' : `${this.courseTL(c.price)}<br><small style="color: var(--text-dim);">≈ ${Number(c.price_usd || 0).toFixed(2)}</small>`}</td>
         <td>${this.courseNum(c.lesson_count)} <small style="color: var(--text-dim);">(${free} ücretsiz)</small></td>
         <td>${this.courseNum(c.visitors)}</td>
         <td>${this.courseNum(c.readers)}</td>
@@ -322,6 +322,18 @@ Object.assign(SmmApp.prototype, {
               <textarea id="ce-seo-desc" class="form-control" rows="2" maxlength="300">${e(course.seo_description)}</textarea>
               <small class="course-hint" id="ce-seo-count"></small>
             </div>
+            <details class="span-2 course-en-block"${course.title_en ? ' open' : ''}>
+              <summary>🇬🇧 İngilizce sürüm <small class="course-hint">(boş alanlar Türkçe metne düşer; sayfa ?lang=en ile açılır)</small></summary>
+              <div class="course-form-grid">
+                <div class="form-group span-2"><label class="form-label" for="ce-title-en">Title</label><input type="text" id="ce-title-en" class="form-control" maxlength="160" value="${e(course.title_en)}"></div>
+                <div class="form-group span-2"><label class="form-label" for="ce-subtitle-en">Subtitle</label><textarea id="ce-subtitle-en" class="form-control" rows="2" maxlength="300">${e(course.subtitle_en)}</textarea></div>
+                <div class="form-group"><label class="form-label" for="ce-level-en">Level</label><input type="text" id="ce-level-en" class="form-control" maxlength="40" value="${e(course.level_en)}" placeholder="Beginner / Intermediate / Advanced"></div>
+                <div class="form-group"><label class="form-label" for="ce-cover-en">Cover image URL</label><input type="text" id="ce-cover-en" class="form-control" maxlength="500" value="${e(course.cover_image_url_en)}"></div>
+                <div class="form-group span-2"><label class="form-label" for="ce-description-en">Description (safe HTML)</label>${this.courseToolbarHtml('ce-description-en')}<textarea id="ce-description-en" class="form-control course-content-editor" rows="8">${e(course.description_en)}</textarea></div>
+                <div class="form-group span-2"><label class="form-label" for="ce-seo-title-en">SEO title</label><input type="text" id="ce-seo-title-en" class="form-control" maxlength="180" value="${e(course.seo_title_en)}"></div>
+                <div class="form-group span-2"><label class="form-label" for="ce-seo-desc-en">SEO description</label><textarea id="ce-seo-desc-en" class="form-control" rows="2" maxlength="300">${e(course.seo_description_en)}</textarea></div>
+              </div>
+            </details>
           </div>
           <div class="editor-actions">
             <button type="button" class="btn btn-outline" onclick="app.showCourseSection('list')"><i class="fa-solid fa-arrow-left"></i> Listeye Dön</button>
@@ -379,7 +391,14 @@ Object.assign(SmmApp.prototype, {
       sort_order: Number(val('ce-sort') || 0),
       description: val('ce-description'),
       seo_title: val('ce-seo-title').trim(),
-      seo_description: val('ce-seo-desc').trim()
+      seo_description: val('ce-seo-desc').trim(),
+      title_en: val('ce-title-en').trim(),
+      subtitle_en: val('ce-subtitle-en').trim(),
+      level_en: val('ce-level-en').trim(),
+      cover_image_url_en: val('ce-cover-en').trim(),
+      description_en: val('ce-description-en'),
+      seo_title_en: val('ce-seo-title-en').trim(),
+      seo_description_en: val('ce-seo-desc-en').trim()
     };
     if (payload.title.length < 3) { showToast('Eğitim başlığı en az 3 karakter olmalı.', 'warning'); return; }
     // Bos fiyat sessizce 0 (tum dersler ucretsiz) sayilmasin; ucretsiz egitim bilincli olarak 0 yazilir.
@@ -477,22 +496,36 @@ Object.assign(SmmApp.prototype, {
             <div class="crs-prose course-lesson-preview" id="le-preview" style="display: none;"></div>
             <small class="course-hint" id="le-words"></small>
           </div>
+          <details class="span-2 course-en-block"${lesson.title_en ? ' open' : ''}>
+            <summary>🇬🇧 İngilizce sürüm <small class="course-hint">(boşsa İngilizce sayfada Türkçe metin görünür)</small></summary>
+            <div class="course-form-grid">
+              <div class="form-group span-2"><label class="form-label" for="le-title-en">Title</label><input type="text" id="le-title-en" class="form-control" maxlength="160" value="${e(lesson.title_en)}"></div>
+              <div class="form-group span-2"><label class="form-label" for="le-summary-en">Summary</label><textarea id="le-summary-en" class="form-control" rows="2" maxlength="400">${e(lesson.summary_en)}</textarea></div>
+              <div class="form-group span-2"><label class="form-label" for="le-content-en">Content (safe HTML)</label>${this.courseToolbarHtml('le-content-en')}<textarea id="le-content-en" class="form-control course-content-editor" rows="18">${e(lesson.content_en)}</textarea></div>
+            </div>
+          </details>
         </div>
         <div class="editor-actions">
           <button type="button" class="btn btn-outline" id="le-cancel">Vazgeç</button>
           <button type="submit" class="btn btn-primary" id="le-save"><i class="fa-solid fa-floppy-disk"></i> Dersi Kaydet</button>
         </div>
       </form>`;
-    const content = holder.querySelector('#le-content');
+    const contentTr = holder.querySelector('#le-content');
+    const contentEn = holder.querySelector('#le-content-en');
+    let content = contentTr;
     const preview = holder.querySelector('#le-preview');
     const toggle = holder.querySelector('#le-preview-toggle');
     const words = holder.querySelector('#le-words');
     const refresh = () => {
       const count = content.value.replace(/<[^>]*>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
-      words.textContent = `${count} kelime · yaklaşık ${Math.max(1, Math.ceil(count / 200))} dk okuma`;
+      words.textContent = `${content === contentEn ? 'EN' : 'TR'}: ${count} kelime · yaklaşık ${Math.max(1, Math.ceil(count / 200))} dk okuma`;
       if (toggle.checked) preview.innerHTML = this.coursePreviewHtml(content.value);
     };
-    content.addEventListener('input', refresh);
+    // Onizleme ve kelime sayaci en son duzenlenen dilin metnini gosterir.
+    [contentTr, contentEn].forEach(area => {
+      area.addEventListener('input', () => { content = area; refresh(); });
+      area.addEventListener('focus', () => { content = area; refresh(); });
+    });
     toggle.addEventListener('change', () => { preview.style.display = toggle.checked ? '' : 'none'; refresh(); });
     refresh();
     this.bindCourseToolbars(holder);
@@ -504,7 +537,10 @@ Object.assign(SmmApp.prototype, {
 
   async saveLesson() {
     const val = id => document.getElementById(id)?.value ?? '';
-    const payload = { title: val('le-title').trim(), slug: val('le-slug').trim(), summary: val('le-summary').trim(), content: val('le-content') };
+    const payload = {
+      title: val('le-title').trim(), slug: val('le-slug').trim(), summary: val('le-summary').trim(), content: val('le-content'),
+      title_en: val('le-title-en').trim(), summary_en: val('le-summary-en').trim(), content_en: val('le-content-en')
+    };
     if (payload.title.length < 2) { showToast('Ders başlığı en az 2 karakter olmalı.', 'warning'); return; }
     const btn = document.getElementById('le-save');
     if (btn) btn.disabled = true;

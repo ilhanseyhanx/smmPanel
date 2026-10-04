@@ -303,7 +303,7 @@ class SmmApp {
     const dictionary = {
       tr: {
         'nav.home': 'Ana Sayfa', 'nav.services': 'Hizmetler', 'nav.order': 'Sipariş Ver',
-        'nav.orders': 'Siparişlerim', 'nav.funds': 'Bakiye Yükle', 'nav.support': 'Destek',
+        'nav.orders': 'Siparişlerim', 'nav.funds': 'Bakiye Yükle', 'nav.support': 'Destek', 'nav.courses': 'Eğitimler',
         read_more: 'Devamını Oku', no_blog: 'Henüz yayınlanmış bir blog makalesi bulunmuyor.',
         standard: 'Standart', guaranteed: 'Garantili', order_now: 'Sipariş Ver',
         previous: 'Önceki', next: 'Sonraki', services_shown: 'servisten'
@@ -320,7 +320,7 @@ class SmmApp {
       },
       en: {
         'nav.home': 'Home', 'nav.services': 'Services', 'nav.order': 'New Order',
-        'nav.orders': 'My Orders', 'nav.funds': 'Add Funds', 'nav.support': 'Support',
+        'nav.orders': 'My Orders', 'nav.funds': 'Add Funds', 'nav.support': 'Support', 'nav.courses': 'Courses',
         read_more: 'Read More', no_blog: 'No published blog posts yet.',
         standard: 'Standard', guaranteed: 'Guaranteed', order_now: 'Order Now',
         previous: 'Previous', next: 'Next', services_shown: 'services'
@@ -371,7 +371,10 @@ class SmmApp {
     // Yasal sayfalar gibi uzun iceriklerde ceviri sozluk yerine dil bloklariyla
     // yapilir: .lang-tr / .lang-en gorunurlugu bu sinifla yonetilir.
     document.body.classList.toggle('locale-en', this.locale === 'en');
-    document.title = this.locale === 'en'
+    // Egitim sayfalarinin basligi ve aciklamasi sunucuda dile gore basilir;
+    // genel site metniyle ezilmez (sekme basligi ve arama motoru icin).
+    const sunucuBasligi = document.body.dataset.activeView === 'egitimler';
+    if (!sunucuBasligi) document.title = this.locale === 'en'
       ? 'SMM Panel - Automated Social Media Growth Panel'
       : 'SMM Panel - Otomatik Sosyal Medya Büyüme Paneli';
     const localizedMeta = {
@@ -385,14 +388,16 @@ class SmmApp {
         'Fast social media services for Instagram, TikTok, YouTube, and other platforms.'
       )
     };
-    document.querySelector('meta[name="description"]')?.setAttribute('content', localizedMeta.description);
-    document.querySelector('meta[property="og:title"]')?.setAttribute('content', localizedMeta['og:title']);
-    document.querySelector('meta[property="og:description"]')?.setAttribute('content', localizedMeta['og:description']);
+    if (!sunucuBasligi) {
+      document.querySelector('meta[name="description"]')?.setAttribute('content', localizedMeta.description);
+      document.querySelector('meta[property="og:title"]')?.setAttribute('content', localizedMeta['og:title']);
+      document.querySelector('meta[property="og:description"]')?.setAttribute('content', localizedMeta['og:description']);
+    }
     document.querySelectorAll('[data-i18n]').forEach(element => {
       element.textContent = this.t(element.dataset.i18n);
     });
     const english = {
-      'Giriş Yap': 'Login', 'Kayıt Ol': 'Register', 'Çıkış Yap': 'Logout', 'Ana Sayfa': 'Home',
+      'Giriş Yap': 'Login', 'Kayıt Ol': 'Register', 'Çıkış Yap': 'Logout', 'Ana Sayfa': 'Home', 'Eğitimler': 'Courses',
       'Hizmetler': 'Services', 'Hizmet Sayfaları': 'Service Pages', 'Sipariş Ver': 'Order Now', 'Siparişlerim': 'My Orders', 'Bakiye Yükle': 'Add Funds',
       'Destek': 'Support', 'Admin Panel': 'Admin Panel', 'Tüm Hizmetler': 'All Services', 'Diğer': 'Other',
       'Servis Adı': 'Service Name', '1000 Adet Fiyatı': 'Price per 1000', 'Min / Max Limit': 'Min / Max Limit',
@@ -644,6 +649,14 @@ class SmmApp {
     const selectedOrderService = document.getElementById('order-service-select')?.value;
     this.locale = locale === 'en' ? 'en' : 'tr';
     localStorage.setItem('smm_language', this.locale);
+    this.syncLanguageCookie();
+    // Egitim sayfalari sunucuda dile gore basilir: ayni sayfa secilen dilde yeniden acilir.
+    if (this.currentView === 'egitimler') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('lang', this.locale);
+      window.location.assign(url.pathname + url.search);
+      return;
+    }
     document.documentElement.lang = this.locale;
     this.applyTranslations();
     await this.loadServicesData();
@@ -5443,13 +5456,39 @@ class SmmApp {
     return this.lazyModules[name];
   }
 
+  // Site dil secimi sunucuya cerezle iletilir (egitim sayfalari sunucuda
+  // dile gore basilir). Tercih asil olarak localStorage'da durur.
+  syncLanguageCookie() {
+    try { document.cookie = `smm_lang=${this.locale}; path=/; max-age=31536000; samesite=lax`; } catch {}
+  }
+
   // Egitim sayfalari (/egitimler...): icerik sunucudan basili gelir; burada
   // gorunum isaretlenir ve satin alma / okuma takibi modulu yuklenir.
   async openCoursesPage() {
     this.currentView = 'egitimler';
     document.body.classList.add('neo-app-active');
     document.body.dataset.activeView = 'egitimler';
-    if (!document.querySelector('#egitim-root .crs-wrap')) return;
+    const wrap = document.querySelector('#egitim-root .crs-wrap');
+    if (!wrap) return;
+    // Dil uyumu: adresteki ?lang site tercihini gunceller; adreste dil yoksa
+    // ve sayfa tercihten farkli basildiysa (cerez henuz yoktu) dogru dile gecilir.
+    const pageLang = wrap.dataset.lang === 'en' ? 'en' : 'tr';
+    const urlLang = new URLSearchParams(window.location.search).get('lang');
+    if (urlLang === 'en' || urlLang === 'tr') {
+      if (this.locale !== pageLang) {
+        this.locale = pageLang;
+        try { localStorage.setItem('smm_language', pageLang); } catch {}
+        document.documentElement.lang = pageLang;
+        const selector = document.getElementById('language-selector');
+        if (selector) selector.value = pageLang;
+        this.applyTranslations();
+      }
+    } else if (this.locale !== pageLang) {
+      this.syncLanguageCookie();
+      window.location.replace(`${window.location.pathname}?lang=${this.locale}`);
+      return;
+    }
+    this.syncLanguageCookie();
     try {
       await this.loadLazyModule('courses');
       this.initCoursePage();

@@ -371,3 +371,54 @@ test('ders sırası değiştirilebilir ve ücretsiz dersler yeni sıraya göre b
   const eksik = await admin.post(`/api/admin/courses/${ids.b.id}/lessons/reorder`).send({ ids: [l1, l2] });
   assert.equal(eksik.status, 400);
 });
+
+// --- INGILIZCE SURUM, KUR, ICERIK BILESENLERI (5 Eki 2026) -------------------
+
+test('İngilizce sürüm ?lang=en ile basılır; dolar fiyatı ayardaki kurdan, hreflang ve EN bağlantılar', async () => {
+  // Testte disariya cikilmaz: kur ayardaki usd_try_rate'ten gelir.
+  await dbAsync.run("INSERT INTO site_settings (key, value) VALUES ('usd_try_rate', '40') ON CONFLICT(key) DO UPDATE SET value = '40'");
+  const put = await admin.put(`/api/admin/courses/${ids.b.id}`).send({ title_en: 'TikTok Explore Guide', subtitle_en: 'Understand the For You feed.' });
+  assert.equal(put.status, 200, put.body.error);
+  const lesson = await dbAsync.get("SELECT id FROM course_lessons WHERE course_id = ? AND slug = 'ders-1-basligi'", [ids.b.id]);
+  const lput = await admin.put(`/api/admin/courses/lessons/${lesson.id}`).send({ title_en: 'Lesson One', content_en: '<p>ENGLISH-CONTENT-ONE</p>' });
+  assert.equal(lput.status, 200, lput.body.error);
+
+  const en = await request(app).get(`/egitimler/${ids.b.slug}?lang=en`);
+  assert.equal(en.status, 200);
+  assert.match(en.text, /<html lang="en">/);
+  assert.match(en.text, /TikTok Explore Guide/);
+  assert.match(en.text, /\$5\.00/, '200 TL / 40 = $5.00 gösterilmeli');
+  assert.match(en.text, new RegExp(`hreflang="en" href="http://localhost:3000/egitimler/${ids.b.slug}[?]lang=en"`));
+  assert.match(en.text, new RegExp(`href="/egitimler/${ids.b.slug}/ders-1-basligi[?]lang=en"`));
+
+  const ders = await request(app).get(`/egitimler/${ids.b.slug}/ders-1-basligi?lang=en`);
+  assert.match(ders.text, /ENGLISH-CONTENT-ONE/);
+  assert.match(ders.text, /Lesson One/);
+
+  // Dil cerezi de yeterli; Turkce sayfada dolar gosterilmez.
+  const cerez = await request(app).get(`/egitimler/${ids.b.slug}`).set('Cookie', 'smm_lang=en');
+  assert.match(cerez.text, /TikTok Explore Guide/);
+  const tr = await request(app).get(`/egitimler/${ids.b.slug}`);
+  assert.match(tr.text, /<html lang="tr">/);
+  assert.ok(!/\$5\.00/.test(tr.text), 'Türkçe sayfada dolar fiyatı olmamalı');
+});
+
+test('satın alma özeti güncel kuru döner', async () => {
+  const agent = await musteriAgent();
+  const q = await agent.get(`/api/courses/${ids.b.slug}/quote`);
+  assert.equal(q.status, 200);
+  assert.equal(q.body.usd_try, 40);
+});
+
+test('ders içeriğinde yalnızca tanımlı bileşen sınıfları kalır', async () => {
+  const lesson = await dbAsync.get("SELECT id FROM course_lessons WHERE course_id = ? AND slug = 'ders-2-basligi'", [ids.b.id]);
+  const res = await admin.put(`/api/admin/courses/lessons/${lesson.id}`).send({
+    content: '<div class="crs-callout warn kotu" style="color:red" onclick="x()"><strong class="crs-callout-title">Dikkat</strong><p>Metin</p></div><table class="crs-table red"><tbody><tr><td><span class="crs-badge good">İyi</span></td></tr></tbody></table><script>alert(1)</script>'
+  });
+  assert.equal(res.status, 200, res.body.error);
+  const row = await dbAsync.get('SELECT content FROM course_lessons WHERE id = ?', [lesson.id]);
+  assert.match(row.content, /<div class="crs-callout warn">/);
+  assert.match(row.content, /<table class="crs-table red">/);
+  assert.match(row.content, /<span class="crs-badge good">/);
+  assert.ok(!/kotu|style=|onclick|<script/.test(row.content), 'izin dışı sınıf/öznitelik/etiket temizlenmeli');
+});

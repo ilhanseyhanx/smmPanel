@@ -7,29 +7,183 @@
 //   /egitimler/:egitim            -> egitim tanitimi + ders listesi
 //   /egitimler/:egitim/:ders      -> ders okuma ekrani
 //
+// IKI DIL (5 Eki 2026): ayni adresler ?lang=en ile Ingilizce basilir
+// (dil cerezi smm_lang=en de yeterlidir). Ingilizce alan bossa Turkce metne
+// duser. Fiyat her iki dilde de TL'dir ve odeme TL alinir; Ingilizce sayfada
+// gunluk kurla hesaplanan dolar karsiligi one cikarilir (bkz. services/fx.js).
+//
 // UCRETSIZ / KILITLI: dersler sort_order'a gore siralanir; ilk
 // free_lesson_count ders herkese aciktir ve indekslenir. Kalanlar yalnizca
 // egitimi satin alan (veya yonetici) icin basilir; digerleri kilit kutusunu
 // gorur ve sayfa noindex olur. Fiyati 0 olan egitimin tum dersleri aciktir.
 //
-// Icerik admin panelinde girilir; kayitta ve cikista sanitizeRichText'ten
-// gecer (blog ile ayni beyaz liste).
+// Icerik kayitta ve cikista sanitizeCourseHtml'den gecer: blog beyaz listesi
+// + egitim bilesenleri (bilgi kutulari, renkli tablolar, adim kartlari...)
+// icin yalnizca tanimli class degerleri.
 
-const { sanitizeRichText } = require('./security');
+const sanitizeHtml = require('sanitize-html');
 const { slugify, SLUG_RE } = require('./landingPages');
 
 const LEVELS = ['Başlangıç', 'Orta', 'İleri', 'Her Seviye'];
+const LEVELS_EN = { 'Başlangıç': 'Beginner', 'Orta': 'Intermediate', 'İleri': 'Advanced', 'Her Seviye': 'All Levels' };
 const BASE_PATH = '/egitimler';
 
 function esc(value) {
   return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// ---------------------------------------------------------------------------
+// ICERIK TEMIZLEME
+// ---------------------------------------------------------------------------
+
+// Egitim icerik bilesenleri (scripts/course-content/YAZIM-KURALLARI.md).
+// Listede olmayan class sessizce silinir; style ozniteligi hic gecmez.
+const COURSE_CLASSES = {
+  div: ['crs-callout', 'tip', 'warn', 'danger', 'info', 'success', 'crs-compare', 'crs-compare-col', 'good', 'bad',
+    'crs-template', 'crs-keypoints', 'crs-task'],
+  span: ['crs-badge', 'good', 'bad', 'mid', 'new', 'crs-template-label'],
+  strong: ['crs-callout-title', 'crs-compare-title'],
+  table: ['crs-table', 'blue', 'yellow', 'red', 'green', 'purple'],
+  ol: ['crs-steps'],
+  ul: ['crs-checklist'],
+  figure: ['crs-figure']
+};
+
+function sanitizeCourseHtml(value) {
+  return sanitizeHtml(String(value || ''), {
+    allowedTags: ['p', 'br', 'hr', 'h2', 'h3', 'h4', 'strong', 'em', 'u', 'mark', 'ul', 'ol', 'li', 'blockquote', 'a',
+      'figure', 'figcaption', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'pre', 'code', 'div', 'span'],
+    allowedAttributes: {
+      a: ['href', 'title', 'target', 'rel'],
+      img: ['src', 'alt', 'title', 'width', 'height', 'loading', 'decoding'],
+      th: ['colspan', 'rowspan'], td: ['colspan', 'rowspan']
+    },
+    allowedClasses: COURSE_CLASSES,
+    allowedSchemes: ['http', 'https', 'mailto'],
+    transformTags: {
+      // Site ici baglantilar nofollow almaz; dis baglantilar yeni sekmede ve
+      // nofollow (blog ile ayni kural, bkz. utils/security.js).
+      a(tagName, attribs) {
+        const href = String(attribs.href || '');
+        const ic = href.startsWith('/') || href.startsWith('#');
+        return { tagName: 'a', attribs: ic ? { ...attribs, rel: 'noopener noreferrer' } : { ...attribs, rel: 'noopener noreferrer nofollow', target: '_blank' } };
+      },
+      img: sanitizeHtml.simpleTransform('img', { loading: 'lazy', decoding: 'async' }, true)
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// DIL
+// ---------------------------------------------------------------------------
+
+const T = {
+  tr: {
+    home: 'Ana Sayfa', courses: 'Eğitimler', kicker: 'Jet SMM Panel Eğitimleri', series: 'Eğitim Serisi',
+    catalogTitle: 'Sosyal Medya Eğitimleri',
+    catalogIntro: "Instagram, TikTok ve YouTube'da hesabını adım adım büyütmen için hazırladığımız yazılı ve görselli eğitim serileri. Her eğitimin ilk dersleri ücretsiz; beğenirsen bakiyenle satın alıp tamamına erişirsin.",
+    lessons: n => `${n} ders`, minutes: n => `~${n} dk`, minutesRead: n => `~${n} dk okuma`, min: n => `${n} dk`,
+    allFree: 'Tüm dersler ücretsiz', firstFree: n => `İlk ${n} ders ücretsiz`, free: 'Ücretsiz',
+    owned: 'Satın aldın', ownedBadge: 'Bu eğitim senin', cont: 'Devam et', view: 'İncele',
+    emptyTitle: 'Eğitimler hazırlanıyor', emptyText: 'İlk eğitim serilerimiz çok yakında burada olacak.',
+    draft: 'Bu eğitim taslakta; ziyaretçiler göremez.', about: 'Bu eğitimde neler var?', lessonsTitle: 'Dersler',
+    soon: 'Dersler yakında eklenecek.', done: 'Okundu', buy: 'Satın al', freeTag: 'Ücretsiz',
+    progress: (d, t) => `${d}/${t} ders tamamlandı`, progressLabel: 'İlerleme',
+    resume: 'Kaldığın yerden devam et', start: 'Okumaya başla', oneTime: 'Tek seferlik ödeme, süresiz erişim',
+    buyCourse: 'Eğitimi Satın Al', readNow: t => `${t}: hemen oku`,
+    lessonOf: (i, n) => `Ders ${i} / ${n}`, freeLesson: 'Ücretsiz ders',
+    lockedTitle: 'Bu ders eğitimi satın alanlara açık', lockedText: 'Eğitimin geri kalan derslerine erişmek için eğitimi satın al.',
+    freeEnds: 'Ücretsiz dersler burada bitiyor 🎯', remaining: n => `Kalan ${n} derse erişmek için eğitimi satın al.`,
+    buyShort: 'Satın Al', prev: 'Önceki ders', coursePage: 'Eğitim sayfası', next: 'Sonraki ders',
+    nextLocked: 'Sonraki ders · Satın al', finished: 'Eğitimi bitirdin', unlockAll: 'Tamamını aç', nav: 'Ders gezinme',
+    lessonsAria: 'Dersler', chargedTry: '', breadcrumb: 'breadcrumb'
+  },
+  en: {
+    home: 'Home', courses: 'Courses', kicker: 'Jet SMM Panel Academy', series: 'Course',
+    catalogTitle: 'Social Media Courses',
+    catalogIntro: 'Step-by-step written courses with visuals to grow on Instagram, TikTok and YouTube. The first lessons of every course are free; if you like it, unlock the rest with your balance.',
+    lessons: n => `${n} lessons`, minutes: n => `~${n} min`, minutesRead: n => `~${n} min read`, min: n => `${n} min`,
+    allFree: 'All lessons free', firstFree: n => `First ${n} lessons free`, free: 'Free',
+    owned: 'Purchased', ownedBadge: 'You own this course', cont: 'Continue', view: 'View',
+    emptyTitle: 'Courses are on the way', emptyText: 'Our first course series will be here very soon.',
+    draft: 'This course is a draft; visitors cannot see it.', about: "What's inside this course?", lessonsTitle: 'Lessons',
+    soon: 'Lessons will be added soon.', done: 'Read', buy: 'Unlock', freeTag: 'Free',
+    progress: (d, t) => `${d}/${t} lessons completed`, progressLabel: 'Progress',
+    resume: 'Continue where you left off', start: 'Start reading', oneTime: 'One-time payment, lifetime access',
+    buyCourse: 'Buy This Course', readNow: t => `${t}: read now`,
+    lessonOf: (i, n) => `Lesson ${i} / ${n}`, freeLesson: 'Free lesson',
+    lockedTitle: 'This lesson is available to course owners', lockedText: 'Buy the course to unlock the remaining lessons.',
+    freeEnds: 'The free lessons end here 🎯', remaining: n => `Buy the course to unlock the remaining ${n} lessons.`,
+    buyShort: 'Buy', prev: 'Previous lesson', coursePage: 'Course page', next: 'Next lesson',
+    nextLocked: 'Next lesson · Unlock', finished: 'You finished the course', unlockAll: 'Unlock all', nav: 'Lesson navigation',
+    lessonsAria: 'Lessons', chargedTry: 'Charged in Turkish lira', breadcrumb: 'breadcrumb'
+  }
+};
+
+function normLang(lang) {
+  return lang === 'en' ? 'en' : 'tr';
+}
+
+/** Egitim satirinin istenen dildeki gorunumu (bos Ingilizce alan Turkceye duser). */
+function localizeCourse(row, lang) {
+  if (!row) return row;
+  if (normLang(lang) !== 'en') return { ...row };
+  const pick = key => (row[`${key}_en`] && String(row[`${key}_en`]).trim() ? row[`${key}_en`] : row[key]);
+  return {
+    ...row,
+    title: pick('title'),
+    subtitle: pick('subtitle'),
+    description: pick('description'),
+    seo_title: row.seo_title_en || (row.title_en ? '' : row.seo_title),
+    seo_description: pick('seo_description'),
+    cover_image_url: pick('cover_image_url'),
+    level: row.level_en || LEVELS_EN[row.level] || row.level,
+    total_minutes: row.total_minutes_en || row.total_minutes
+  };
+}
+
+function localizeLesson(row, lang) {
+  if (!row) return row;
+  if (normLang(lang) !== 'en') return { ...row };
+  const pick = key => (row[`${key}_en`] && String(row[`${key}_en`]).trim() ? row[`${key}_en`] : row[key]);
+  return {
+    ...row,
+    title: pick('title'),
+    summary: pick('summary'),
+    content: row.content_en && String(row.content_en).trim() ? row.content_en : row.content,
+    reading_minutes: row.reading_minutes_en || row.reading_minutes
+  };
+}
+
+// ---------------------------------------------------------------------------
+// FIYAT
+// ---------------------------------------------------------------------------
+
 /** ₺149 / ₺149,90 — kurus tam liraysa kusurat yazilmaz. */
 function formatPrice(kurus) {
   const value = Number(kurus || 0) / 100;
   const hasFraction = Number(kurus || 0) % 100 !== 0;
   return `₺${value.toLocaleString('tr-TR', { minimumFractionDigits: hasFraction ? 2 : 0, maximumFractionDigits: 2 })}`;
+}
+
+function formatUsd(kurus, rate) {
+  const r = Number(rate) || 0;
+  if (!r) return '';
+  return `$${(Number(kurus || 0) / 100 / r).toFixed(2)}`;
+}
+
+/**
+ * Dile gore fiyat metni. TR: "₺349". EN: "$7.12" ve yaninda TL tutari
+ * (odeme TL alinir; kullanici neyin cekilecegini bilsin).
+ */
+function priceParts(kurus, lang, rate) {
+  if (normLang(lang) === 'en' && rate) return { main: formatUsd(kurus, rate), sub: `≈ ${formatPrice(kurus)}` };
+  return { main: formatPrice(kurus), sub: '' };
+}
+
+function priceHtml(kurus, lang, rate, cls = 'crs-price') {
+  const p = priceParts(kurus, lang, rate);
+  return `<strong class="${cls}">${esc(p.main)}</strong>${p.sub ? `<small class="crs-price-sub">${esc(p.sub)}</small>` : ''}`;
 }
 
 /** Duz metin kelime sayisindan okuma suresi (dakikada ~200 kelime, en az 1). */
@@ -47,10 +201,8 @@ function isLessonFree(course, index) {
   return isFreeCourse(course) || index < Number(course?.free_lesson_count || 0);
 }
 
-// Duz metin alanlari (baslik, ozet...). normalizePlainText HTML varliklarina
-// cevirir ("&" -> "&amp;"); cikista esc() bir kez daha kacirinca ekranda
-// "&amp;" gorunurdu. Burada etiketler atilip ham metin saklanir; her
-// basimda esc()'den gectigi icin guvenlidir.
+// Duz metin alanlari (baslik, ozet...). Etiketler atilip ham metin saklanir;
+// her basimda esc()'den gectigi icin guvenlidir ("&" -> "&amp;amp;" olmaz).
 function normalizePlainText(value, maxLength) {
   if (typeof value !== 'string' && typeof value !== 'number') return '';
   return String(value).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, maxLength);
@@ -105,9 +257,9 @@ function normalizeCoursePayload(body = {}, current = null) {
   if (!Number.isInteger(freeCount) || freeCount < 0 || freeCount > 50) return { error: 'Ücretsiz ders sayısı 0-50 arasında olmalı.' };
 
   const cover = String(pick('cover_image_url') || '').trim();
-  if (!isSafeImageUrl(cover)) return { error: 'Kapak görseli geçerli bir adres olmalı (https://... veya /...).' };
+  const coverEn = String(pick('cover_image_url_en') || '').trim();
+  if (!isSafeImageUrl(cover) || !isSafeImageUrl(coverEn)) return { error: 'Kapak görseli geçerli bir adres olmalı (https://... veya /...).' };
 
-  const level = normalizePlainText(pick('level') || '', 40);
   const sortOrder = Number(pick('sort_order') || 0);
 
   return {
@@ -116,14 +268,21 @@ function normalizeCoursePayload(body = {}, current = null) {
       status,
       title,
       subtitle: normalizePlainText(pick('subtitle') || '', 300),
-      description: sanitizeRichText(pick('description') || ''),
+      description: sanitizeCourseHtml(pick('description') || ''),
       cover_image_url: cover,
-      level,
+      level: normalizePlainText(pick('level') || '', 40),
       price_kurus: priceKurus,
       free_lesson_count: freeCount,
       seo_title: normalizePlainText(pick('seo_title') || '', 180),
       seo_description: normalizePlainText(pick('seo_description') || '', 300),
-      sort_order: Number.isFinite(sortOrder) ? Math.trunc(sortOrder) : 0
+      sort_order: Number.isFinite(sortOrder) ? Math.trunc(sortOrder) : 0,
+      title_en: normalizePlainText(pick('title_en') || '', 160),
+      subtitle_en: normalizePlainText(pick('subtitle_en') || '', 300),
+      description_en: sanitizeCourseHtml(pick('description_en') || ''),
+      seo_title_en: normalizePlainText(pick('seo_title_en') || '', 180),
+      seo_description_en: normalizePlainText(pick('seo_description_en') || '', 300),
+      cover_image_url_en: coverEn,
+      level_en: normalizePlainText(pick('level_en') || '', 40)
     }
   };
 }
@@ -137,14 +296,19 @@ function normalizeLessonPayload(body = {}, current = null) {
   if (!SLUG_RE.test(slug) || slug.length < 2 || slug.length > 120) {
     return { error: 'Ders adresi (slug) yalnızca küçük harf, rakam ve tire içerebilir.' };
   }
-  const content = sanitizeRichText(pick('content') || '');
+  const content = sanitizeCourseHtml(pick('content') || '');
+  const contentEn = sanitizeCourseHtml(pick('content_en') || '');
   return {
     fields: {
       slug,
       title,
       summary: normalizePlainText(pick('summary') || '', 400),
       content,
-      reading_minutes: estimateMinutes(content)
+      reading_minutes: estimateMinutes(content),
+      title_en: normalizePlainText(pick('title_en') || '', 160),
+      summary_en: normalizePlainText(pick('summary_en') || '', 400),
+      content_en: contentEn,
+      reading_minutes_en: contentEn ? estimateMinutes(contentEn) : null
     }
   };
 }
@@ -153,7 +317,7 @@ function normalizeLessonPayload(body = {}, current = null) {
 // VERI
 // ---------------------------------------------------------------------------
 
-const LESSON_LIST_COLUMNS = 'id, course_id, slug, title, summary, reading_minutes, sort_order';
+const LESSON_LIST_COLUMNS = 'id, course_id, slug, title, summary, reading_minutes, sort_order, updated_at, title_en, summary_en, reading_minutes_en';
 
 async function listLessons(dbAsync, courseId) {
   return dbAsync.all(`SELECT ${LESSON_LIST_COLUMNS} FROM course_lessons WHERE course_id = ? ORDER BY sort_order ASC, id ASC`, [courseId]);
@@ -163,9 +327,11 @@ async function listLessons(dbAsync, courseId) {
 async function listPublishedCourses(dbAsync) {
   return dbAsync.all(`
     SELECT c.id, c.slug, c.title, c.subtitle, c.cover_image_url, c.level, c.price_kurus, c.free_lesson_count,
+           c.title_en, c.subtitle_en, c.cover_image_url_en, c.level_en,
            c.updated_at, c.published_at, c.created_at,
            (SELECT COUNT(*) FROM course_lessons l WHERE l.course_id = c.id) lesson_count,
-           (SELECT COALESCE(SUM(reading_minutes), 0) FROM course_lessons l WHERE l.course_id = c.id) total_minutes
+           (SELECT COALESCE(SUM(reading_minutes), 0) FROM course_lessons l WHERE l.course_id = c.id) total_minutes,
+           (SELECT COALESCE(SUM(COALESCE(reading_minutes_en, reading_minutes)), 0) FROM course_lessons l WHERE l.course_id = c.id) total_minutes_en
     FROM courses c WHERE c.status = 'published'
     ORDER BY c.sort_order ASC, c.id ASC`).catch(() => []);
 }
@@ -186,17 +352,25 @@ async function loadCourse(dbAsync, slug, { includeDraft = false } = {}) {
 // ISARETLEME
 // ---------------------------------------------------------------------------
 
-function courseUrl(course) {
-  return `${BASE_PATH}/${encodeURIComponent(course.slug)}`;
+function withLang(url, lang) {
+  return normLang(lang) === 'en' ? `${url}?lang=en` : url;
 }
 
-function lessonUrl(course, lesson) {
-  return `${courseUrl(course)}/${encodeURIComponent(lesson.slug)}`;
+function catalogUrl(lang) {
+  return withLang(BASE_PATH, lang);
 }
 
-function coverHtml(course, cls) {
+function courseUrl(course, lang = 'tr') {
+  return withLang(`${BASE_PATH}/${encodeURIComponent(course.slug)}`, lang);
+}
+
+function lessonUrl(course, lesson, lang = 'tr') {
+  return withLang(`${BASE_PATH}/${encodeURIComponent(course.slug)}/${encodeURIComponent(lesson.slug)}`, lang);
+}
+
+function coverHtml(course, cls, eager = false) {
   if (course.cover_image_url) {
-    return `<div class="${cls}"><img src="${esc(course.cover_image_url)}" alt="${esc(course.title)}" loading="lazy" decoding="async"></div>`;
+    return `<div class="${cls}"><img src="${esc(course.cover_image_url)}" alt="${esc(course.title)}" width="1200" height="675"${eager ? ' fetchpriority="high"' : ' loading="lazy"'} decoding="async"></div>`;
   }
   return `<div class="${cls} crs-cover-fallback" aria-hidden="true"><i class="fa-solid fa-graduation-cap"></i></div>`;
 }
@@ -208,29 +382,31 @@ function breadcrumbHtml(items) {
   }).join('')}</nav>`;
 }
 
-function freeBadgeText(course, lessonCount) {
-  if (isFreeCourse(course)) return 'Tüm dersler ücretsiz';
+function freeBadgeText(course, lessonCount, t) {
+  if (isFreeCourse(course)) return t.allFree;
   const free = Math.min(Number(course.free_lesson_count || 0), lessonCount);
-  return free ? `İlk ${free} ders ücretsiz` : '';
+  return free ? t.firstFree(free) : '';
 }
 
 /**
  * Katalog sayfasi.
- * @param {{courses: object[], ownedIds?: Set<number>}} data
+ * @param {{courses: object[], ownedIds?: Set<number>, lang?: string, rate?: number}} data
  */
-function renderCatalogHtml({ courses, ownedIds = new Set() }) {
-  const cards = courses.map(course => {
+function renderCatalogHtml({ courses, ownedIds = new Set(), lang = 'tr', rate = 0 }) {
+  const t = T[normLang(lang)];
+  const cards = courses.map(raw => {
+    const course = localizeCourse(raw, lang);
     const owned = ownedIds.has(Number(course.id));
     const meta = [
-      `<span><i class="fa-solid fa-book-open" aria-hidden="true"></i> ${Number(course.lesson_count) || 0} ders</span>`,
-      course.total_minutes ? `<span><i class="fa-regular fa-clock" aria-hidden="true"></i> ~${Number(course.total_minutes)} dk</span>` : '',
+      `<span><i class="fa-solid fa-book-open" aria-hidden="true"></i> ${esc(t.lessons(Number(course.lesson_count) || 0))}</span>`,
+      course.total_minutes ? `<span><i class="fa-regular fa-clock" aria-hidden="true"></i> ${esc(t.minutes(Number(course.total_minutes)))}</span>` : '',
       course.level ? `<span><i class="fa-solid fa-signal" aria-hidden="true"></i> ${esc(course.level)}</span>` : ''
     ].filter(Boolean).join('');
-    const free = freeBadgeText(course, Number(course.lesson_count) || 0);
+    const free = freeBadgeText(course, Number(course.lesson_count) || 0, t);
     const price = owned
-      ? '<span class="crs-owned-badge"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Satın aldın</span>'
-      : `<strong class="crs-price">${isFreeCourse(course) ? 'Ücretsiz' : formatPrice(course.price_kurus)}</strong>`;
-    return `<a class="crs-card glass-card" href="${courseUrl(course)}" data-course-id="${Number(course.id)}">
+      ? `<span class="crs-owned-badge"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> ${esc(t.owned)}</span>`
+      : (isFreeCourse(course) ? `<strong class="crs-price">${esc(t.free)}</strong>` : priceHtml(course.price_kurus, lang, rate));
+    return `<a class="crs-card glass-card" href="${courseUrl(course, lang)}" data-course-id="${Number(course.id)}">
       ${coverHtml(course, 'crs-card-cover')}
       <div class="crs-card-body">
         <div class="crs-card-meta">${meta}</div>
@@ -238,125 +414,131 @@ function renderCatalogHtml({ courses, ownedIds = new Set() }) {
         ${course.subtitle ? `<p class="crs-card-sub">${esc(course.subtitle)}</p>` : ''}
         <div class="crs-card-foot">
           <div>${price}${free && !owned ? `<small class="crs-free-note">${esc(free)}</small>` : ''}</div>
-          <span class="crs-card-cta">${owned ? 'Devam et' : 'İncele'} <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></span>
+          <span class="crs-card-cta">${esc(owned ? t.cont : t.view)} <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></span>
         </div>
       </div>
     </a>`;
   }).join('\n');
 
   const empty = `<div class="glass-card crs-empty"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>
-      <h2>Eğitimler hazırlanıyor</h2><p>İlk eğitim serilerimiz çok yakında burada olacak.</p></div>`;
+      <h2>${esc(t.emptyTitle)}</h2><p>${esc(t.emptyText)}</p></div>`;
 
-  return `<div class="crs-wrap" data-crs-page="catalog">
-    ${breadcrumbHtml([{ label: 'Ana Sayfa', href: '/' }, { label: 'Eğitimler' }])}
+  return `<div class="crs-wrap" data-crs-page="catalog" data-lang="${normLang(lang)}">
+    ${breadcrumbHtml([{ label: t.home, href: '/' }, { label: t.courses }])}
     <header class="crs-catalog-head">
-      <span class="crs-kicker"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i> Jet SMM Panel Eğitimleri</span>
-      <h1>Sosyal Medya Eğitimleri</h1>
-      <p>Instagram, TikTok ve YouTube'da hesabını adım adım büyütmen için hazırladığımız yazılı ve görselli eğitim serileri. Her eğitimin ilk dersleri ücretsiz; beğenirsen bakiyenle satın alıp tamamına erişirsin.</p>
+      <span class="crs-kicker"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i> ${esc(t.kicker)}</span>
+      <h1>${esc(t.catalogTitle)}</h1>
+      <p>${esc(t.catalogIntro)}</p>
     </header>
     <div class="crs-grid">${courses.length ? cards : empty}</div>
   </div>`;
 }
 
 /** Ders listesi (egitim sayfasinda ve ders ekraninin yan sutununda ortak). */
-function lessonListHtml({ course, lessons, owned, isAdmin, completed = new Set(), currentId = null }) {
+function lessonListHtml({ course, lessons, owned, isAdmin, completed = new Set(), currentId = null, lang = 'tr' }) {
+  const t = T[normLang(lang)];
   const items = lessons.map((lesson, index) => {
     const free = isLessonFree(course, index);
     const open = free || owned || isAdmin;
     const done = completed.has(Number(lesson.id));
     const current = Number(lesson.id) === Number(currentId);
     const tag = done
-      ? '<span class="crs-ltag done"><i class="fa-solid fa-check" aria-hidden="true"></i> Okundu</span>'
+      ? `<span class="crs-ltag done"><i class="fa-solid fa-check" aria-hidden="true"></i> ${esc(t.done)}</span>`
       : free && !owned && !isFreeCourse(course)
-        ? '<span class="crs-ltag free">Ücretsiz</span>'
-        : open ? '' : '<span class="crs-ltag locked"><i class="fa-solid fa-lock" aria-hidden="true"></i> Satın al</span>';
+        ? `<span class="crs-ltag free">${esc(t.freeTag)}</span>`
+        : open ? '' : `<span class="crs-ltag locked"><i class="fa-solid fa-lock" aria-hidden="true"></i> ${esc(t.buy)}</span>`;
     const inner = `<span class="crs-lnum">${index + 1}</span>
         <span class="crs-ltitle">${esc(lesson.title)}</span>
         ${tag}
-        <span class="crs-lmin">${Number(lesson.reading_minutes) || 1} dk</span>`;
+        <span class="crs-lmin">${esc(t.min(Number(lesson.reading_minutes) || 1))}</span>`;
     const cls = `crs-lesson${open ? '' : ' is-locked'}${done ? ' is-done' : ''}${current ? ' is-current' : ''}`;
     // Kilitli ders baglanti degil dugmedir: kilitli adreslere ic baglanti
     // verilmez (noindex sayfalar), tiklayinca satin alma penceresi acilir.
     return open
-      ? `<li class="${cls}"><a href="${lessonUrl(course, lesson)}"${current ? ' aria-current="page"' : ''}>${inner}</a></li>`
+      ? `<li class="${cls}"><a href="${lessonUrl(course, lesson, lang)}"${current ? ' aria-current="page"' : ''}>${inner}</a></li>`
       : `<li class="${cls}"><button type="button" data-crs-buy>${inner}</button></li>`;
   }).join('');
   return `<ol class="crs-lesson-list">${items}</ol>`;
 }
 
-function progressHtml(lessons, completed) {
+function progressHtml(lessons, completed, t) {
   if (!lessons.length) return '';
   const done = lessons.filter(l => completed.has(Number(l.id))).length;
   const pct = Math.round((done / lessons.length) * 100);
-  return `<div class="crs-progress" aria-label="İlerleme">
+  return `<div class="crs-progress" aria-label="${esc(t.progressLabel)}">
       <div class="crs-progress-bar"><span style="width:${pct}%"></span></div>
-      <small>${done}/${lessons.length} ders tamamlandı</small>
+      <small>${esc(t.progress(done, lessons.length))}</small>
     </div>`;
 }
 
-function dataAttrs({ page, course, lesson = null, owned }) {
+function dataAttrs({ page, course, lesson = null, owned, lang, rate }) {
   return `data-crs-page="${page}" data-course-id="${Number(course.id)}" data-course-slug="${esc(course.slug)}"`
     + ` data-course-title="${esc(course.title)}" data-price="${Number(course.price_kurus) || 0}" data-owned="${owned ? '1' : '0'}"`
+    + ` data-lang="${normLang(lang)}" data-usd-rate="${Number(rate) || 0}"`
     + (lesson ? ` data-lesson-id="${Number(lesson.id)}"` : '');
 }
 
 /** Satin alma kutusu: fiyat + dugme (sahibi icin "devam et"). */
-function buyBoxHtml({ course, lessons, owned, completed }) {
+function buyBoxHtml({ course, lessons, owned, completed, lang, rate }) {
+  const t = T[normLang(lang)];
   const firstOpen = lessons[0];
   const nextUnread = lessons.find(l => !completed.has(Number(l.id))) || firstOpen;
   if (owned || isFreeCourse(course)) {
     return `<div class="crs-buybox">
-        ${owned ? '<span class="crs-owned-badge"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Bu eğitim senin</span>' : '<strong class="crs-price lg">Ücretsiz</strong>'}
-        ${nextUnread ? `<a class="btn btn-primary crs-buy-btn" href="${lessonUrl(course, nextUnread)}"><i class="fa-solid fa-book-open-reader" aria-hidden="true"></i> ${completed.size ? 'Kaldığın yerden devam et' : 'Okumaya başla'}</a>` : ''}
+        ${owned ? `<span class="crs-owned-badge"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> ${esc(t.ownedBadge)}</span>` : `<strong class="crs-price lg">${esc(t.free)}</strong>`}
+        ${nextUnread ? `<a class="btn btn-primary crs-buy-btn" href="${lessonUrl(course, nextUnread, lang)}"><i class="fa-solid fa-book-open-reader" aria-hidden="true"></i> ${esc(completed.size ? t.resume : t.start)}</a>` : ''}
       </div>`;
   }
-  const free = freeBadgeText(course, lessons.length);
+  const free = freeBadgeText(course, lessons.length, t);
   return `<div class="crs-buybox">
-      <strong class="crs-price lg">${formatPrice(course.price_kurus)}</strong>
-      <small class="crs-buy-note">Tek seferlik ödeme, süresiz erişim</small>
-      <button type="button" class="btn btn-primary crs-buy-btn" data-crs-buy><i class="fa-solid fa-unlock" aria-hidden="true"></i> Eğitimi Satın Al</button>
-      ${firstOpen && free ? `<a class="btn btn-outline crs-buy-btn" href="${lessonUrl(course, firstOpen)}"><i class="fa-solid fa-book-open" aria-hidden="true"></i> ${esc(free)}: hemen oku</a>` : ''}
+      <div class="crs-price-row">${priceHtml(course.price_kurus, lang, rate, 'crs-price lg')}</div>
+      <small class="crs-buy-note">${esc(t.oneTime)}${t.chargedTry ? ` · ${esc(t.chargedTry)}` : ''}</small>
+      <button type="button" class="btn btn-primary crs-buy-btn" data-crs-buy><i class="fa-solid fa-unlock" aria-hidden="true"></i> ${esc(t.buyCourse)}</button>
+      ${firstOpen && free ? `<a class="btn btn-outline crs-buy-btn" href="${lessonUrl(course, firstOpen, lang)}"><i class="fa-solid fa-book-open" aria-hidden="true"></i> ${esc(t.readNow(free))}</a>` : ''}
     </div>`;
 }
 
 /**
  * Egitim tanitim sayfasi.
- * @param {{course, lessons, owned?: boolean, isAdmin?: boolean, completed?: Set<number>}} data
+ * @param {{course, lessons, owned?: boolean, isAdmin?: boolean, completed?: Set<number>, lang?: string, rate?: number}} data
  */
-function renderCourseHtml({ course, lessons, owned = false, isAdmin = false, completed = new Set() }) {
+function renderCourseHtml({ course: rawCourse, lessons: rawLessons, owned = false, isAdmin = false, completed = new Set(), lang = 'tr', rate = 0 }) {
+  const t = T[normLang(lang)];
+  const course = localizeCourse(rawCourse, lang);
+  const lessons = rawLessons.map(l => localizeLesson(l, lang));
   const totalMinutes = lessons.reduce((sum, l) => sum + (Number(l.reading_minutes) || 1), 0);
-  const free = freeBadgeText(course, lessons.length);
+  const free = freeBadgeText(course, lessons.length, t);
   const meta = [
-    `<span><i class="fa-solid fa-book-open" aria-hidden="true"></i> ${lessons.length} ders</span>`,
-    totalMinutes ? `<span><i class="fa-regular fa-clock" aria-hidden="true"></i> ~${totalMinutes} dk okuma</span>` : '',
+    `<span><i class="fa-solid fa-book-open" aria-hidden="true"></i> ${esc(t.lessons(lessons.length))}</span>`,
+    totalMinutes ? `<span><i class="fa-regular fa-clock" aria-hidden="true"></i> ${esc(t.minutesRead(totalMinutes))}</span>` : '',
     course.level ? `<span><i class="fa-solid fa-signal" aria-hidden="true"></i> ${esc(course.level)}</span>` : '',
     free ? `<span><i class="fa-solid fa-gift" aria-hidden="true"></i> ${esc(free)}</span>` : ''
   ].filter(Boolean).join('');
 
-  return `<div class="crs-wrap" ${dataAttrs({ page: 'course', course, owned })}>
-    ${breadcrumbHtml([{ label: 'Ana Sayfa', href: '/' }, { label: 'Eğitimler', href: BASE_PATH }, { label: course.title }])}
-    ${course.status !== 'published' ? '<div class="crs-draft-note"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i> Bu eğitim taslakta; ziyaretçiler göremez.</div>' : ''}
+  return `<div class="crs-wrap" ${dataAttrs({ page: 'course', course, owned, lang, rate })}>
+    ${breadcrumbHtml([{ label: t.home, href: '/' }, { label: t.courses, href: catalogUrl(lang) }, { label: course.title }])}
+    ${course.status !== 'published' ? `<div class="crs-draft-note"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i> ${esc(t.draft)}</div>` : ''}
     <section class="crs-hero glass-card">
       <div class="crs-hero-text">
-        <span class="crs-kicker"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i> Eğitim Serisi</span>
+        <span class="crs-kicker"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i> ${esc(t.series)}</span>
         <h1>${esc(course.title)}</h1>
         ${course.subtitle ? `<p class="crs-hero-sub">${esc(course.subtitle)}</p>` : ''}
         <div class="crs-hero-meta">${meta}</div>
-        ${owned ? progressHtml(lessons, completed) : ''}
+        ${owned ? progressHtml(lessons, completed, t) : ''}
       </div>
       <div class="crs-hero-side">
-        ${coverHtml(course, 'crs-hero-cover')}
-        ${buyBoxHtml({ course, lessons, owned, completed })}
+        ${coverHtml(course, 'crs-hero-cover', true)}
+        ${buyBoxHtml({ course, lessons, owned, completed, lang, rate })}
       </div>
     </section>
     <div class="crs-detail-grid">
       <article class="glass-card crs-prose crs-about">
-        <h2>Bu eğitimde neler var?</h2>
-        ${sanitizeRichText(course.description || '') || `<p>${esc(course.subtitle || course.title)}</p>`}
+        <h2>${esc(t.about)}</h2>
+        ${sanitizeCourseHtml(course.description || '') || `<p>${esc(course.subtitle || course.title)}</p>`}
       </article>
-      <aside class="glass-card crs-lessons-box" aria-label="Dersler">
-        <h2>Dersler</h2>
-        ${lessons.length ? lessonListHtml({ course, lessons, owned, isAdmin, completed }) : '<p class="crs-muted">Dersler yakında eklenecek.</p>'}
+      <aside class="glass-card crs-lessons-box" aria-label="${esc(t.lessonsAria)}">
+        <h2>${esc(t.lessonsTitle)}</h2>
+        ${lessons.length ? lessonListHtml({ course, lessons, owned, isAdmin, completed, lang }) : `<p class="crs-muted">${esc(t.soon)}</p>`}
       </aside>
     </div>
   </div>`;
@@ -364,55 +546,60 @@ function renderCourseHtml({ course, lessons, owned = false, isAdmin = false, com
 
 /**
  * Ders okuma ekrani.
- * @param {{course, lessons, lesson, content: string, canRead: boolean, owned?: boolean, isAdmin?: boolean, completed?: Set<number>}} data
+ * @param {{course, lessons, lesson, content: string, canRead: boolean, owned?: boolean, isAdmin?: boolean, completed?: Set<number>, lang?: string, rate?: number}} data
  */
-function renderLessonHtml({ course, lessons, lesson, content, canRead, owned = false, isAdmin = false, completed = new Set() }) {
+function renderLessonHtml({ course: rawCourse, lessons: rawLessons, lesson: rawLesson, content, canRead, owned = false, isAdmin = false, completed = new Set(), lang = 'tr', rate = 0 }) {
+  const t = T[normLang(lang)];
+  const course = localizeCourse(rawCourse, lang);
+  const lessons = rawLessons.map(l => localizeLesson(l, lang));
+  const lesson = localizeLesson(rawLesson, lang);
   const index = lessons.findIndex(l => Number(l.id) === Number(lesson.id));
   const prev = index > 0 ? lessons[index - 1] : null;
   const next = index >= 0 && index < lessons.length - 1 ? lessons[index + 1] : null;
   const free = isLessonFree(course, index);
   const nextOpen = next && (isLessonFree(course, index + 1) || owned || isAdmin);
+  const price = priceParts(course.price_kurus, lang, rate);
 
   const headTags = [
-    `<span>Ders ${index + 1} / ${lessons.length}</span>`,
-    `<span><i class="fa-regular fa-clock" aria-hidden="true"></i> ${Number(lesson.reading_minutes) || 1} dk okuma</span>`,
-    free && !isFreeCourse(course) ? '<span class="crs-ltag free">Ücretsiz ders</span>' : ''
+    `<span>${esc(t.lessonOf(index + 1, lessons.length))}</span>`,
+    `<span><i class="fa-regular fa-clock" aria-hidden="true"></i> ${esc(t.minutesRead(Number(lesson.reading_minutes) || 1).replace('~', ''))}</span>`,
+    free && !isFreeCourse(course) ? `<span class="crs-ltag free">${esc(t.freeLesson)}</span>` : ''
   ].filter(Boolean).join('');
 
   const body = canRead
-    ? `<div class="crs-prose crs-lesson-content" id="crs-lesson-content">${sanitizeRichText(content || '')}</div>
+    ? `<div class="crs-prose crs-lesson-content" id="crs-lesson-content">${sanitizeCourseHtml(content || '')}</div>
        <div class="crs-lesson-end" id="crs-lesson-end" aria-hidden="true"></div>`
     : `<div class="crs-locked">
         <i class="fa-solid fa-lock crs-locked-icon" aria-hidden="true"></i>
-        <h2>Bu ders eğitimi satın alanlara açık</h2>
-        <p>${lesson.summary ? esc(lesson.summary) : 'Eğitimin geri kalan derslerine erişmek için eğitimi satın al.'}</p>
-        <strong class="crs-price lg">${formatPrice(course.price_kurus)}</strong>
-        <button type="button" class="btn btn-primary" data-crs-buy><i class="fa-solid fa-unlock" aria-hidden="true"></i> Eğitimi Satın Al</button>
+        <h2>${esc(t.lockedTitle)}</h2>
+        <p>${lesson.summary ? esc(lesson.summary) : esc(t.lockedText)}</p>
+        <div class="crs-price-row">${priceHtml(course.price_kurus, lang, rate, 'crs-price lg')}</div>
+        <button type="button" class="btn btn-primary" data-crs-buy><i class="fa-solid fa-unlock" aria-hidden="true"></i> ${esc(t.buyCourse)}</button>
       </div>`;
 
   // Son ucretsiz derste (sahibi degilse) devami icin satin alma cagrisi.
   const lastFree = canRead && !owned && !isAdmin && !isFreeCourse(course) && next && !nextOpen;
   const upsell = lastFree
     ? `<div class="crs-upsell">
-        <div><strong>Ücretsiz dersler burada bitiyor 🎯</strong><p>Kalan ${lessons.length - index - 1} derse erişmek için eğitimi satın al.</p></div>
-        <button type="button" class="btn btn-primary" data-crs-buy><i class="fa-solid fa-unlock" aria-hidden="true"></i> ${formatPrice(course.price_kurus)} · Satın Al</button>
+        <div><strong>${esc(t.freeEnds)}</strong><p>${esc(t.remaining(lessons.length - index - 1))}</p></div>
+        <button type="button" class="btn btn-primary" data-crs-buy><i class="fa-solid fa-unlock" aria-hidden="true"></i> ${esc(price.main)} · ${esc(t.buyShort)}</button>
       </div>`
     : '';
 
-  const pager = `<nav class="crs-pager" aria-label="Ders gezinme">
-      ${prev ? `<a class="btn btn-outline btn-sm" href="${lessonUrl(course, prev)}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Önceki ders</a>` : `<a class="btn btn-outline btn-sm" href="${courseUrl(course)}"><i class="fa-solid fa-list" aria-hidden="true"></i> Eğitim sayfası</a>`}
+  const pager = `<nav class="crs-pager" aria-label="${esc(t.nav)}">
+      ${prev ? `<a class="btn btn-outline btn-sm" href="${lessonUrl(course, prev, lang)}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> ${esc(t.prev)}</a>` : `<a class="btn btn-outline btn-sm" href="${courseUrl(course, lang)}"><i class="fa-solid fa-list" aria-hidden="true"></i> ${esc(t.coursePage)}</a>`}
       ${next
         ? (nextOpen
-          ? `<a class="btn btn-primary btn-sm" href="${lessonUrl(course, next)}">Sonraki ders <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>`
-          : '<button type="button" class="btn btn-primary btn-sm" data-crs-buy><i class="fa-solid fa-lock" aria-hidden="true"></i> Sonraki ders · Satın al</button>')
-        : `<a class="btn btn-primary btn-sm" href="${courseUrl(course)}"><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i> Eğitimi bitirdin</a>`}
+          ? `<a class="btn btn-primary btn-sm" href="${lessonUrl(course, next, lang)}">${esc(t.next)} <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>`
+          : `<button type="button" class="btn btn-primary btn-sm" data-crs-buy><i class="fa-solid fa-lock" aria-hidden="true"></i> ${esc(t.nextLocked)}</button>`)
+        : `<a class="btn btn-primary btn-sm" href="${courseUrl(course, lang)}"><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i> ${esc(t.finished)}</a>`}
     </nav>`;
 
-  return `<div class="crs-wrap" ${dataAttrs({ page: 'lesson', course, lesson, owned })} data-can-read="${canRead ? '1' : '0'}">
+  return `<div class="crs-wrap" ${dataAttrs({ page: 'lesson', course, lesson, owned, lang, rate })} data-can-read="${canRead ? '1' : '0'}">
     ${breadcrumbHtml([
-      { label: 'Ana Sayfa', href: '/' },
-      { label: 'Eğitimler', href: BASE_PATH },
-      { label: course.title, href: courseUrl(course) },
+      { label: t.home, href: '/' },
+      { label: t.courses, href: catalogUrl(lang) },
+      { label: course.title, href: courseUrl(course, lang) },
       { label: lesson.title }
     ])}
     <div class="crs-lesson-layout">
@@ -423,11 +610,11 @@ function renderLessonHtml({ course, lessons, lesson, content, canRead, owned = f
         ${upsell}
         ${pager}
       </article>
-      <aside class="glass-card crs-lessons-box" aria-label="Dersler">
-        <a class="crs-aside-course" href="${courseUrl(course)}">${esc(course.title)}</a>
-        ${owned ? progressHtml(lessons, completed) : ''}
-        ${lessonListHtml({ course, lessons, owned, isAdmin, completed, currentId: lesson.id })}
-        ${!owned && !isAdmin && !isFreeCourse(course) ? `<button type="button" class="btn btn-primary btn-sm crs-aside-buy" data-crs-buy><i class="fa-solid fa-unlock" aria-hidden="true"></i> Tamamını aç · ${formatPrice(course.price_kurus)}</button>` : ''}
+      <aside class="glass-card crs-lessons-box" aria-label="${esc(t.lessonsAria)}">
+        <a class="crs-aside-course" href="${courseUrl(course, lang)}">${esc(course.title)}</a>
+        ${owned ? progressHtml(lessons, completed, t) : ''}
+        ${lessonListHtml({ course, lessons, owned, isAdmin, completed, currentId: lesson.id, lang })}
+        ${!owned && !isAdmin && !isFreeCourse(course) ? `<button type="button" class="btn btn-primary btn-sm crs-aside-buy" data-crs-buy><i class="fa-solid fa-unlock" aria-hidden="true"></i> ${esc(t.unlockAll)} · ${esc(price.main)}</button>` : ''}
       </aside>
     </div>
   </div>`;
@@ -437,7 +624,7 @@ function renderLessonHtml({ course, lessons, lesson, content, canRead, owned = f
 // YAPISAL VERI
 // ---------------------------------------------------------------------------
 
-function breadcrumbLd(base, items) {
+function breadcrumbLd(items) {
   return {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -445,27 +632,36 @@ function breadcrumbLd(base, items) {
   };
 }
 
-function catalogJsonLd({ base, courses }) {
+function absUrl(base, url) {
+  if (!url) return undefined;
+  return url.startsWith('http') ? url : `${base}${url}`;
+}
+
+function catalogJsonLd({ base, courses, lang = 'tr' }) {
+  const t = T[normLang(lang)];
   return [
-    breadcrumbLd(base, [{ name: 'Ana Sayfa', url: `${base}/` }, { name: 'Eğitimler', url: `${base}${BASE_PATH}` }]),
+    breadcrumbLd([{ name: t.home, url: `${base}/` }, { name: t.courses, url: `${base}${catalogUrl(lang)}` }]),
     {
       '@context': 'https://schema.org',
       '@type': 'ItemList',
-      name: 'Sosyal Medya Eğitimleri',
-      itemListElement: courses.map((course, i) => ({
-        '@type': 'ListItem', position: i + 1, url: `${base}${courseUrl(course)}`, name: course.title
-      }))
+      name: t.catalogTitle,
+      itemListElement: courses.map((raw, i) => {
+        const course = localizeCourse(raw, lang);
+        return { '@type': 'ListItem', position: i + 1, url: `${base}${courseUrl(course, lang)}`, name: course.title };
+      })
     }
   ];
 }
 
-function courseJsonLd({ base, course, lessons, description }) {
-  const totalMinutes = lessons.reduce((sum, l) => sum + (Number(l.reading_minutes) || 1), 0);
-  const url = `${base}${courseUrl(course)}`;
+function courseJsonLd({ base, course: raw, lessons, description, lang = 'tr' }) {
+  const t = T[normLang(lang)];
+  const course = localizeCourse(raw, lang);
+  const totalMinutes = lessons.map(l => localizeLesson(l, lang)).reduce((sum, l) => sum + (Number(l.reading_minutes) || 1), 0);
+  const url = `${base}${courseUrl(course, lang)}`;
   return [
-    breadcrumbLd(base, [
-      { name: 'Ana Sayfa', url: `${base}/` },
-      { name: 'Eğitimler', url: `${base}${BASE_PATH}` },
+    breadcrumbLd([
+      { name: t.home, url: `${base}/` },
+      { name: t.courses, url: `${base}${catalogUrl(lang)}` },
       { name: course.title, url }
     ]),
     {
@@ -475,11 +671,12 @@ function courseJsonLd({ base, course, lessons, description }) {
       name: course.title,
       description: description || course.subtitle || course.title,
       url,
-      inLanguage: 'tr-TR',
+      inLanguage: normLang(lang) === 'en' ? 'en' : 'tr-TR',
       provider: { '@id': `${base}/#organization` },
-      image: course.cover_image_url ? (course.cover_image_url.startsWith('http') ? course.cover_image_url : `${base}${course.cover_image_url}`) : undefined,
+      image: absUrl(base, course.cover_image_url),
       educationalLevel: course.level || undefined,
       numberOfLessons: lessons.length || undefined,
+      // Odeme TL alindigi icin teklif her iki dilde de TRY'dir.
       offers: {
         '@type': 'Offer',
         category: isFreeCourse(course) ? 'Free' : 'Paid',
@@ -497,13 +694,16 @@ function courseJsonLd({ base, course, lessons, description }) {
   ];
 }
 
-function lessonJsonLd({ base, course, lesson, description }) {
-  const url = `${base}${lessonUrl(course, lesson)}`;
+function lessonJsonLd({ base, course: rawCourse, lesson: rawLesson, description, lang = 'tr' }) {
+  const t = T[normLang(lang)];
+  const course = localizeCourse(rawCourse, lang);
+  const lesson = localizeLesson(rawLesson, lang);
+  const url = `${base}${lessonUrl(course, lesson, lang)}`;
   return [
-    breadcrumbLd(base, [
-      { name: 'Ana Sayfa', url: `${base}/` },
-      { name: 'Eğitimler', url: `${base}${BASE_PATH}` },
-      { name: course.title, url: `${base}${courseUrl(course)}` },
+    breadcrumbLd([
+      { name: t.home, url: `${base}/` },
+      { name: t.courses, url: `${base}${catalogUrl(lang)}` },
+      { name: course.title, url: `${base}${courseUrl(course, lang)}` },
       { name: lesson.title, url }
     ]),
     {
@@ -512,8 +712,9 @@ function lessonJsonLd({ base, course, lesson, description }) {
       headline: lesson.title,
       description: description || undefined,
       url,
-      inLanguage: 'tr-TR',
-      isPartOf: { '@id': `${base}${courseUrl(course)}#course` },
+      inLanguage: normLang(lang) === 'en' ? 'en' : 'tr-TR',
+      image: absUrl(base, course.cover_image_url),
+      isPartOf: { '@id': `${base}${courseUrl(course, lang)}#course` },
       publisher: { '@id': `${base}/#organization` },
       dateModified: String(lesson.updated_at || course.updated_at || '').slice(0, 10) || undefined
     }
@@ -521,11 +722,12 @@ function lessonJsonLd({ base, course, lesson, description }) {
 }
 
 module.exports = {
-  BASE_PATH, LEVELS,
-  esc, formatPrice, estimateMinutes, isFreeCourse, isLessonFree, isSafeImageUrl,
+  BASE_PATH, LEVELS, LEVELS_EN, T, COURSE_CLASSES,
+  esc, formatPrice, formatUsd, priceParts, estimateMinutes, isFreeCourse, isLessonFree, isSafeImageUrl,
+  sanitizeCourseHtml, normLang, localizeCourse, localizeLesson,
   normalizeCoursePayload, normalizeLessonPayload,
   listLessons, listPublishedCourses, loadCourse,
-  courseUrl, lessonUrl,
+  catalogUrl, courseUrl, lessonUrl,
   renderCatalogHtml, renderCourseHtml, renderLessonHtml,
   catalogJsonLd, courseJsonLd, lessonJsonLd
 };

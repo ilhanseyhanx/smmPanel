@@ -788,6 +788,15 @@ async function runMigrations() {
   // Eksik bakiyeyi tamamlamak icin baslatilan Shopier odemesi hangi egitim
   // icinse; odeme gelince bakiye yazilir ve egitim ayni islemde alinir.
   await addColumnIfMissing('payment_intents', 'course_id', 'INTEGER');
+  // Ingilizce surum (5 Eki 2026): ayni adreslerde ?lang=en / dil cerezi ile
+  // sunulur. Bos alan Turkce metne duser.
+  for (const col of ['title_en', 'subtitle_en', 'description_en', 'seo_title_en', 'seo_description_en', 'cover_image_url_en', 'level_en']) {
+    await addColumnIfMissing('courses', col, 'TEXT');
+  }
+  for (const col of ['title_en', 'summary_en', 'content_en']) {
+    await addColumnIfMissing('course_lessons', col, 'TEXT');
+  }
+  await addColumnIfMissing('course_lessons', 'reading_minutes_en', 'INTEGER');
 
   const admins = await dbAsync.all("SELECT id, password FROM users WHERE role = 'admin' AND must_change_password = 0");
   for (const admin of admins) {

@@ -44,9 +44,12 @@ router.get('/:slug/quote', authenticateToken, async (req, res, next) => {
     if (!course) return res.status(404).json({ error: 'Eğitim bulunamadı.' });
     const owned = await Courses.isOwned(dbAsync, req.user.id, course.id);
     const q = Courses.quote(course, req.user.balance_kurus);
+    const fx = await require('../services/fx').getUsdTry();
     res.json({
-      course: { id: course.id, slug: course.slug, title: course.title },
+      course: { id: course.id, slug: course.slug, title: course.title, title_en: course.title_en || course.title },
       owned,
+      // Ingilizce pencerede dolar karsiligi icin (odeme TL alinir).
+      usd_try: fx.rate,
       price: fromKurus(q.price_kurus),
       balance: fromKurus(q.balance_kurus),
       shortfall: fromKurus(q.shortfall_kurus),

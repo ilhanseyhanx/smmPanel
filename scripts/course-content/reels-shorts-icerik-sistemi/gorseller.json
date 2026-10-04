@@ -1,0 +1,36 @@
+{
+  "cover": {
+    "tr": "/egitim/reels-shorts-icerik-sistemi/kapak-tr-77055d5c.png",
+    "en": "/egitim/reels-shorts-icerik-sistemi/kapak-en-b62f8681.png"
+  },
+  "lessons": {
+    "neden-sistem-haftalik-uretim-ritmi": {
+      "tr": "/egitim/reels-shorts-icerik-sistemi/ders-01-tr-3a69a2ea.webp",
+      "en": "/egitim/reels-shorts-icerik-sistemi/ders-01-en-4ac0dbf6.webp"
+    },
+    "fikir-bankasi-kurma": {
+      "tr": "/egitim/reels-shorts-icerik-sistemi/ders-02-tr-ecd1ec94.webp",
+      "en": "/egitim/reels-shorts-icerik-sistemi/ders-02-en-6c623714.webp"
+    },
+    "kisa-video-senaryo-sablonlari": {
+      "tr": "/egitim/reels-shorts-icerik-sistemi/ders-03-tr-8f84d8c6.webp",
+      "en": "/egitim/reels-shorts-icerik-sistemi/ders-03-en-45c8d260.webp"
+    },
+    "toplu-cekim-gunu": {
+      "tr": "/egitim/reels-shorts-icerik-sistemi/ders-04-tr-e204dd36.webp",
+      "en": "/egitim/reels-shorts-icerik-sistemi/ders-04-en-c6cdfe47.webp"
+    },
+    "kurgu-is-akisi-altyazi-kapak": {
+      "tr": "/egitim/reels-shorts-icerik-sistemi/ders-05-tr-d188d533.webp",
+      "en": "/egitim/reels-shorts-icerik-sistemi/ders-05-en-bb12eaba.webp"
+    },
+    "tek-video-coklu-platform-arsiv": {
+      "tr": "/egitim/reels-shorts-icerik-sistemi/ders-06-tr-05cd21b7.webp",
+      "en": "/egitim/reels-shorts-icerik-sistemi/ders-06-en-f97a756c.webp"
+    },
+    "icerik-takvimi-4-haftalik-plan": {
+      "tr": "/egitim/reels-shorts-icerik-sistemi/ders-07-tr-7f1a375e.webp",
+      "en": "/egitim/reels-shorts-icerik-sistemi/ders-07-en-719b1afc.webp"
+    }
+  }
+}

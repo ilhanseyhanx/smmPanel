@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20261005a">
+  <link rel="stylesheet" href="/css/style.css?v=20261007a">
 </head>
 <body>
 
@@ -480,6 +480,7 @@
               <h3 style="font-size:1.05rem;margin-bottom:12px;"><i class="fa-solid fa-shield-halved"></i> Güvenlik</h3>
               <div id="profile-email-verify-area" style="margin-bottom:10px;"></div>
               <div id="profile-2fa-area"></div>
+              <div id="profile-google-area"></div>
             </div>
 
             <div class="glass-card">
@@ -1368,6 +1369,20 @@ Canceled     iptal edildi</pre>
                 Kayıt ol
               </button>
             </form>
+
+            <!-- Google ile giris: admin panelde istemci kimligi girildiyse mountGoogleButton
+                 (bkz. app.js) bu kutuyu acar ve Google'in dugmesini cizer. -->
+            <div id="vauth-google-wrap" class="google-auth-wrap" hidden>
+              <div class="auth-divider"><span id="vauth-google-divider">veya</span></div>
+              <div id="vauth-google-btn" class="google-signin-slot"></div>
+              <div id="vauth-google-2fa" class="google-2fa" hidden>
+                <label for="vauth-google-totp" class="form-label">Doğrulama Kodu (2FA)</label>
+                <div class="google-2fa-row">
+                  <input type="text" id="vauth-google-totp" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="123456">
+                  <button type="button" class="btn btn-primary btn-sm" onclick="app.submitGoogleTotp('vauth')">Doğrula</button>
+                </div>
+              </div>
+            </div>
 
             <div style="text-align: center; margin-top: 20px; font-size: 0.88rem; color: #64748b;">
               <span id="vauth-switch-text">Zaten hesabın var mı?</span>
@@ -2937,6 +2952,14 @@ Canceled     iptal edildi</pre>
                         <input type="text" id="setting-gsc-verification" class="form-control" placeholder='Kod veya <meta name="google-site-verification" ...> etiketi'>
                       </div>
                     </div>
+                    <div class="form-group">
+                      <label for="setting-google-client-id" class="form-label"><i class="fa-brands fa-google"></i> Google ile Giriş — OAuth İstemci Kimliği (Client ID)</label>
+                      <input type="text" id="setting-google-client-id" class="form-control" placeholder="123456789012-xxxxxxxxxxxx.apps.googleusercontent.com" autocomplete="off">
+                      <small style="color: var(--text-dim); display: block; margin-top: 6px;">
+                        console.cloud.google.com → API'ler ve Hizmetler → Kimlik Bilgileri → "OAuth istemci kimliği" (Web uygulaması). "Yetkili JavaScript kaynakları"na <code>https://jetsmmpanel.com</code> ekle, çıkan Client ID'yi buraya yapıştır.
+                        Boş bırakılırsa giriş ve kayıt ekranlarında Google düğmesi görünmez. Google ile kayıt olanlar kullanıcı listesinde ve ayak izinde ayrıca işaretlenir.
+                      </small>
+                    </div>
                     <p style="font-size: 0.8rem; color: var(--text-dim); margin: 0;">
                       💡 Sitemap adresin hazır: <code id="seo-sitemap-url">/sitemap.xml</code> — Search Console'da "Site Haritaları" bölümüne bu adresi ekle.
                     </p>
@@ -4080,6 +4103,20 @@ Canceled     iptal edildi</pre>
           </button>
         </form>
 
+        <!-- Google ile giris: admin panelde istemci kimligi girildiyse mountGoogleButton
+             (bkz. app.js) bu kutuyu acar ve Google'in dugmesini cizer. -->
+        <div id="auth-google-wrap" class="google-auth-wrap" hidden>
+          <div class="auth-divider"><span id="auth-google-divider">veya</span></div>
+          <div id="auth-google-btn" class="google-signin-slot"></div>
+          <div id="auth-google-2fa" class="google-2fa" hidden>
+            <label for="auth-google-totp" class="form-label">Doğrulama Kodu (2FA)</label>
+            <div class="google-2fa-row">
+              <input type="text" id="auth-google-totp" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="123456">
+              <button type="button" class="btn btn-primary btn-sm" onclick="app.submitGoogleTotp('auth')">Doğrula</button>
+            </div>
+          </div>
+        </div>
+
         <div style="text-align: center; margin-top: 18px; font-size: 0.85rem; color: #64748b;">
           <span id="auth-switch-text">Hesabın yok mu?</span>
           <a href="/register" id="auth-switch-link" onclick="app.toggleAuthModalMode();return false;" style="color: #0f172a; font-weight: 800; text-decoration: underline; margin-left: 4px;">Kayıt Ol</a>
@@ -5061,8 +5098,8 @@ Canceled     iptal edildi</pre>
 
   <!-- App Main Scripts -->
   <!-- Ziyaretci ayak izi: api.js ve app.js'ten once yuklenir (window.JT). -->
-  <script src="/js/track.js?v=20261005a" defer></script>
-  <script src="/js/api.js?v=20261005a" defer></script>
-  <script src="/js/app.js?v=20261005a" defer></script>
+  <script src="/js/track.js?v=20261007a" defer></script>
+  <script src="/js/api.js?v=20261007a" defer></script>
+  <script src="/js/app.js?v=20261007a" defer></script>
 </body>
 </html>

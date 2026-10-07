@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { z } = require('zod');
 const { generateSecret, generateURI, verify } = require('otplib');
@@ -13,6 +14,7 @@ const { transactionalEmail, verificationCodeEmail } = require('../services/email
 const telegram = require('../services/telegramNotifier');
 const footprint = require('../services/footprint');
 const securityMonitor = require('../services/securityMonitor');
+const googleAuth = require('../services/googleAuth');
 
 async function getSiteName() {
   try {
@@ -68,7 +70,9 @@ function publicUser(user) {
     referral_balance: fromKurus(user.referral_balance_kurus),
     email_verified: Boolean(user.email_verified),
     must_change_password: Boolean(user.must_change_password)
-    , two_factor_enabled: Boolean(user.two_factor_enabled)
+    , two_factor_enabled: Boolean(user.two_factor_enabled),
+    // Google hesabi bagli mi (profil "Guvenlik" kutusu bunu gosterir).
+    google_linked: Boolean(user.google_sub)
   };
 }
 
@@ -169,6 +173,136 @@ router.post('/login', validate(loginSchema), async (req, res, next) => {
     ).catch(() => {});
     footprint.serverEvent({ req, userId: user.id, kind: 'login_success', label: user.username, path: '/auth' });
     res.json({ message: 'Giriş başarılı.', user: publicUser(user) });
+  } catch (err) { next(err); }
+});
+
+// --- GOOGLE ILE GIRIS / KAYIT -------------------------------------------------
+// Tarayicidaki "Google ile devam et" dugmesi Google'dan imzali bir kimlik
+// belirteci (ID token) alir ve buraya gonderir. Belirtec Google'in acik
+// anahtarlariyla dogrulanir (services/googleAuth.js); hesap su sirayla bulunur:
+//   1) google_sub eslesen hesap      -> giris
+//   2) ayni e-postayla acilmis hesap -> Google hesaba baglanir, giris
+//      (e-postayi Google dogruladigi icin guvenli; sahibi iki yolla da girebilir)
+//   3) hicbiri yok                   -> yeni hesap; kullanici adi e-postadan turetilir
+// 2FA acik hesaplarda kod yine istenir, banli hesap giremez. Yeni hesap
+// signup_method='google' ile isaretlenir; admin istatistikleri ve ayak izi
+// "kim nasil kayit olmus" bilgisini buradan ve olay meta'sindan cikarir.
+const googleSchema = z.object({
+  credential: z.string().min(20).max(4096),
+  totp: z.string().regex(/^\d{6}$/).optional(),
+  referral: z.string().trim().max(32).optional()
+});
+
+// E-postanin "@" oncesinden kullanici adi turetilir (yalnizca izinli karakterler
+// kalir, en az 3 karakter); ad doluysa sonuna rastgele sayi eklenir.
+async function usernameFromEmail(tx, email) {
+  let base = String(email).split('@')[0].toLowerCase()
+    .replace(/[^a-z0-9_.-]/g, '').replace(/^[._-]+|[._-]+$/g, '').slice(0, 24);
+  if (base.length < 3) base = `user${base}`;
+  for (let i = 0; i < 12; i++) {
+    const aday = i === 0 ? base : `${base}${crypto.randomInt(100, 100000)}`;
+    if (!await tx.get('SELECT 1 FROM users WHERE username = ? COLLATE NOCASE', [aday])) return aday;
+  }
+  return `user_${crypto.randomBytes(5).toString('hex')}`;
+}
+
+router.post('/google', validate(googleSchema), async (req, res, next) => {
+  try {
+    const clientId = await googleAuth.getClientId();
+    if (!clientId) {
+      return res.status(503).json({
+        error: 'Google ile giriş şu anda kapalı. Kullanıcı adı ve şifrenle giriş yapabilirsin.',
+        error_en: 'Sign in with Google is currently disabled. You can sign in with your username and password.'
+      });
+    }
+    let profile;
+    try {
+      profile = await googleAuth.verifyIdToken(req.body.credential, clientId);
+      // Dogrulayici normalde kucuk harfe cevirir; burada da garanti edilir (e-posta esleme COLLATE NOCASE ama saklama tutarli olsun).
+      profile.email = String(profile.email || "").trim().toLowerCase();
+    } catch (err) {
+      securityMonitor.logEvent('failed_login', req, { username: 'google', detail: `Google belirteci reddedildi: ${err.message}` });
+      return res.status(401).json({ error: err.message, error_en: err.messageEn || err.message, code: 'GOOGLE_TOKEN_INVALID' });
+    }
+    if (!profile.emailVerified) {
+      return res.status(403).json({
+        error: "Google hesabının e-posta adresi doğrulanmamış görünüyor. Google'da e-postanı doğrula ya da kayıt formunu kullan.",
+        error_en: 'The email address of your Google account is not verified. Verify it on Google or use the registration form.'
+      });
+    }
+
+    let user = await dbAsync.get('SELECT * FROM users WHERE google_sub = ?', [profile.sub]);
+    let linked = false;
+    if (!user) {
+      user = await dbAsync.get('SELECT * FROM users WHERE email = ? COLLATE NOCASE', [profile.email]);
+      linked = Boolean(user);
+    }
+
+    if (user) {
+      if (user.banned) {
+        securityMonitor.logEvent('banned_login', req, { username: user.username, detail: 'Banlı hesap Google ile giriş denemesi' });
+        return res.status(403).json({
+          error: 'Hesabınız askıya alınmıştır. Destek ekibiyle iletişime geçin.',
+          error_en: 'Your account has been suspended. Please contact support.'
+        });
+      }
+      if (user.two_factor_enabled) {
+        if (!req.body.totp) {
+          return res.status(401).json({
+            error: 'İki adımlı doğrulama kodu gerekli. Uygulamanızdaki 6 haneli kodu girin.',
+            error_en: 'Two-factor code required. Enter the 6-digit code from your app.',
+            code: 'TWO_FACTOR_REQUIRED'
+          });
+        }
+        if (!(await verify({ token: req.body.totp, secret: decryptSecret(user.two_factor_secret) })).valid) {
+          securityMonitor.logEvent('failed_login', req, { username: user.username, detail: 'Geçersiz 2FA kodu (Google girişi)' });
+          return res.status(401).json({
+            error: 'İki adımlı doğrulama kodu geçersiz veya süresi dolmuş. Uygulamadaki güncel kodu girin.',
+            error_en: 'Two-factor code is invalid or expired. Enter the current code from your app.'
+          });
+        }
+      }
+      if (linked) {
+        // Baglama ancak ban/2FA kontrolleri gectikten sonra kalici yazilir.
+        await dbAsync.run(
+          'UPDATE users SET google_sub = ?, google_linked_at = CURRENT_TIMESTAMP, email_verified = 1 WHERE id = ? AND google_sub IS NULL',
+          [profile.sub, user.id]
+        );
+        user = await dbAsync.get('SELECT * FROM users WHERE id = ?', [user.id]);
+      }
+      setSessionCookie(res, signSession(user));
+      dbAsync.run(
+        `UPDATE users SET last_login_at = CURRENT_TIMESTAMP, last_seen_at = CURRENT_TIMESTAMP,
+                last_login_ip = ?, login_count = login_count + 1 WHERE id = ?`,
+        [String(securityMonitor.clientIp(req) || '').slice(0, 64) || null, user.id]
+      ).catch(() => {});
+      footprint.serverEvent({ req, userId: user.id, kind: 'login_success', label: user.username, path: '/auth', meta: { method: 'google', linked } });
+      return res.json({ message: 'Giriş başarılı.', user: publicUser(user), created: false, linked });
+    }
+
+    const created = await withTransaction(async tx => {
+      const username = await usernameFromEmail(tx, profile.email);
+      // users.password bos birakilamaz; rastgele bir deger yazilir. Kullanici
+      // isterse "Sifremi unuttum" ile kendi sifresini belirleyebilir.
+      const randomPassword = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
+      let referrerId = null;
+      if (req.body.referral) referrerId = (await tx.get('SELECT id FROM users WHERE username = ? COLLATE NOCASE', [req.body.referral]))?.id || null;
+      const result = await tx.run(
+        `INSERT INTO users (username, email, password, role, balance, balance_kurus, api_key, referrer_id,
+                            email_verified, google_sub, google_linked_at, signup_method)
+         VALUES (?, ?, ?, 'client', 0, 0, ?, ?, 1, ?, CURRENT_TIMESTAMP, 'google')`,
+        [username, profile.email, randomPassword, createOpaqueToken('smm_'), referrerId, profile.sub]
+      );
+      return tx.get('SELECT * FROM users WHERE id = ?', [result.id]);
+    });
+    setSessionCookie(res, signSession(created));
+    telegram.notifyNewUser(created, { referral: req.body.referral, method: 'google' });
+    footprint.serverEvent({ req, userId: created.id, kind: 'register_success', label: created.username, path: '/register', meta: { method: 'google' } });
+    res.status(201).json({
+      message: 'Hesabın Google ile oluşturuldu. Hoş geldin!',
+      message_en: 'Your account was created with Google. Welcome!',
+      user: publicUser(created), created: true
+    });
   } catch (err) { next(err); }
 });
 

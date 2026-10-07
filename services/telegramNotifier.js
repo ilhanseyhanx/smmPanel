@@ -116,7 +116,7 @@ async function send(text) {
   }
 }
 
-async function notifyNewUser(user, { referral } = {}) {
+async function notifyNewUser(user, { referral, method } = {}) {
   try {
     const config = await loadConfig();
     if (!config.notifyRegister) return false;
@@ -129,6 +129,7 @@ async function notifyNewUser(user, { referral } = {}) {
     `✉️ E-posta: ${escapeHtml(user.email)}`,
     `🆔 Kullanıcı ID: ${escapeHtml(user.id)}`
   ];
+  if (method === 'google') lines.push('🔑 Kayıt yöntemi: Google ile giriş');
   if (referral) lines.push(`🤝 Referans: ${escapeHtml(referral)}`);
   lines.push(`🕒 ${escapeHtml(formatTimestamp())}`);
 

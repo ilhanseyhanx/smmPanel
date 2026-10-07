@@ -99,6 +99,14 @@ router.get('/overview', async (req, res, next) => {
     const suspicious = await dbAsync.get(`SELECT COUNT(*) n FROM track_sessions s WHERE ${inWin} AND NOT ${REAL}`, win);
     const bots = await dbAsync.get(`SELECT COALESCE(SUM(hits), 0) n FROM track_bot_daily WHERE day >= date(?, '${TZ}') AND day <= date(?, '${TZ}')`, win);
 
+    // Google ile giris/kayit: sunucu olaylarinin meta.method alanindan sayilir
+    // (routes/auth.js /google). Oturum bazli; ayni oturumda iki kayit olmaz.
+    const google = await dbAsync.get(`
+      SELECT SUM(CASE WHEN e.kind = 'register_success' THEN 1 ELSE 0 END) registered,
+             SUM(CASE WHEN e.kind = 'login_success' THEN 1 ELSE 0 END) logins
+      FROM track_events e WHERE e.kind IN ('register_success', 'login_success')
+        AND json_extract(e.meta, '$.method') = 'google' AND ${evWin}`, evParams);
+
     const hourly = w.span <= 26 * 3600 * 1000;
     const bucket = hourly ? `strftime('%H', s.started_at, '${TZ}')` : `date(s.started_at, '${TZ}')`;
     const timeline = await dbAsync.all(`
@@ -192,7 +200,8 @@ router.get('/overview', async (req, res, next) => {
         topup: fromKurus(s.topup_kurus), revenue: fromKurus(s.order_kurus),
         bounce_rate: pct(s.bounced, s.sessions), conversion_rate: pct(s.converted, s.sessions),
         consent_rate: pct(s.consented, s.sessions), register_rate: pct(s.registered, s.sessions),
-        suspicious: suspicious.n || 0, bots: bots.n || 0
+        suspicious: suspicious.n || 0, bots: bots.n || 0,
+        google_registered: Number(google?.registered) || 0, google_logins: Number(google?.logins) || 0
       },
       timeline: { unit: hourly ? 'hour' : 'day', rows: timeline.map(money) },
       channels: channels.map(money), sources: sources.map(money), referrers, campaigns: campaigns.map(money),
@@ -293,6 +302,9 @@ router.get('/users', async (req, res, next) => {
     const params = [w.from, w.to];
     if (CHANNELS.includes(String(req.query.channel || ''))) { where.push('a.first_channel = ?'); params.push(String(req.query.channel)); }
     if (req.query.tracked === '1') where.push('a.user_id IS NOT NULL');
+    // Kayit yontemi: Google dugmesi (signup_method='google') / kayit formu (digerleri).
+    if (req.query.method === 'google') where.push("u.signup_method = 'google'");
+    else if (req.query.method === 'form') where.push("(u.signup_method IS NULL OR u.signup_method != 'google')");
     if (req.query.q) {
       const like = `%${String(req.query.q).slice(0, 80)}%`;
       where.push('(u.username LIKE ? OR u.email LIKE ? OR a.first_source LIKE ? OR a.first_campaign LIKE ? OR a.first_referrer LIKE ?)');
@@ -303,7 +315,7 @@ router.get('/users', async (req, res, next) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const total = (await dbAsync.get(`SELECT COUNT(*) n FROM users u LEFT JOIN user_acquisition a ON a.user_id = u.id WHERE ${clause}`, params)).n;
     const users = await dbAsync.all(`
-      SELECT u.id, u.username, u.created_at, u.last_seen_at,
+      SELECT u.id, u.username, u.created_at, u.last_seen_at, u.signup_method, (u.google_sub IS NOT NULL) google_linked,
              a.first_channel, a.first_source, a.first_referrer, a.first_campaign, a.first_landing, a.first_seen_at,
              a.reg_channel, a.reg_source, a.reg_landing, a.sessions_before,
              (SELECT COUNT(*) FROM track_sessions s WHERE s.user_id = u.id) sessions,
@@ -321,10 +333,17 @@ router.get('/users', async (req, res, next) => {
                AND p.method NOT LIKE 'Bonus%' AND p.method NOT LIKE 'Kupon%') THEN 1 ELSE 0 END) payers
       FROM users u LEFT JOIN user_acquisition a ON a.user_id = u.id
       WHERE u.role != 'admin' AND u.created_at >= ? AND u.created_at < ? GROUP BY channel ORDER BY users DESC`, [w.from, w.to]);
+    // Kayit yontemi ozeti: Google dugmesi mi, kayit formu mu (secili donem).
+    const byMethod = await dbAsync.all(`
+      SELECT CASE WHEN u.signup_method = 'google' THEN 'google' ELSE 'form' END method, COUNT(*) users,
+             SUM(CASE WHEN EXISTS (SELECT 1 FROM payments p WHERE p.user_id = u.id AND p.status = 'completed'
+               AND p.method NOT LIKE 'Bonus%' AND p.method NOT LIKE 'Kupon%') THEN 1 ELSE 0 END) payers
+      FROM users u WHERE u.role != 'admin' AND u.created_at >= ? AND u.created_at < ? GROUP BY method ORDER BY users DESC`, [w.from, w.to]);
     res.json({
       window: w, total, page, pages: Math.ceil(total / limit),
       users: users.map(r => ({ ...r, deposit: fromKurus(r.deposit_kurus), spent: fromKurus(r.spent_kurus) })),
-      by_channel: byChannel.map(r => ({ ...r, payer_rate: pct(r.payers, r.users) }))
+      by_channel: byChannel.map(r => ({ ...r, payer_rate: pct(r.payers, r.users) })),
+      by_method: byMethod.map(r => ({ ...r, payer_rate: pct(r.payers, r.users) }))
     });
   } catch (err) { next(err); }
 });
@@ -333,7 +352,7 @@ router.get('/users/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Geçersiz kullanıcı.' });
-    const user = await dbAsync.get('SELECT id, username, email, role, created_at, last_seen_at, last_login_at, login_count, balance_kurus FROM users WHERE id = ?', [id]);
+    const user = await dbAsync.get('SELECT id, username, email, role, created_at, last_seen_at, last_login_at, login_count, balance_kurus, signup_method, google_linked_at, (google_sub IS NOT NULL) google_linked FROM users WHERE id = ?', [id]);
     if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
     const acquisition = await dbAsync.get('SELECT * FROM user_acquisition WHERE user_id = ?', [id]);
     const sessions = await dbAsync.all(`

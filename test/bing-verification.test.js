@@ -272,9 +272,12 @@ test('blog sayfasının og:url adresi yazının kendi adresidir', async () => {
 // Google Tag Assistant ("Etiketi test et") uyumlulugu
 // ---------------------------------------------------------------
 
-test('normal ziyarette pencere koruması (COOP) tam güçte kalır', async () => {
+test('normal ziyarette pencere koruması (COOP) yerinde kalır', async () => {
+  // "same-origin-allow-popups": sayfa yabanci bir pencereden acilmaya karsi
+  // korunur, yalnizca kendi actigi acilir pencereyle (Google ile giris
+  // popup'i) konusabilir. Tam "same-origin" Google dugmesini sessizce bozuyordu.
   const res = await request(app).get('/');
-  assert.equal(res.headers['cross-origin-opener-policy'], 'same-origin',
+  assert.equal(res.headers['cross-origin-opener-policy'], 'same-origin-allow-popups',
     'normal ziyaretçinin koruması gevşetilmiş');
 });
 

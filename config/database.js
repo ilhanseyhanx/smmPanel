@@ -137,6 +137,14 @@ async function runMigrations() {
   await addColumnIfMissing('users', 'last_seen_at', 'DATETIME');
   await addColumnIfMissing('users', 'login_count', 'INTEGER NOT NULL DEFAULT 0');
 
+  // Google ile giris / kayit: Google'in degismez hesap kimligi (sub), baglanma
+  // ani ve hesabin hangi yolla acildigi ('google' / NULL = kayit formu). Ayni
+  // Google hesabi iki kullaniciya baglanamaz (kismi tekil indeks).
+  await addColumnIfMissing('users', 'google_sub', 'TEXT');
+  await addColumnIfMissing('users', 'google_linked_at', 'DATETIME');
+  await addColumnIfMissing('users', 'signup_method', 'TEXT');
+  await dbAsync.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL');
+
   // E-posta pazarlama: sablonlar ve gonderim kayitlari (istatistik icin).
   await dbAsync.run(`
     CREATE TABLE IF NOT EXISTS email_templates (

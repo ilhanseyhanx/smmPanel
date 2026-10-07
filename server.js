@@ -44,12 +44,16 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       // googletagmanager/analytics: admin panelden GA kimligi girilirse calisir.
-      scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdnjs.cloudflare.com', 'https://www.googletagmanager.com'],
+      // accounts.google.com/gsi: "Google ile giris" dugmesi (Google Identity Services).
+      scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdnjs.cloudflare.com', 'https://www.googletagmanager.com', 'https://accounts.google.com/gsi/client'],
       scriptSrcAttr: ["'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://cdnjs.cloudflare.com'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://cdnjs.cloudflare.com', 'https://accounts.google.com/gsi/style'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'https://cdnjs.cloudflare.com'],
       imgSrc: ["'self'", 'data:', 'https:'],
-      connectSrc: ["'self'", 'https://*.google-analytics.com', 'https://*.analytics.google.com', 'https://www.googletagmanager.com'],
+      connectSrc: ["'self'", 'https://*.google-analytics.com', 'https://*.analytics.google.com', 'https://www.googletagmanager.com', 'https://accounts.google.com/gsi/'],
+      // Google dugmesi bir iframe icinde cizilir; frame-src tanimli degilse
+      // default-src 'self' uygulanir ve dugme hic gorunmez.
+      frameSrc: ["'self'", 'https://accounts.google.com/gsi/'],
       objectSrc: ["'none'"],
       // Shopier odeme formu tarayicidan dogrudan shopier.com'a POST edilir;
       // helmet'in varsayilan "form-action 'self'" kurali bunu sessizce engeller.
@@ -58,6 +62,11 @@ app.use(helmet({
     }
   },
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  // Google ile giris dugmesi bir acilir pencere (popup) acar ve sonucu
+  // window.opener uzerinden geri verir; helmet'in varsayilan "same-origin"
+  // degeri bu baglantiyi koparip girisi sessizce bozar. "allow-popups" sayfanin
+  // kendi korumasini surdurur, yalnizca kendi actigi pencereye izin verir.
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
   // Varsayilan "no-referrer" dis baglantilara hicbir kaynak bilgisi
   // gondermiyordu; marka atifi ve analitik icin dengeli politika yeterli.
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
@@ -140,6 +149,7 @@ const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeader
 app.use('/api', apiLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/google', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
 app.use('/api/auth/reset-password', authLimiter);
 
@@ -912,6 +922,7 @@ const { enforceSingleH1 } = require('./utils/headings');
 const { buildMetaDescription } = require('./utils/metaDescription');
 const { pageForPath } = require('./utils/pageMeta');
 const { stripGatedMarkup, sessionState, stripInactiveViews } = require('./utils/gatedMarkup');
+const googleAuth = require('./services/googleAuth');
 // Etiketler iki parcaya ayrilir: "siteOgUrl" yalnizca ana sayfaya aittir
 // (blog yazisinin kendi og:url'i vardir, ustune ana sayfaninki basilirsa
 // paylasim onizlemesi yanlis adresi gosterir), "common" ise her sayfaya
@@ -925,7 +936,7 @@ async function buildSeoParts() {
   let socialFooter = '';
   try {
     const { dbAsync } = require('./config/database');
-    const rows = await dbAsync.all("SELECT key, value FROM site_settings WHERE key IN ('google_analytics_id', 'google_site_verification', 'bing_site_verification', 'site_name', 'telegram_link', 'support_email', 'social_instagram', 'social_x', 'social_youtube', 'social_tiktok', 'business_address')");
+    const rows = await dbAsync.all("SELECT key, value FROM site_settings WHERE key IN ('google_analytics_id', 'google_client_id', 'google_site_verification', 'bing_site_verification', 'site_name', 'telegram_link', 'support_email', 'social_instagram', 'social_x', 'social_youtube', 'social_tiktok', 'business_address')");
     const settings = {};
     rows.forEach(row => { settings[row.key] = String(row.value || '').trim(); });
 
@@ -1045,6 +1056,12 @@ async function buildSeoParts() {
     // verilmezse Google'a hicbir istek gitmez.
     const gaId = extractAnalyticsId(settings.google_analytics_id);
     if (gaId) snippet += `  <meta name="analytics-id" content="${gaId}">\n`;
+
+    // Google ile giris: istemci kimligi sayfaya meta etiketi olarak birakilir;
+    // app.js yalnizca bu etiket varsa Google'in betigini yukler ve dugmeyi
+    // cizer. Panelde bos birakilirsa ortam degiskeni (GOOGLE_CLIENT_ID) gecerlidir.
+    const googleClientId = googleAuth.normalizeClientId(settings.google_client_id) || googleAuth.normalizeClientId(process.env.GOOGLE_CLIENT_ID);
+    if (googleClientId) snippet += `  <meta name="google-client-id" content="${googleClientId}">\n`;
   } catch { /* DB hazir degilse etiketsiz devam */ }
   seoCache = { at: Date.now(), siteOgUrl, common: snippet, telegram, socialFooter };
   return seoCache;

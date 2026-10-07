@@ -93,6 +93,8 @@ const ALLOWED_SETTING_KEYS = ['site_name', 'currency', 'telegram_link', 'support
   'smtp_host', 'smtp_port', 'smtp_secure', 'smtp_user', 'smtp_pass', 'mail_from',
   // SEO & analitik: GA olcum kimligi, Search Console ve Bing Webmaster dogrulama kodlari
   'google_analytics_id', 'google_site_verification', 'bing_site_verification',
+  // Google ile giris: OAuth istemci kimligi (Client ID). Bos = dugme gorunmez.
+  'google_client_id',
   // Duyuru bandinin "acilisa ozel" kutlama gorunumu
   'announcement_special',
   // Saglayici bakiye uyari esigi (saglayicinin para biriminde; bos/0 = kapali)
@@ -1237,6 +1239,8 @@ router.get('/statistics', async (req, res) => {
         SELECT
           (SELECT COUNT(DISTINCT visitor_hash) FROM site_visits WHERE visit_date >= date('now', ?)) AS visitors,
           (SELECT COUNT(*) FROM users WHERE id != 1 AND created_at >= date('now', ?)) AS signups,
+          -- ?2: ikinci parametre (ayni pencere) yeniden kullanilir; sonraki ? numaralari kaymaz.
+          (SELECT COUNT(*) FROM users WHERE id != 1 AND signup_method = 'google' AND created_at >= date('now', ?2)) AS google_signups,
           (SELECT COUNT(DISTINCT user_id) FROM orders WHERE user_id != 1 AND created_at >= date('now', ?)) AS buyers,
           (SELECT COUNT(DISTINCT user_id) FROM payments WHERE user_id != 1 AND method NOT LIKE 'Kupon%' AND created_at >= date('now', ?)) AS payers
       `, [`-${pencere - 1} days`, `-${pencere - 1} days`, `-${pencere - 1} days`, `-${pencere - 1} days`]).catch(() => null)
@@ -1285,7 +1289,7 @@ router.get('/users', async (req, res) => {
   try {
     // ?q= kullanici adi veya e-postada gecen metni arar (buyuk/kucuk harf duyarsiz).
     const q = String(req.query.q || '').trim().slice(0, 100);
-    let sql = `SELECT id, username, email, role, balance, banned, created_at FROM users`;
+    let sql = `SELECT id, username, email, role, balance, banned, created_at, signup_method, (google_sub IS NOT NULL) AS google_linked FROM users`;
     const params = [];
     if (q) {
       // LIKE joker karakterleri aramada birebir metin sayilir.
@@ -1313,6 +1317,7 @@ router.get('/users/:id/detail', requireIdParam, async (req, res) => {
               u.banned, u.email_verified, u.two_factor_enabled, u.must_change_password,
               u.telegram_username, u.telegram_notify, u.email_opt_out,
               u.created_at, u.last_login_at, u.last_login_ip, u.last_seen_at, u.login_count,
+              u.signup_method, u.google_linked_at, (u.google_sub IS NOT NULL) AS google_linked,
               u.api_key_created_at, (u.api_key IS NOT NULL) AS has_api_key,
               u.referrer_id, r.username AS referrer_username
          FROM users u LEFT JOIN users r ON r.id = u.referrer_id

@@ -122,6 +122,8 @@ const API = {
   // Auth
   login: (username, password, totp) => API.request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password, totp: totp || undefined }) }),
   register: (username, email, password, referral) => API.request('/auth/register', { method: 'POST', body: JSON.stringify({ username, email, password, referral: referral || undefined }) }),
+  // Google ile giris/kayit: Google'in verdigi kimlik belirteci sunucuda dogrulanir.
+  googleLogin: (credential, totp, referral) => API.request('/auth/google', { method: 'POST', body: JSON.stringify({ credential, totp: totp || undefined, referral: referral || undefined }) }),
   logout: () => API.request('/auth/logout', { method: 'POST' }),
   getMe: () => API.request('/auth/me'),
   changePassword: (current_password, new_password) => API.request('/auth/change-password', { method: 'POST', body: JSON.stringify({ current_password, new_password }) }),

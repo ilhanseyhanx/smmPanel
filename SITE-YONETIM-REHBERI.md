@@ -46,6 +46,8 @@ Hepsi **https://jetsmmpanel.com** → admin girişi → **Admin Panel** içinden
 - [ ] **Search Console**: search.google.com/search-console → mülk ekle (URL öneki: https://jetsmmpanel.com) → HTML etiketi doğrulamasını aynı yere yapıştır → Kaydet → Search Console'da "Doğrula"
 - [ ] Search Console → **Site Haritaları** → `https://jetsmmpanel.com/sitemap.xml` gönder
 
+- [ ] **Google ile Giriş**: console.cloud.google.com → proje aç → "API'ler ve Hizmetler" → "OAuth izin ekranı"nı doldur (Harici, uygulama adı, destek e-postası, alan adı) → "Kimlik Bilgileri" → "Kimlik bilgisi oluştur" → "OAuth istemci kimliği" → Web uygulaması → Yetkili JavaScript kaynaklarına `https://jetsmmpanel.com` ekle → çıkan **Client ID**'yi Site Ayarları → Genel → SEO & Analitik → "Google ile Giriş" alanına yapıştır → Kaydet. (Boşsa düğme görünmez; kimse etkilenmez.)
+
 ### 8. İzleme
 - [ ] **uptimerobot.com** → ücretsiz kayıt → Add Monitor → HTTP(s) → `https://jetsmmpanel.com` → 5 dk → e-posta uyarısı
 

@@ -258,6 +258,8 @@ class SmmApp {
     this.currentView = 'landing';
     this.locale = localStorage.getItem('smm_language') === 'en' ? 'en' : 'tr';
     this.authMode = 'login'; // 'login' or 'register'
+    // Google ile giriste 2FA istenirse belirtec burada bekler (bkz. submitGoogleCredential).
+    this.pendingGoogleCredential = null;
     this.selectedPlatform = 'all';
     this.servicesPage = 1;
     this.servicesPerPage = 20;
@@ -905,6 +907,11 @@ class SmmApp {
     if (route.startsWith('blog/')) await this.loadBlogPostDetail(decodeURIComponent(route.slice(5)), false);
     else if (route === 'egitimler' || route.startsWith('egitimler/')) await this.openCoursesPage();
     else if (route === 'register') this.showAuthPage('register');
+    // /auth dogrudan acilinca (or. cikis yapmis kullanici /orders'tan buraya
+    // yonlendirilir) form giris moduna kurulur: basliklar, e-posta alani ve
+    // Google dugmesi (mountGoogleButton) buna gore ayarlanir. Eskiden yalnizca
+    // navigate('auth') calisiyor, form kayit gorunumunde kaliyordu.
+    else if (route === 'auth') this.showAuthPage('login');
     else if (route === 'reset-password') await this.completePasswordReset(new URLSearchParams(query).get('token'));
     else if (route === 'verify-email') await this.completeEmailVerification(new URLSearchParams(query).get('token'));
     else if (route === 'payment-success' || route === 'payment-failed') await this.showPaymentResult(route === 'payment-success', query);
@@ -3555,7 +3562,7 @@ class SmmApp {
     const f = data.funnel || {};
     const adimlar = [
       { ad: 'Ziyaretçi', deger: f.visitors || 0, renk: '#21a9f6', ipucu: 'Siteyi açan tekil kişi' },
-      { ad: 'Kayıt oldu', deger: f.signups || 0, renk: '#8b5cf6', ipucu: 'Hesap açan kişi' },
+      { ad: 'Kayıt oldu', deger: f.signups || 0, renk: '#8b5cf6', ipucu: f.google_signups ? 'Hesap açan kişi · ' + f.google_signups + ' tanesi Google ile' : 'Hesap açan kişi' },
       { ad: 'Sipariş verdi', deger: f.buyers || 0, renk: '#f59e0b', ipucu: 'En az bir sipariş veren' },
       { ad: 'Para yatırdı', deger: f.payers || 0, renk: '#22c55e', ipucu: 'Kart veya havale ile bakiye yükleyen' }
     ];
@@ -5419,7 +5426,7 @@ class SmmApp {
       tbody.innerHTML = res.users.map(u => `
         <tr${u.banned ? ' style="opacity:.6;"' : ''}>
           <td>#${u.id}</td>
-          <td style="font-weight: 700;"><a href="#" class="user-detail-link" onclick="app.openAdminUserDetail(${u.id}); return false;" title="Kullanıcı detayını aç">${this.escapeHtml(u.username)}</a></td>
+          <td style="font-weight: 700;"><a href="#" class="user-detail-link" onclick="app.openAdminUserDetail(${u.id}); return false;" title="Kullanıcı detayını aç">${this.escapeHtml(u.username)}</a>${this.googleSignupBadge(u)}</td>
           <td>${this.escapeHtml(u.email)}</td>
           <td><span class="badge ${u.role === 'admin' ? 'badge-processing' : 'badge-completed'}">${this.escapeHtml(u.role)}</span></td>
           <td>${u.banned ? '<span class="badge badge-canceled">Banlı</span>' : '<span class="badge badge-completed">Aktif</span>'}</td>
@@ -5650,6 +5657,7 @@ class SmmApp {
       u.banned ? badge('Banlı', 'badge-canceled', 'fa-ban') : badge('Aktif', 'badge-completed', 'fa-circle-check'),
       Number(u.email_verified) === 1 ? badge('E-posta doğrulı', 'badge-completed', 'fa-envelope-circle-check') : badge('E-posta doğrulanmamış', 'badge-pending', 'fa-envelope'),
       Number(u.two_factor_enabled) === 1 ? badge('2FA açık', 'badge-completed', 'fa-shield-halved') : '',
+      this.googleSignupBadge(u, true),
       u.telegram_username ? badge(`Telegram: @${esc(u.telegram_username)}`, 'badge-processing', 'fa-paper-plane') : '',
       Number(u.email_opt_out) === 1 ? badge('E-posta listesinden çıkmış', 'badge-pending', 'fa-envelope-open') : '',
       Number(u.must_change_password) === 1 ? badge('Şifre değişimi bekliyor', 'badge-pending', 'fa-key') : ''
@@ -5723,6 +5731,7 @@ class SmmApp {
           ${info('Son Giriş IP', u.last_login_ip ? `<code>${esc(u.last_login_ip)}</code>` : '—')}
           ${info('Son Görülme', lastSeen)}
           ${info('Toplam Giriş', String(u.login_count || 0))}
+          ${info('Kayıt Yöntemi', this.googleSignupLabel(u))}
           ${info('İlk Sipariş', this.fmtDbDateTime(st.first_order_at))}
           ${info('Son Sipariş', this.fmtDbDateTime(st.last_order_at))}
           ${info('Son Bakiye Yükleme', this.fmtDbDateTime(st.last_payment_at))}
@@ -7418,6 +7427,19 @@ class SmmApp {
     const tfaArea = document.getElementById('profile-2fa-area');
     if (!emailArea || !tfaArea) return;
 
+    // Google ile baglanmis hesap: kullanici bunu gorsun. Google ile acilan
+    // hesabin kendi sifresi yoktur; "Sifremi unuttum" ile belirlenebilecegi soylenir.
+    const googleArea = document.getElementById('profile-google-area');
+    if (googleArea) {
+      googleArea.innerHTML = this.currentUser.google_linked
+        ? `<div class="flex-between" style="gap:8px;margin-top:10px;">
+        <span style="font-size:.88rem;color:var(--text-muted);"><i class="fa-brands fa-google"></i> ${this.ui('Google Hesabı', 'Google Account')}</span>
+        <span class="badge badge-completed"><i class="fa-solid fa-link"></i> ${this.ui('Bağlı', 'Linked')}</span>
+      </div>
+      <p style="font-size:.75rem;color:var(--text-dim);margin:6px 0 0;">${this.ui('Google ile giriş yapabilirsin. Şifreyle de girmek istersen "Şifremi unuttum" ile bir şifre belirleyebilirsin.', 'You can sign in with Google. To also use a password, set one via "Forgot password".')}</p>`
+        : '';
+    }
+
     if (this.currentUser.email_verified) {
       emailArea.innerHTML = `<div class="flex-between" style="gap:8px;">
         <span style="font-size:.88rem;color:var(--text-muted);"><i class="fa-solid fa-envelope-circle-check"></i> ${this.ui('E-posta Doğrulama', 'Email Verification')}</span>
@@ -8125,6 +8147,7 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       if (document.getElementById('setting-telegram-notify-ticket')) document.getElementById('setting-telegram-notify-ticket').checked = s.telegram_notify_ticket !== '0';
       // SEO & analitik
       if (document.getElementById('setting-ga-id')) document.getElementById('setting-ga-id').value = s.google_analytics_id || '';
+      if (document.getElementById('setting-google-client-id')) document.getElementById('setting-google-client-id').value = s.google_client_id || '';
       if (document.getElementById('setting-gsc-verification')) document.getElementById('setting-gsc-verification').value = s.google_site_verification || '';
       if (document.getElementById('setting-bing-verification')) document.getElementById('setting-bing-verification').value = s.bing_site_verification || '';
       // Adresler tam haliyle gosterilir; admin kopyalayip arama motoruna yapistirir.
@@ -8185,6 +8208,7 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       nowpayments_ipn_secret: document.getElementById('setting-nowpayments-ipn').value.trim(),
       telegram_notify_ticket: document.getElementById('setting-telegram-notify-ticket').checked ? '1' : '0',
       google_analytics_id: document.getElementById('setting-ga-id').value.trim(),
+      google_client_id: document.getElementById('setting-google-client-id')?.value.trim() || '',
       google_site_verification: document.getElementById('setting-gsc-verification').value.trim(),
       bing_site_verification: document.getElementById('setting-bing-verification').value.trim(),
       smtp_host: document.getElementById('setting-smtp-host').value.trim(),
@@ -9750,6 +9774,7 @@ print(sonuc.get("error") or sonuc.get("order"))`;
 
     this.prepareAuthForm('auth-form', mode);
     document.getElementById('modal-auth').classList.add('active');
+    this.mountGoogleButton('auth', mode);
   }
 
   // Kayit/giris arasinda gecerken eski hatalar ve ipuclari temizlenir;
@@ -9757,6 +9782,7 @@ print(sonuc.get("error") or sonuc.get("order"))`;
   prepareAuthForm(formId, mode) {
     const form = document.getElementById(formId);
     this.clearAuthFieldErrors(form);
+    this.pendingGoogleCredential = null;
     const prefix = formId === 'view-auth-form' ? 'vauth' : 'auth';
     const hint = document.getElementById(`${prefix}-password-hint`);
     if (hint) {
@@ -9816,6 +9842,7 @@ print(sonuc.get("error") or sonuc.get("order"))`;
 
     this.prepareAuthForm('view-auth-form', mode);
     this.navigate('auth');
+    this.mountGoogleButton('vauth', mode);
   }
 
   // Blog sayfasindaki "Hizmet Sayfalari" seridinin sayfalari arasinda gecis.
@@ -10599,40 +10626,7 @@ print(sonuc.get("error") or sonuc.get("order"))`;
         res = await API.login(username, password, totp);
       }
 
-      this.currentUser = res.user;
-      if (this.currentUser?.role === 'admin') { try { window.JT?.disable(); } catch {} }
-      this.updateUserHeader();
-      this.closeModal('modal-auth');
-
-      showToast(this.authMode === 'register' ? 'Hesabınız başarıyla oluşturuldu! Hoş geldiniz.' : 'Giriş başarılı! Hoş geldiniz.', 'success');
-      
-      // Sipariş makinesinden gelindiyse seçim forma taşınır. Aşağıdaki
-      // navigate() tam sayfa yüklemesine dönebileceği için seçim önce
-      // sessionStorage'a alınır; init() sayfa açılınca geri okur.
-      if (this.pendingMachineOrder) {
-        try { sessionStorage.setItem('bekleyenMakineSecimi', JSON.stringify(this.pendingMachineOrder)); } catch {}
-      }
-
-      // Egitim sayfasindan "satin al" ile girise gelindiyse ayni sayfaya donulur
-      // ve satin alma penceresi kaldigi yerden acilir (bkz. courses.js).
-      let donusAdresi = '';
-      try { donusAdresi = sessionStorage.getItem('girisSonrasiAdres') || ''; sessionStorage.removeItem('girisSonrasiAdres'); } catch {}
-      if (/^\/egitimler(\/|\?|$)/.test(donusAdresi)) {
-        window.location.assign(donusAdresi);
-        return;
-      }
-
-      if (this.currentUser.role === 'admin') {
-        this.navigate('admin');
-      } else {
-        this.navigate('new-order');
-        if (this.pendingMachineOrder) {
-          const { serviceId, quantity } = this.pendingMachineOrder;
-          this.pendingMachineOrder = null;
-          try { sessionStorage.removeItem('bekleyenMakineSecimi'); } catch {}
-          setTimeout(() => this.applyMachineSelection(serviceId, quantity), 150);
-        }
-      }
+      this.completeAuth(res, this.authMode === 'register');
     } catch (err) {
       if (err.code === 'TWO_FACTOR_REQUIRED') {
         const group = isViewForm ? document.getElementById('vauth-totp-group') : document.getElementById('auth-totp-group');
@@ -10654,6 +10648,184 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       if (marked) inputsByField[(err.details?.[0]?.field) || err.field]?.focus();
       showToast(err.message, 'error');
     }
+  }
+
+  // Giris/kayit sonrasi ortak akis: sifreli formdan da Google dugmesinden de
+  // gelen basarili yanit buradan gecer (oturum, karsilama, yonlendirme).
+  completeAuth(res, registered) {
+    this.pendingGoogleCredential = null;
+    this.currentUser = res.user;
+    if (this.currentUser?.role === 'admin') { try { window.JT?.disable(); } catch {} }
+    this.updateUserHeader();
+    this.closeModal('modal-auth');
+
+    showToast(registered
+      ? this.ui('Hesabınız başarıyla oluşturuldu! Hoş geldiniz.', 'Your account has been created! Welcome.')
+      : this.ui('Giriş başarılı! Hoş geldiniz.', 'Signed in successfully! Welcome back.'), 'success');
+
+    // Sipariş makinesinden gelindiyse seçim forma taşınır. Aşağıdaki
+    // navigate() tam sayfa yüklemesine dönebileceği için seçim önce
+    // sessionStorage'a alınır; init() sayfa açılınca geri okur.
+    if (this.pendingMachineOrder) {
+      try { sessionStorage.setItem('bekleyenMakineSecimi', JSON.stringify(this.pendingMachineOrder)); } catch {}
+    }
+
+    // Egitim sayfasindan "satin al" ile girise gelindiyse ayni sayfaya donulur
+    // ve satin alma penceresi kaldigi yerden acilir (bkz. courses.js).
+    let donusAdresi = '';
+    try { donusAdresi = sessionStorage.getItem('girisSonrasiAdres') || ''; sessionStorage.removeItem('girisSonrasiAdres'); } catch {}
+    if (/^\/egitimler(\/|\?|$)/.test(donusAdresi)) {
+      window.location.assign(donusAdresi);
+      return;
+    }
+
+    if (this.currentUser.role === 'admin') {
+      this.navigate('admin');
+    } else {
+      this.navigate('new-order');
+      if (this.pendingMachineOrder) {
+        const { serviceId, quantity } = this.pendingMachineOrder;
+        this.pendingMachineOrder = null;
+        try { sessionStorage.removeItem('bekleyenMakineSecimi'); } catch {}
+        setTimeout(() => this.applyMachineSelection(serviceId, quantity), 150);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Google ile giris / kayit (Google Identity Services)
+  // Sunucu istemci kimligini <meta name="google-client-id"> ile birakir
+  // (admin panel: Site Ayarlari -> SEO & Analitik -> Google ile Giris).
+  // Etiket yoksa dugme hic yuklenmez; Google'in betigi yalnizca kimlik
+  // formu acilinca indirilir (ana sayfa agirlasmasin).
+  // ---------------------------------------------------------------
+  googleClientId() {
+    return document.querySelector('meta[name="google-client-id"]')?.content?.trim() || '';
+  }
+
+  loadGoogleSdk() {
+    if (window.google?.accounts?.id) return Promise.resolve();
+    if (this.googleSdkPromise) return this.googleSdkPromise;
+    this.googleSdkPromise = new Promise((resolve, reject) => {
+      const betik = document.createElement('script');
+      betik.src = 'https://accounts.google.com/gsi/client';
+      betik.async = true;
+      betik.defer = true;
+      betik.onload = () => resolve();
+      betik.onerror = () => { this.googleSdkPromise = null; reject(new Error('Google betiği yüklenemedi')); };
+      document.head.appendChild(betik);
+    });
+    return this.googleSdkPromise;
+  }
+
+  // prefix: 'auth' (modal) veya 'vauth' (tam sayfa form). Dugme Google
+  // tarafindan iframe olarak cizilir; genislik piksel ister (200-400),
+  // kartin genisligine uydurulur. Dil degisince yeniden cizilir.
+  async mountGoogleButton(prefix, mode) {
+    const wrap = document.getElementById(`${prefix}-google-wrap`);
+    const slot = document.getElementById(`${prefix}-google-btn`);
+    if (!wrap || !slot) return;
+    const tfa = document.getElementById(`${prefix}-google-2fa`);
+    if (tfa) tfa.hidden = true;
+    const clientId = this.googleClientId();
+    if (!clientId) { wrap.hidden = true; return; }
+    wrap.hidden = false;
+    const ayrac = document.getElementById(`${prefix}-google-divider`);
+    if (ayrac) ayrac.textContent = this.ui('veya', 'or');
+    try {
+      await this.loadGoogleSdk();
+    } catch {
+      wrap.hidden = true;
+      return;
+    }
+    if (!window.google?.accounts?.id) { wrap.hidden = true; return; }
+    if (!this.googleInitDone) {
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: response => this.handleGoogleCredential(response),
+        ux_mode: 'popup',
+        auto_select: false,
+        cancel_on_tap_outside: true,
+        itp_support: true
+      });
+      this.googleInitDone = true;
+    }
+    slot.innerHTML = '';
+    const genislik = Math.max(200, Math.min(400, Math.round(slot.clientWidth || wrap.clientWidth || 360)));
+    window.google.accounts.id.renderButton(slot, {
+      type: 'standard',
+      theme: 'outline',
+      size: 'large',
+      shape: 'rectangular',
+      text: mode === 'register' ? 'signup_with' : 'signin_with',
+      logo_alignment: 'center',
+      width: genislik,
+      locale: this.locale === 'en' ? 'en' : 'tr'
+    });
+    this.googleActivePrefix = prefix;
+  }
+
+  handleGoogleCredential(response) {
+    const credential = response?.credential;
+    if (!credential) return;
+    this.jt(this.authMode === 'register' ? 'register_submit' : 'login_submit', { label: 'google' });
+    this.submitGoogleCredential(credential);
+  }
+
+  async submitGoogleCredential(credential, totp) {
+    const prefix = this.googleActivePrefix || 'auth';
+    try {
+      const res = await API.googleLogin(credential, totp, this.referralCode);
+      this.completeAuth(res, Boolean(res.created));
+    } catch (err) {
+      if (err.code === 'TWO_FACTOR_REQUIRED') {
+        // Hesapta 2FA acik: kod Google dugmesinin altinda sorulur; Google
+        // belirteci bellekte tutulur ve kodla birlikte yeniden gonderilir.
+        this.pendingGoogleCredential = credential;
+        const kutu = document.getElementById(`${prefix}-google-2fa`);
+        if (kutu) kutu.hidden = false;
+        const alan = document.getElementById(`${prefix}-google-totp`);
+        if (alan) { alan.value = ''; alan.focus(); }
+        showToast(err.message, 'info');
+        return;
+      }
+      showToast(err.message, 'error');
+    }
+  }
+
+  submitGoogleTotp(prefix) {
+    const alan = document.getElementById(`${prefix}-google-totp`);
+    const kod = alan?.value.trim() || '';
+    if (!/^\d{6}$/.test(kod)) {
+      showToast(this.ui('6 haneli doğrulama kodunu girin.', 'Enter the 6-digit verification code.'), 'error');
+      alan?.focus();
+      return;
+    }
+    if (!this.pendingGoogleCredential) {
+      showToast(this.ui('Google oturumu zaman aşımına uğradı; Google düğmesine yeniden tıklayın.', 'The Google session expired; click the Google button again.'), 'error');
+      return;
+    }
+    this.googleActivePrefix = prefix;
+    this.submitGoogleCredential(this.pendingGoogleCredential, kod);
+  }
+
+  // Admin listeleri: kayit yontemi rozeti. full=false yalnizca simge.
+  googleSignupBadge(u, full = false) {
+    if (!u) return '';
+    const google = u.signup_method === 'google';
+    const linked = Number(u.google_linked) === 1 || u.google_linked === true;
+    if (!google && !linked) return '';
+    const text = google ? 'Google ile kayıt' : 'Google bağlı';
+    const title = google ? 'Google ile giriş yaparak kayıt oldu' : 'Formla kayıt oldu, sonradan Google hesabını bağladı';
+    if (!full) return ` <span class="badge badge-processing" title="${title}" style="padding:2px 6px;"><i class="fa-brands fa-google"></i></span>`;
+    return `<span class="badge badge-processing" title="${title}"><i class="fa-brands fa-google"></i> ${text}</span>`;
+  }
+
+  googleSignupLabel(u) {
+    const tarih = u?.google_linked_at ? ` <small style="color:var(--text-dim);">(${this.fmtDbDateTime(u.google_linked_at)})</small>` : '';
+    if (u?.signup_method === 'google') return `<i class="fa-brands fa-google"></i> Google ile kayıt${tarih}`;
+    const linked = Number(u?.google_linked) === 1 || u?.google_linked === true;
+    return linked ? `Kayıt formu · sonradan Google bağladı${tarih}` : 'Kayıt formu';
   }
 
   // ===================== KENAR ÇUBUĞU GRUPLARI (ADMIN) =====================

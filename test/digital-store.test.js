@@ -192,6 +192,26 @@ test('/dijital-urunler sunucuda ürün kartlarıyla basılır ve indekslenebilir
 
   const harita = await request(app).get('/sitemap.xml');
   assert.match(harita.text, /\/dijital-urunler</);
+
+  // Istatistik kutusu: henuz satis yok -> "Satılan ürün" kutusu basilmaz.
+  assert.ok(api.body.stats.users > 0, 'kullanıcı sayısı gelmeli');
+  assert.equal(api.body.stats.products, 2);
+  assert.equal(api.body.stats.stock, 503);
+  assert.equal(api.body.stats.sold, 0);
+  assert.match(res.text, /class="dg-stats"/);
+  assert.match(res.text, /Kayıtlı kullanıcı/);
+  assert.ok(!res.text.includes('Satılan ürün'), 'satış yokken 0 yazan kutu basılmamalı');
+});
+
+test('tanıtım alanı Hizmetler ve ana sayfada; menüde Dijital Ürünler Ana Sayfa\'nın yanında', async () => {
+  for (const url of ['/', '/services']) {
+    const html = (await request(app).get(url)).text;
+    assert.match(html, /<a class="dg-promo[^"]*" href="\/dijital-urunler"/, `${url} sayfasında tanıtım alanı yok`);
+  }
+  const html = (await request(app).get('/services')).text;
+  const menu = html.slice(html.indexOf('id="main-nav-links"'));
+  const linkler = [...menu.matchAll(/class="nav-link[^"]*" href="([^"]+)"/g)].map(m => m[1]);
+  assert.deepEqual(linkler.slice(0, 3), ['/', '/dijital-urunler', '/services']);
 });
 
 test('satın alma: giriş, onay ve bakiye kontrolleri', async () => {
@@ -238,6 +258,10 @@ test('anında teslim: bakiye düşer, hesaplar yalnızca sahibine görünür', a
 
   const baska = await admin.get(`/api/digital/orders/${ids.order}`);
   assert.equal(baska.status, 404, 'başkasının siparişi açılmamalı');
+
+  const stats = (await request(app).get('/api/digital/products')).body.stats;
+  assert.equal(stats.sold, 3, 'teslim edilen adet satılan ürüne yansımalı');
+  assert.match((await request(app).get('/dijital-urunler')).text, /Satılan ürün/);
 });
 
 test('hazırlanan sipariş işçiyle tamamlanır', async () => {

@@ -11,7 +11,7 @@ const { dbAsync } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const { validate, bilingual } = require('../middleware/validate');
 const { fromKurus } = require('../utils/money');
-const { listActiveProducts, localizeProduct } = require('../utils/digitalProducts');
+const { listActiveProducts, localizeProduct, storeStats } = require('../utils/digitalProducts');
 const Store = require('../services/digitalStore');
 const footprint = require('../services/footprint');
 
@@ -50,17 +50,20 @@ function idParam(req, res, next) {
   next();
 }
 
-// Katalog (herkese acik). Checker fiyati da burada: sekme gorunurlugu icin.
+// Katalog (herkese acik). Checker fiyati da burada: sekme gorunurlugu icin;
+// istatistik kutusu da ayni yanitla cizilir.
 router.get('/products', async (req, res, next) => {
   try {
     const lang = req.query.lang === 'en' ? 'en' : 'tr';
-    const [rows, checker, fx] = await Promise.all([
+    const [rows, checker, fx, stats] = await Promise.all([
       listActiveProducts(dbAsync),
       Store.getCheckerConfig(),
-      require('../services/fx').getUsdTry()
+      require('../services/fx').getUsdTry(),
+      storeStats(dbAsync)
     ]);
     res.json({
       products: rows.map(row => localizeProduct(row, lang)),
+      stats,
       checker: {
         enabled: Boolean(checker.enabled && checker.priceKurus > 0 && checker.providerId),
         price: fromKurus(checker.priceKurus),

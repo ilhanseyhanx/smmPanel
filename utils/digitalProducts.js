@@ -22,7 +22,8 @@ const T = {
     buy: 'Satın Al',
     warranty: h => `${h} saat garanti`,
     emptyTitle: 'Ürünler hazırlanıyor',
-    emptyText: 'Bu bölüme yakında yeni ürünler eklenecek. Sonra tekrar uğra.'
+    emptyText: 'Bu bölüme yakında yeni ürünler eklenecek. Sonra tekrar uğra.',
+    stats: { label: 'Mağaza istatistikleri', sold: 'Satılan ürün', users: 'Kayıtlı kullanıcı', products: 'Dijital ürün çeşidi', stock: 'Stoktaki ürün' }
   },
   en: {
     kicker: 'Instant delivery',
@@ -37,9 +38,48 @@ const T = {
     buy: 'Buy',
     warranty: h => `${h}h warranty`,
     emptyTitle: 'Products coming soon',
-    emptyText: 'New products will be added to this section soon. Check back later.'
+    emptyText: 'New products will be added to this section soon. Check back later.',
+    stats: { label: 'Store statistics', sold: 'Products sold', users: 'Registered users', products: 'Digital products', stock: 'Items in stock' }
   }
 };
+
+/**
+ * Sayfadaki istatistik kutusu. Satilan urun = teslim edilmis siparislerin
+ * adet toplami (iade edilenler sayilmaz); kullanici = yonetici disindaki
+ * kayitli hesaplar; urun cesidi ve stok yalnizca satistaki urunlerden.
+ */
+async function storeStats(db) {
+  const [sold, users, products] = await Promise.all([
+    db.get("SELECT COALESCE(SUM(quantity), 0) n FROM digital_orders WHERE status = 'completed'"),
+    db.get("SELECT COUNT(*) n FROM users WHERE role != 'admin' AND COALESCE(banned, 0) = 0"),
+    db.get(`SELECT COUNT(*) n, COALESCE(SUM(CASE WHEN d.stock > 0 THEN d.stock ELSE 0 END), 0) stock
+              FROM digital_products d JOIN digital_providers p ON p.id = d.provider_id
+             WHERE d.status = 1 AND p.status = 1`)
+  ]);
+  return {
+    sold: Number(sold?.n || 0),
+    users: Number(users?.n || 0),
+    products: Number(products?.n || 0),
+    stock: Number(products?.stock || 0)
+  };
+}
+
+// Degeri 0 olan kutu gosterilmez: yeni magazada "0 satis" yazisi guven
+// vermez; ilk satistan sonra kutu kendiliginden belirir.
+const STAT_ITEMS = [
+  ['sold', 'fa-bag-shopping', 'is-yellow'],
+  ['users', 'fa-users', 'is-blue'],
+  ['products', 'fa-layer-group', 'is-red'],
+  ['stock', 'fa-boxes-stacked', 'is-green']
+];
+
+function statsHtml(stats, lang) {
+  if (!stats) return '';
+  const t = T[normLang(lang)];
+  const items = STAT_ITEMS.filter(([key]) => Number(stats[key]) > 0).map(([key, icon, cls]) =>
+    `<li class="${cls}"><i class="fa-solid ${icon}" aria-hidden="true"></i><strong>${esc(Number(stats[key]).toLocaleString('tr-TR'))}</strong><span>${esc(t.stats[key])}</span></li>`);
+  return items.length ? `<ul class="dg-stats" aria-label="${esc(t.stats.label)}">${items.join('')}</ul>` : '';
+}
 
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
@@ -119,7 +159,7 @@ function chipsHtml(products, lang) {
 }
 
 /** /dijital-urunler sayfasinin tamami (sekmeler + urun izgarasi). */
-function renderCatalogHtml(rows, { lang = 'tr', checkerEnabled = false } = {}) {
+function renderCatalogHtml(rows, { lang = 'tr', checkerEnabled = false, stats = null } = {}) {
   const t = T[normLang(lang)];
   const products = rows.map(row => localizeProduct(row, lang));
   const grid = products.length
@@ -131,6 +171,7 @@ function renderCatalogHtml(rows, { lang = 'tr', checkerEnabled = false } = {}) {
       <h1>${esc(t.title)}</h1>
       <p>${esc(t.intro)}</p>
     </header>
+    ${statsHtml(stats, lang)}
     <div class="dg-tabs" role="tablist">
       <button type="button" class="dg-tab active" role="tab" aria-selected="true" data-dg-tab="products"><i class="fa-solid fa-store" aria-hidden="true"></i> ${esc(t.tabs.products)}</button>
       <button type="button" class="dg-tab" role="tab" aria-selected="false" data-dg-tab="orders"><i class="fa-solid fa-receipt" aria-hidden="true"></i> ${esc(t.tabs.orders)}</button>
@@ -148,4 +189,4 @@ function renderCatalogHtml(rows, { lang = 'tr', checkerEnabled = false } = {}) {
   </div>`;
 }
 
-module.exports = { T, esc, fold, listActiveProducts, localizeProduct, renderCatalogHtml };
+module.exports = { T, esc, fold, listActiveProducts, localizeProduct, storeStats, statsHtml, renderCatalogHtml };

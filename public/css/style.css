@@ -4993,6 +4993,39 @@ body.neo-app-active #view-dijital-urunler .dg-checker-form h2 { margin: 0 0 8px;
 /* Admin > Dijital Ürünler */
 .dga-modal { width: calc(100% - 32px); max-width: 760px; max-height: calc(100vh - 32px); overflow-y: auto; margin: 16px; }
 
+/* İstatistik kutusu (değeri 0 olan kutu sunucuda/istemcide hiç basılmaz). */
+.dg-stats { list-style: none; margin: 0 0 24px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 16px; }
+.dg-stats li { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 14px; align-items: center; padding: 16px 18px; border: 3px solid #090909; box-shadow: 6px 6px 0 #090909; color: #090909; }
+.dg-stats li i { grid-row: 1 / 3; display: grid; place-items: center; width: 46px; height: 46px; border: 2px solid #090909; background: #fff; color: #090909; font-size: 1.25rem; }
+.dg-stats li strong { font: 900 1.6rem/1.05 'Archivo Black', 'Archivo Black Fallback', sans-serif; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.dg-stats li span { font: 700 .72rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; }
+.dg-stats li.is-yellow { background: #ffde17; }
+.dg-stats li.is-blue { background: #21a9f6; }
+.dg-stats li.is-red { background: #ed2d2d; color: #fff; }
+.dg-stats li.is-green { background: #9af0b4; }
+
+/* Tanıtım alanı: Hizmetler sayfası ve ana sayfadan /dijital-urunler'e geçiş. */
+.dg-promo { display: flex; align-items: center; gap: 18px; margin: 0 0 24px; padding: 18px 22px; border: 3px solid #090909; background: #ffde17; color: #090909; text-decoration: none; box-shadow: 7px 7px 0 #090909; transition: transform .15s ease, box-shadow .15s ease; }
+.dg-promo:hover, .dg-promo:focus-visible { transform: translate(-2px, -2px); box-shadow: 10px 10px 0 #090909; color: #090909; }
+.dg-promo:focus-visible { outline: 3px solid #1769e8; outline-offset: 3px; }
+.dg-promo-icon { flex: none; display: grid; place-items: center; width: 54px; height: 54px; border: 3px solid #090909; background: #fff; font-size: 1.45rem; }
+.dg-promo-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.dg-promo-text strong { font: 900 1.15rem/1.2 'Archivo Black', 'Archivo Black Fallback', sans-serif; letter-spacing: -.01em; }
+.dg-promo-text small { font-size: .9rem; font-weight: 600; line-height: 1.45; color: #222; }
+.dg-promo-cta { flex: none; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border: 3px solid #090909; background: #ed2d2d; color: #fff; box-shadow: 3px 3px 0 #090909; font: 900 .8rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; white-space: nowrap; }
+.dg-promo.is-home { margin: 0 0 100px; padding: 26px 30px; box-shadow: 10px 10px 0 #090909; }
+.dg-promo.is-home .dg-promo-text strong { font-size: clamp(1.3rem, 2.4vw, 1.9rem); }
+.dg-promo.is-home .dg-promo-icon { width: 64px; height: 64px; font-size: 1.7rem; }
+
+@media (max-width: 700px) {
+  .dg-promo, .dg-promo.is-home { flex-direction: column; align-items: stretch; padding: 18px; }
+  .dg-promo.is-home { margin-bottom: 60px; box-shadow: 7px 7px 0 #090909; }
+  .dg-promo-cta { justify-content: center; white-space: normal; }
+  .dg-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .dg-stats li { padding: 12px; column-gap: 10px; }
+  .dg-stats li i { width: 38px; height: 38px; font-size: 1rem; }
+  .dg-stats li strong { font-size: 1.25rem; }
+}
 @media (max-width: 560px) {
   .dg-card-foot { flex-direction: column; align-items: stretch; }
   .dg-buy-btn { justify-content: center; }

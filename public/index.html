@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20261026c">
+  <link rel="stylesheet" href="/css/style.css?v=20261027a">
 </head>
 <body>
 
@@ -67,6 +67,7 @@
 
     <ul class="nav-links" id="main-nav-links">
       <li><a class="nav-link active" href="/" data-i18n="nav.home" onclick="app.navigate('landing'); return false;">Ana Sayfa</a></li>
+      <li><a class="nav-link" href="/dijital-urunler" onclick="app.navigate('dijital-urunler'); return false;"><i class="fa-solid fa-bag-shopping" aria-hidden="true"></i> <span data-i18n="nav.digital">Dijital Ürünler</span></a></li>
       <li><a class="nav-link" href="/services" data-i18n="nav.services" onclick="app.navigate('services'); return false;">Hizmetler</a></li>
       <li class="auth-required" style="display:none;"><a class="nav-link" href="/new-order" data-i18n="nav.order" onclick="app.navigate('new-order'); return false;">Sipariş Ver</a></li>
       <li class="auth-required" style="display:none;"><a class="nav-link" href="/orders" data-i18n="nav.orders" onclick="app.navigate('orders'); return false;">Siparişlerim</a></li>
@@ -75,7 +76,6 @@
       <!-- Profilim: masaustunde sag ustteki kullanici adi butonu var; bu madde
            yalnizca mobil hamburger menusunde gorunur (CSS ile). -->
       <li class="auth-required nav-mobile-only" style="display:none;"><a class="nav-link" href="/profile" onclick="app.navigate('profile'); return false;"><i class="fa-solid fa-user-circle" aria-hidden="true"></i> Profilim</a></li>
-      <li><a class="nav-link" href="/dijital-urunler" onclick="app.navigate('dijital-urunler'); return false;"><i class="fa-solid fa-bag-shopping" aria-hidden="true"></i> <span data-i18n="nav.digital">Dijital Ürünler</span></a></li>
       <li><a class="nav-link" href="/blog" onclick="app.navigate('blog'); return false;"><i class="fa-solid fa-newspaper" aria-hidden="true"></i> Blog</a></li>
       <li><a class="nav-link" href="/smm-panel-api" onclick="app.navigate('smm-panel-api'); return false;"><i class="fa-solid fa-code" aria-hidden="true"></i> API</a></li>
       <li class="admin-only" style="display:none;"><a class="nav-link" href="/admin" style="color: var(--accent-cyan);" onclick="app.navigate('admin'); return false;">
@@ -278,6 +278,13 @@
           <div><i class="fa-solid fa-shield-halved"></i><strong>GÜVENLİ ÖDEME</strong><small>Korunan ödeme altyapısı.</small></div>
           <div><i class="fa-solid fa-bolt"></i><strong>ANLIK BAŞLANGIÇ</strong><small>Beklemeden harekete geç.</small></div>
         </div>
+
+        <!-- Dijital Urunler tanitim alani (Hizmetler sayfasinda da ayni parca var). -->
+        <a class="dg-promo is-home" href="/dijital-urunler" onclick="app.navigate('dijital-urunler'); return false;">
+          <span class="dg-promo-icon" aria-hidden="true"><i class="fa-solid fa-bag-shopping"></i></span>
+          <span class="dg-promo-text"><strong data-i18n="promo.digital.title">Hazır hesap mı arıyorsun? Dijital Ürünler'e göz at</strong><small data-i18n="promo.digital.text">Hazır hesaplar ve dijital ürünler: bakiyenle öde, bilgiler saniyeler içinde paneline teslim edilsin.</small></span>
+          <span class="dg-promo-cta"><span data-i18n="promo.digital.cta">Dijital Ürünler için tıkla</span> <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></span>
+        </a>
 
         <!-- Müşteri yorumları şeridi: onaylı yorumlar kayan bant halinde
              döner; hiç onaylı yorum yoksa bölüm tamamen gizli kalır. -->
@@ -572,6 +579,13 @@
             <input aria-label="Servis ara" type="text" id="services-search-input" class="form-control" placeholder="🔍 Servis ara..." oninput="app.debouncedFilterServicesTable()">
           </div>
         </div>
+
+        <!-- Dijital Urunler tanitim alani (ana sayfada da ayni parca var). -->
+        <a class="dg-promo" href="/dijital-urunler" onclick="app.navigate('dijital-urunler'); return false;">
+          <span class="dg-promo-icon" aria-hidden="true"><i class="fa-solid fa-bag-shopping"></i></span>
+          <span class="dg-promo-text"><strong data-i18n="promo.digital.title">Hazır hesap mı arıyorsun? Dijital Ürünler'e göz at</strong><small data-i18n="promo.digital.text">Hazır hesaplar ve dijital ürünler: bakiyenle öde, bilgiler saniyeler içinde paneline teslim edilsin.</small></span>
+          <span class="dg-promo-cta"><span data-i18n="promo.digital.cta">Dijital Ürünler için tıkla</span> <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></span>
+        </a>
 
         <div class="platform-tabs" id="services-platform-tabs">
           <!-- Dynamic Category Tabs -->
@@ -5097,8 +5111,8 @@ Canceled     iptal edildi</pre>
 
   <!-- App Main Scripts -->
   <!-- Ziyaretci ayak izi: api.js ve app.js'ten once yuklenir (window.JT). -->
-  <script src="/js/track.js?v=20261026c" defer></script>
-  <script src="/js/api.js?v=20261026c" defer></script>
-  <script src="/js/app.js?v=20261026c" defer></script>
+  <script src="/js/track.js?v=20261027a" defer></script>
+  <script src="/js/api.js?v=20261027a" defer></script>
+  <script src="/js/app.js?v=20261027a" defer></script>
 </body>
 </html>

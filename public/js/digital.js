@@ -111,6 +111,20 @@ Object.assign(SmmApp.prototype, {
     </article>`;
   },
 
+  // Istatistik kutusu (utils/digitalProducts.js statsHtml ile ayni isaretleme).
+  // Degeri 0 olan kutu gosterilmez.
+  dgStatsHtml(stats) {
+    if (!stats) return '';
+    const items = [
+      ['sold', 'fa-bag-shopping', 'is-yellow', 'Satılan ürün', 'Products sold'],
+      ['users', 'fa-users', 'is-blue', 'Kayıtlı kullanıcı', 'Registered users'],
+      ['products', 'fa-layer-group', 'is-red', 'Dijital ürün çeşidi', 'Digital products'],
+      ['stock', 'fa-boxes-stacked', 'is-green', 'Stoktaki ürün', 'Items in stock']
+    ].filter(([key]) => Number(stats[key]) > 0)
+      .map(([key, icon, cls, tr, en]) => `<li class="${cls}"><i class="fa-solid ${icon}" aria-hidden="true"></i><strong>${Number(stats[key]).toLocaleString('tr-TR')}</strong><span>${this.escapeHtml(this.dgText(tr, en))}</span></li>`);
+    return items.length ? `<ul class="dg-stats" aria-label="${this.escapeHtml(this.dgText('Mağaza istatistikleri', 'Store statistics'))}">${items.join('')}</ul>` : '';
+  },
+
   renderDigitalPage() {
     const root = document.getElementById('dijital-root');
     const products = this.dgData?.products || [];
@@ -133,6 +147,7 @@ Object.assign(SmmApp.prototype, {
           'Hazır hesaplar ve dijital ürünler: ödemeni bakiyenden yap, bilgiler saniyeler içinde hesabına teslim edilsin. Teslim edilen bilgiler yalnızca sana görünür.',
           'Ready-made accounts and digital products: pay from your balance and the details are delivered to your account within seconds. Delivered details are visible only to you.'))}</p>
       </header>
+      ${this.dgStatsHtml(this.dgData?.stats)}
       <div class="dg-tabs" role="tablist">
         ${tab('products', 'fa-store', 'Ürünler', 'Products')}
         ${tab('orders', 'fa-receipt', 'Siparişlerim', 'My Orders')}

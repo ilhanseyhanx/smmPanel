@@ -1349,11 +1349,12 @@ app.use(async (req, res) => {
       try {
         const { dbAsync } = require('./config/database');
         const D = require('./utils/digitalProducts');
-        const [urunler, checker] = await Promise.all([
+        const [urunler, checker, stats] = await Promise.all([
           D.listActiveProducts(dbAsync),
-          require('./services/digitalStore').getCheckerConfig()
+          require('./services/digitalStore').getCheckerConfig(),
+          D.storeStats(dbAsync)
         ]);
-        const root = D.renderCatalogHtml(urunler, { lang: 'tr', checkerEnabled: checker.enabled && checker.priceKurus > 0 });
+        const root = D.renderCatalogHtml(urunler, { lang: 'tr', checkerEnabled: checker.enabled && checker.priceKurus > 0, stats });
         // Fonksiyonlu replace: urun metnindeki "$&" gibi diziler desen sayilmasin.
         html = html.replace('<div class="main-content dg-page" id="dijital-root"></div>', () => `<div class="main-content dg-page" id="dijital-root">${root}</div>`);
       } catch { /* DB hazir degilse istemci kendisi cizer */ }

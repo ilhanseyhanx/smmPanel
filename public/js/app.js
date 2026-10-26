@@ -306,6 +306,9 @@ class SmmApp {
       tr: {
         'nav.home': 'Ana Sayfa', 'nav.services': 'Hizmetler', 'nav.order': 'Sipariş Ver',
         'nav.orders': 'Siparişlerim', 'nav.funds': 'Bakiye Yükle', 'nav.support': 'Destek', 'nav.digital': 'Dijital Ürünler',
+        'promo.digital.title': 'Hazır hesap mı arıyorsun? Dijital Ürünler\'e göz at',
+        'promo.digital.text': 'Hazır hesaplar ve dijital ürünler: bakiyenle öde, bilgiler saniyeler içinde paneline teslim edilsin.',
+        'promo.digital.cta': 'Dijital Ürünler için tıkla',
         read_more: 'Devamını Oku', no_blog: 'Henüz yayınlanmış bir blog makalesi bulunmuyor.',
         standard: 'Standart', guaranteed: 'Garantili', order_now: 'Sipariş Ver',
         previous: 'Önceki', next: 'Sonraki', services_shown: 'servisten'
@@ -323,6 +326,9 @@ class SmmApp {
       en: {
         'nav.home': 'Home', 'nav.services': 'Services', 'nav.order': 'New Order',
         'nav.orders': 'My Orders', 'nav.funds': 'Add Funds', 'nav.support': 'Support', 'nav.digital': 'Digital Products',
+        'promo.digital.title': 'Looking for ready-made accounts? Check out Digital Products',
+        'promo.digital.text': 'Ready-made accounts and digital products: pay from your balance and get the details in your panel within seconds.',
+        'promo.digital.cta': 'Go to Digital Products',
         read_more: 'Read More', no_blog: 'No published blog posts yet.',
         standard: 'Standard', guaranteed: 'Guaranteed', order_now: 'Order Now',
         previous: 'Previous', next: 'Next', services_shown: 'services'

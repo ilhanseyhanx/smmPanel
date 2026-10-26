@@ -15,7 +15,7 @@ function appMetotlari() {
   const set = new Set();
   // Tembel yuklenen ekran dosyalari (bayi, egitim) de istemci kodudur ve
   // app'in metotlarini genisletir.
-  const kaynak = js + ['admin-resellers.js', 'admin-courses.js', 'courses.js', 'admin-footprint.js']
+  const kaynak = js + ['admin-resellers.js', 'admin-courses.js', 'courses.js', 'admin-footprint.js', 'digital.js', 'admin-digital.js']
     .map(ad => fs.readFileSync(path.join(kok, 'public', 'js', ad), 'utf8')).join('\n');
   for (const m of kaynak.matchAll(/^\s{2}(?:async\s+)?(?:get\s+)?([A-Za-z_$][\w$]*)\s*\(/gm)) set.add(m[1]);
   for (const m of kaynak.matchAll(/this\.([A-Za-z_$][\w$]*)\s*=/g)) set.add(m[1]);

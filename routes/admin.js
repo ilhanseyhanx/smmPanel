@@ -1590,6 +1590,8 @@ router.delete('/users/:id', requireIdParam, async (req, res) => {
       await tx.run('DELETE FROM user_coupons WHERE user_id = ?', [userId]);
       await tx.run('DELETE FROM course_purchases WHERE user_id = ?', [userId]);
       await tx.run('DELETE FROM course_reading WHERE user_id = ?', [userId]);
+      await tx.run('DELETE FROM digital_orders WHERE user_id = ?', [userId]);
+      await tx.run('DELETE FROM digital_checks WHERE user_id = ?', [userId]);
       // Ayak izi: kullaniciya bagli oturumlar anonimlesir, kazanim kaydi silinir.
       await tx.run('UPDATE track_sessions SET user_id = NULL WHERE user_id = ?', [userId]);
       await tx.run('UPDATE track_events SET user_id = NULL WHERE user_id = ?', [userId]);

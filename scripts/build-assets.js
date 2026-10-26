@@ -32,6 +32,9 @@ const DOSYALAR = [
   // Yalnizca /egitimler sayfalarinda ve admin "Egitimler" sekmesinde yuklenir.
   { kaynak: 'public/js/courses.js', hedef: 'public/js/courses.min.js', tur: 'js' },
   { kaynak: 'public/js/admin-courses.js', hedef: 'public/js/admin-courses.min.js', tur: 'js' },
+  // Yalnizca /dijital-urunler sayfasinda ve admin 'Dijital Urunler' sekmesinde yuklenir.
+  { kaynak: 'public/js/digital.js', hedef: 'public/js/digital.min.js', tur: 'js' },
+  { kaynak: 'public/js/admin-digital.js', hedef: 'public/js/admin-digital.min.js', tur: 'js' },
   // Ziyaretci ayak izi: track.js her sayfada, admin-footprint.js yalnizca admin sekmesinde.
   { kaynak: 'public/js/track.js', hedef: 'public/js/track.min.js', tur: 'js' },
   { kaynak: 'public/js/admin-footprint.js', hedef: 'public/js/admin-footprint.min.js', tur: 'js' }

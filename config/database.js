@@ -806,6 +806,95 @@ async function runMigrations() {
   }
   await addColumnIfMissing('course_lessons', 'reading_minutes_en', 'INTEGER');
 
+  // --- DIJITAL URUNLER (26 Eki 2026) ---------------------------------------
+  // SMM servislerinden tamamen ayri bir magaza: hazir hesap gibi urunler,
+  // farkli API'li bir saglayicidan (X-API-Key, /products, /buy) alinip
+  // /dijital-urunler sayfasinda satilir (bkz. services/digitalStore.js).
+  // Saglayici anahtari sifreli saklanir; teslim edilen hesap bilgileri de.
+  await dbAsync.exec(`
+    CREATE TABLE IF NOT EXISTS digital_providers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      api_url TEXT NOT NULL,
+      api_key_encrypted TEXT NOT NULL,
+      status INTEGER NOT NULL DEFAULT 1,
+      balance REAL,
+      currency TEXT DEFAULT 'USD',
+      balance_checked_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS digital_products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      provider_id INTEGER NOT NULL REFERENCES digital_providers(id),
+      provider_product_id TEXT NOT NULL,
+      provider_slug TEXT,
+      name TEXT NOT NULL,
+      name_en TEXT,
+      category TEXT,
+      category_en TEXT,
+      description TEXT,
+      description_en TEXT,
+      price_kurus INTEGER NOT NULL CHECK(price_kurus > 0),
+      cost_rate REAL,
+      cost_currency TEXT DEFAULT 'USD',
+      stock INTEGER,
+      min_quantity INTEGER NOT NULL DEFAULT 1,
+      max_quantity INTEGER NOT NULL DEFAULT 100,
+      item_format TEXT,
+      delivery_time TEXT,
+      warranty_hours INTEGER NOT NULL DEFAULT 0,
+      status INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      synced_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(provider_id, provider_product_id)
+    );
+    CREATE TABLE IF NOT EXISTS digital_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      product_id INTEGER REFERENCES digital_products(id) ON DELETE SET NULL,
+      provider_id INTEGER,
+      product_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL CHECK(quantity > 0),
+      unit_price_kurus INTEGER NOT NULL,
+      charge_kurus INTEGER NOT NULL,
+      refunded_kurus INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'completed', 'failed', 'refunded')),
+      provider_order_id TEXT,
+      provider_total REAL,
+      cost_currency TEXT,
+      items_encrypted TEXT,
+      item_count INTEGER NOT NULL DEFAULT 0,
+      usage_note TEXT,
+      failure_reason TEXT,
+      consent_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      completed_at DATETIME
+    );
+    CREATE INDEX IF NOT EXISTS idx_digital_orders_user ON digital_orders(user_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_digital_orders_open ON digital_orders(status) WHERE status IN ('pending', 'processing');
+    CREATE TABLE IF NOT EXISTS digital_checks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      provider_id INTEGER,
+      request_id TEXT NOT NULL UNIQUE,
+      email_count INTEGER NOT NULL,
+      checked_count INTEGER NOT NULL DEFAULT 0,
+      unit_price_kurus INTEGER NOT NULL,
+      charge_kurus INTEGER NOT NULL,
+      refunded_kurus INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'completed', 'failed')),
+      summary TEXT,
+      results_encrypted TEXT,
+      provider_cost REAL,
+      failure_reason TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_digital_checks_user ON digital_checks(user_id, id DESC);
+  `);
+
   // --- ZIYARETCI AYAK IZI (5 Eki 2026) -------------------------------------
   // Oturum + adim akisi (services/footprint.js). Cerez onayi veren ziyaretcide
   // visitor_id kalicidir (tekrar gelisler ayni kisiye baglanir); onay vermeyende
@@ -1348,6 +1437,9 @@ async function clearAllDemoData(keepAdmin = true) {
   await dbAsync.run(`DELETE FROM course_purchases`);
   await dbAsync.run(`DELETE FROM course_reading`);
   await dbAsync.run(`DELETE FROM course_events`);
+  // Dijital urun katalogu ve saglayicisi kalir; musteri kayitlari silinir.
+  await dbAsync.run(`DELETE FROM digital_orders`);
+  await dbAsync.run(`DELETE FROM digital_checks`);
   await dbAsync.run(`DELETE FROM track_events`);
   await dbAsync.run(`DELETE FROM track_sessions`);
   await dbAsync.run(`DELETE FROM user_acquisition`);

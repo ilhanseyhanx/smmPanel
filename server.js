@@ -209,6 +209,13 @@ app.get('/sitemap.xml', async (req, res) => {
       const sonSatis = satisSayfalari.reduce((max, s) => (s.lastmod > max ? s.lastmod : max), '');
       urls.push({ loc: `${base}/hizmet-sayfalari`, priority: '0.8', changefreq: 'weekly', lastmod: sonSatis || undefined });
     }
+    // Dijital urunler katalogu: satista urun varsa listelenir.
+    const dijitalUrun = await dbAsync.get(
+      'SELECT MAX(COALESCE(d.updated_at, d.created_at)) son FROM digital_products d JOIN digital_providers p ON p.id = d.provider_id WHERE d.status = 1 AND p.status = 1 HAVING COUNT(*) > 0'
+    ).catch(() => null);
+    if (dijitalUrun) {
+      urls.push({ loc: `${base}/dijital-urunler`, priority: '0.7', changefreq: 'daily', lastmod: String(dijitalUrun.son || '').slice(0, 10) || undefined });
+    }
     // Egitimler: katalog, yayindaki egitimler ve UCRETSIZ dersleri. Kilitli
     // dersler noindex oldugu icin haritaya girmez.
     const egitimler = await require('./utils/courses').listPublishedCourses(dbAsync).catch(() => []);
@@ -850,6 +857,8 @@ app.use('/api/admin/resellers', saglikAuth, saglikAdmin, require('./routes/admin
 app.use('/api/admin/bundles', saglikAuth, saglikAdmin, require('./routes/adminBundles'));
 // Egitim yonetimi (Egitimler sekmesi).
 app.use('/api/admin/courses', saglikAuth, saglikAdmin, require('./routes/adminCourses'));
+// Dijital urun magazasi yonetimi (Dijital Urunler sekmesi).
+app.use('/api/admin/digital', saglikAuth, saglikAdmin, require('./routes/adminDigital'));
 // Ziyaretci ayak izi (Izleme > Ziyaretci Ayak Izi sekmesi).
 app.use('/api/admin/footprint', saglikAuth, saglikAdmin, require('./routes/adminFootprint'));
 app.use('/api/admin', adminRoutes);
@@ -858,6 +867,8 @@ app.use('/api/account', accountRoutes);
 app.use('/api/campaigns', require('./routes/campaigns'));
 app.use('/api/landing-pages', require('./routes/landingPages'));
 app.use('/api/courses', require('./routes/courses'));
+// Dijital urunler: katalog, satin alma, teslimat ve Gmail Checker.
+app.use('/api/digital', require('./routes/digital'));
 // Ziyaretci ayak izi paketleri (public/js/track.js).
 app.use('/api/track', require('./routes/track'));
 // Jet kullanicisinin bayilik basvurusu ve durumu.
@@ -1517,6 +1528,20 @@ app.use(async (req, res) => {
           .replace('<div class="services-reviews" id="services-reviews" style="display: none;">', '<div class="services-reviews" id="services-reviews">')
           .replace(/(<div class="services-reviews-track" id="services-reviews-grid"[^>]*>)<\/div>/, `$1${ssr.reviewsHtml}</div>`);
       }
+    } else if (sayfa.view === 'view-dijital-urunler') {
+      // Urun kartlari sunucuda basilir (botlar JS beklemeden gorur);
+      // public/js/digital.js acilinca canli veriyle yeniden cizer.
+      try {
+        const { dbAsync } = require('./config/database');
+        const D = require('./utils/digitalProducts');
+        const [urunler, checker] = await Promise.all([
+          D.listActiveProducts(dbAsync),
+          require('./services/digitalStore').getCheckerConfig()
+        ]);
+        const root = D.renderCatalogHtml(urunler, { lang: 'tr', checkerEnabled: checker.enabled && checker.priceKurus > 0 });
+        // Fonksiyonlu replace: urun metnindeki "$&" gibi diziler desen sayilmasin.
+        html = html.replace('<div class="main-content dg-page" id="dijital-root"></div>', () => `<div class="main-content dg-page" id="dijital-root">${root}</div>`);
+      } catch { /* DB hazir degilse istemci kendisi cizer */ }
     } else if (sayfa.view === 'view-blog') {
       const ssr = await buildBlogSsr(base || '');
       if (ssr.cards) html = html.replace('<div class="blog-cards-grid" id="public-blog-cards">', `<div class="blog-cards-grid" id="public-blog-cards">${ssr.cards}`);
@@ -1592,6 +1617,9 @@ async function startServer() {
     healthEvents.startHealthTelemetry();
     // Faz 3: bot ziyaret kovalari 30 gun saklanir (gece temizligi).
     require('./services/crawlerTracker').startCrawlerTracking();
+    // Dijital urunler: hazirlanan siparislerin takibi (dakikada bir) ve
+    // stok/maliyet tazeleme (10 dakikada bir).
+    require('./services/digitalStore').startDigitalWorker();
     // Egitim fiyatlarinin dolar karsiligi icin canli USD/TRY kuru (6 saatte bir).
     require('./services/fx').startFxWorker();
     // Ayak izi: acilista yonetici izleri temizlenir, 90 gunden eski kayitlar gunluk silinir.

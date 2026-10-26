@@ -5126,3 +5126,102 @@ html[lang="en"] #view-egitimler .main-content::before { content: '08 / COURSES';
   .fp-fact { grid-template-columns: 1fr; gap: 2px; }
   .fp-filters .form-control { max-width: none; flex: 1 1 140px; }
 }
+
+/* ========================================================================== */
+/* DİJİTAL ÜRÜNLER (/dijital-urunler) — katalog, satın alma, siparişler,     */
+/* Gmail Checker. Eğitimlerle aynı neo dil; pencereler .crs-buy-* sınıflarını */
+/* ortak kullanır.                                                            */
+/* ========================================================================== */
+#view-dijital-urunler .main-content::before { content: '09 / DİJİTAL ÜRÜNLER'; }
+html[lang="en"] #view-dijital-urunler .main-content::before { content: '09 / DIGITAL PRODUCTS'; }
+.dg-wrap { color: #090909; }
+.dg-head { max-width: 860px; margin-bottom: 26px; }
+.dg-head p { font-size: 1.05rem; line-height: 1.65; }
+.dg-kicker { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 14px; padding: 5px 10px; border: 2px solid #090909; background: #ffde17; font: 800 .7rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; letter-spacing: .06em; text-transform: uppercase; }
+.dg-muted { color: #555 !important; }
+.dg-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+.dg-tab { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border: 2px solid #090909; background: #fff; color: #090909; font: 800 .8rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; cursor: pointer; transition: transform .15s ease, box-shadow .15s ease; }
+.dg-tab:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 #090909; }
+.dg-tab.active { background: #090909; color: #fff; box-shadow: 4px 4px 0 #ed2d2d; }
+.dg-tab[hidden], .dg-panel[hidden], .dg-card[hidden] { display: none !important; }
+.dg-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 20px; }
+.dg-search { max-width: 320px; flex: 1 1 220px; }
+.dg-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dg-chip { padding: 6px 12px; border: 2px solid #090909; background: #fff; color: #090909; font: 700 .76rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; cursor: pointer; }
+.dg-chip.active { background: #ffde17; box-shadow: 3px 3px 0 #090909; }
+.dg-chip b { margin-left: 4px; }
+.dg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 24px; }
+.dg-card.glass-card { display: flex; flex-direction: column; gap: 10px; color: #090909; transition: transform .2s ease, box-shadow .2s ease; }
+.dg-card.glass-card:hover { transform: translate(-3px, -3px) !important; box-shadow: 12px 12px 0 #090909 !important; }
+.dg-card.is-sold-out { opacity: .7; }
+.dg-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.dg-cat { padding: 3px 8px; border: 2px solid #090909; background: #dff4ff; font: 700 .68rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; overflow-wrap: anywhere; }
+.dg-stock { padding: 3px 8px; border: 2px solid #090909; font: 800 .68rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; white-space: nowrap; }
+.dg-stock.is-in { background: #9af0b4; }
+.dg-stock.is-out { background: #ffd6d6; }
+body.neo-app-active #view-dijital-urunler .dg-card-title { margin: 0; font-size: 1.25rem; line-height: 1.2; overflow-wrap: anywhere; }
+.dg-card-desc { margin: 0; font-size: .9rem; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.dg-card-meta { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.dg-card-meta li { display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border: 1px dashed #090909; font: 700 .7rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; }
+.dg-card-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 12px; border-top: 2px dashed #090909; }
+.dg-price { font: 900 1.35rem 'Archivo Black', 'Archivo Black Fallback', sans-serif; letter-spacing: -.02em; }
+.dg-price-box small { display: block; font: 700 .7rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; color: #555; }
+.dg-try-note { font-size: .7em; color: #555; font-family: 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; }
+.dg-buy-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 2px solid #090909; background: #ed2d2d; color: #fff; box-shadow: 3px 3px 0 #090909; font: 900 .8rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
+.dg-buy-btn:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 #090909; }
+.dg-buy-btn:disabled { background: #bbb; cursor: not-allowed; box-shadow: none; }
+.dg-empty { grid-column: 1 / -1; text-align: center; padding: 44px 20px !important; }
+.dg-empty i { font-size: 2.2rem; margin-bottom: 12px; }
+.dg-no-match { margin-top: 16px; font-weight: 700; }
+.dg-login-box { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 40px 20px !important; }
+.dg-login-box > i { font-size: 1.8rem; }
+.dg-login-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.dg-table-card.glass-card { padding: 0 !important; }
+.dg-table-card .custom-table td { vertical-align: middle; }
+.dg-sub { margin: 18px 18px 6px; font-size: 1.05rem; }
+.dg-pager { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 12px; font: 700 .8rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; }
+.dg-pager:empty { display: none; }
+
+/* Satın alma / teslimat penceresi */
+.dg-modal { max-height: calc(100vh - 32px); overflow-y: auto; }
+.dg-modal-desc { margin: -6px 0 14px; font-size: .9rem; line-height: 1.5; color: #333 !important; }
+.dg-qty { display: block; margin-bottom: 14px; font-weight: 700; }
+.dg-qty small { font-weight: 500; color: #555; }
+.dg-qty-row { display: flex; gap: 8px; margin-top: 6px; }
+.dg-qty-row .form-control { text-align: center; font-weight: 800; }
+.dg-qty-step { flex: 0 0 44px; border: 2px solid #090909; background: #ffde17; font-size: 1.2rem; font-weight: 900; cursor: pointer; }
+.dg-items { margin-bottom: 14px; border: 2px solid #090909; }
+.dg-items-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 2px solid #090909; background: #ffde17; }
+.dg-items-actions { display: flex; gap: 6px; }
+.dg-item-list { max-height: 260px; overflow-y: auto; margin: 0; padding: 8px 12px 8px 40px; background: #fff; }
+.dg-item-list li { padding: 4px 0; border-bottom: 1px dashed #ccc; }
+.dg-item-list li:last-child { border-bottom: 0; }
+.dg-item-list code, .dg-check-table code { font: 600 .84rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; overflow-wrap: anywhere; user-select: all; }
+.dg-usage { margin-bottom: 12px; padding: 12px 14px; border: 2px solid #090909; background: #dff4ff; }
+.dg-usage p { margin: 6px 0 0; font-size: .88rem; line-height: 1.5; white-space: pre-line; }
+
+/* Gmail Checker */
+.dg-checker { display: grid; gap: 20px; }
+body.neo-app-active #view-dijital-urunler .dg-checker-form h2 { margin: 0 0 8px; font-size: 1.4rem; }
+.dg-check-input { font-family: 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace !important; font-size: .86rem !important; resize: vertical; }
+.dg-check-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.dg-check-cost { font-weight: 700; }
+.dg-legend { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .82rem; }
+.dg-st { display: inline-block; padding: 1px 7px; border: 2px solid #090909; font: 800 .7rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; }
+.dg-st.st-live { background: #9af0b4; }
+.dg-st.st-verified { background: #ffde17; }
+.dg-st.st-disabled { background: #ffd6d6; }
+.dg-st.st-notexists { background: #e5e5e5; }
+.dg-st.st-unknown { background: #dff4ff; }
+.dg-check-result .dg-chips { padding: 12px; }
+.dg-check-result.glass-card { padding: 0 !important; }
+.dg-check-table { max-height: 420px; overflow-y: auto; }
+
+/* Admin > Dijital Ürünler */
+.dga-modal { width: calc(100% - 32px); max-width: 760px; max-height: calc(100vh - 32px); overflow-y: auto; margin: 16px; }
+
+@media (max-width: 560px) {
+  .dg-card-foot { flex-direction: column; align-items: stretch; }
+  .dg-buy-btn { justify-content: center; }
+  .dg-search { max-width: none; }
+}

@@ -247,7 +247,7 @@ const SPA_ROTALARI = [
   'landing', 'services', 'blog', 'blog-detail', 'landing-page', 'hizmet-sayfalari', 'smm-panel-api',
   'about', 'terms', 'privacy', 'refund', 'register', 'auth', 'tickets',
   'orders', 'new-order', 'add-funds', 'profile', 'admin', 'not-found',
-  'payment-success', 'payment-failed', 'reset-password', 'verify-email', 'egitimler'
+  'payment-success', 'payment-failed', 'reset-password', 'verify-email', 'egitimler', 'dijital-urunler'
 ];
 
 class SmmApp {
@@ -305,7 +305,7 @@ class SmmApp {
     const dictionary = {
       tr: {
         'nav.home': 'Ana Sayfa', 'nav.services': 'Hizmetler', 'nav.order': 'Sipariş Ver',
-        'nav.orders': 'Siparişlerim', 'nav.funds': 'Bakiye Yükle', 'nav.support': 'Destek', 'nav.courses': 'Eğitimler',
+        'nav.orders': 'Siparişlerim', 'nav.funds': 'Bakiye Yükle', 'nav.support': 'Destek', 'nav.courses': 'Eğitimler', 'nav.digital': 'Dijital Ürünler',
         read_more: 'Devamını Oku', no_blog: 'Henüz yayınlanmış bir blog makalesi bulunmuyor.',
         standard: 'Standart', guaranteed: 'Garantili', order_now: 'Sipariş Ver',
         previous: 'Önceki', next: 'Sonraki', services_shown: 'servisten'
@@ -322,7 +322,7 @@ class SmmApp {
       },
       en: {
         'nav.home': 'Home', 'nav.services': 'Services', 'nav.order': 'New Order',
-        'nav.orders': 'My Orders', 'nav.funds': 'Add Funds', 'nav.support': 'Support', 'nav.courses': 'Courses',
+        'nav.orders': 'My Orders', 'nav.funds': 'Add Funds', 'nav.support': 'Support', 'nav.courses': 'Courses', 'nav.digital': 'Digital Products',
         read_more: 'Read More', no_blog: 'No published blog posts yet.',
         standard: 'Standard', guaranteed: 'Guaranteed', order_now: 'Order Now',
         previous: 'Previous', next: 'Next', services_shown: 'services'
@@ -667,6 +667,7 @@ class SmmApp {
     // yeni dile geçer.
     if (this.currentUser) await this.loadAccountSummary();
     if (this.currentView === 'blog') await this.loadBlogPosts();
+    else if (this.currentView === 'dijital-urunler') this.openDigitalStore();
     else if (this.currentView === 'blog-detail' && this.currentBlogSlug) await this.loadBlogPostDetail(this.currentBlogSlug);
     else if (this.currentView === 'landing-page' && this.currentLandingSlug) await this.openLandingPage(this.currentLandingSlug, false);
     else if (this.currentView === 'services') this.renderFullServicesTable();
@@ -1103,6 +1104,8 @@ class SmmApp {
       this.loadUserTickets();
     } else if (viewName === 'admin') {
       this.loadAdminStats();
+    } else if (viewName === 'dijital-urunler') {
+      this.openDigitalStore();
     }
   }
 
@@ -3334,6 +3337,7 @@ class SmmApp {
     if (tabName === 'landing-design') this.loadAdminLandingDesign();
     if (tabName === 'landing-pages') this.loadAdminLandingPages();
     if (tabName === 'courses') this.openAdminCoursesTab();
+    if (tabName === 'digital') this.openAdminDigitalTab();
     if (tabName === 'footprint') this.openAdminFootprintTab();
     if (tabName === 'ai-studio') this.loadAiStudio();
     if (tabName === 'users') { this.showAdminUsersList(); this.loadAdminUsers(); }
@@ -5531,6 +5535,26 @@ class SmmApp {
       this.initCoursePage();
     } catch {
       showToast('Sayfa bileşenleri yüklenemedi. Sayfayı yenileyip tekrar deneyin.', 'error');
+    }
+  }
+
+  // Dijital urunler (/dijital-urunler): urun kartlari sunucudan basili gelir;
+  // satin alma, siparisler ve Gmail Checker modulu burada yuklenir.
+  async openDigitalStore() {
+    try {
+      await this.loadLazyModule('digital');
+      this.initDigitalStore();
+    } catch {
+      showToast(this.ui('Sayfa bileşenleri yüklenemedi. Sayfayı yenileyip tekrar deneyin.', 'Page components could not be loaded. Refresh the page and try again.'), 'error');
+    }
+  }
+
+  async openAdminDigitalTab() {
+    try {
+      await this.loadLazyModule('admin-digital');
+      this.showDigitalSection(this.digitalSection || 'products');
+    } catch {
+      showToast('Dijital ürün yönetim ekranı yüklenemedi. Sayfayı yenileyip tekrar deneyin.', 'error');
     }
   }
 
@@ -10670,11 +10694,12 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       try { sessionStorage.setItem('bekleyenMakineSecimi', JSON.stringify(this.pendingMachineOrder)); } catch {}
     }
 
-    // Egitim sayfasindan "satin al" ile girise gelindiyse ayni sayfaya donulur
-    // ve satin alma penceresi kaldigi yerden acilir (bkz. courses.js).
+    // Egitim / dijital urun sayfasindan "satin al" ile girise gelindiyse ayni
+    // sayfaya donulur ve satin alma penceresi kaldigi yerden acilir
+    // (bkz. courses.js, digital.js).
     let donusAdresi = '';
     try { donusAdresi = sessionStorage.getItem('girisSonrasiAdres') || ''; sessionStorage.removeItem('girisSonrasiAdres'); } catch {}
-    if (/^\/egitimler(\/|\?|$)/.test(donusAdresi)) {
+    if (/^\/(egitimler|dijital-urunler)(\/|\?|$)/.test(donusAdresi)) {
       window.location.assign(donusAdresi);
       return;
     }

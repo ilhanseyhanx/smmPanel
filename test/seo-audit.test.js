@@ -491,6 +491,8 @@ test('küçültülmüş varlıklar güncel kaynaktan üretilmiş', () => {
     ['public/js/admin-resellers.js', 'public/js/admin-resellers.min.js'],
     ['public/js/courses.js', 'public/js/courses.min.js'],
     ['public/js/admin-courses.js', 'public/js/admin-courses.min.js'],
+    ['public/js/digital.js', 'public/js/digital.min.js'],
+    ['public/js/admin-digital.js', 'public/js/admin-digital.min.js'],
     ['public/js/track.js', 'public/js/track.min.js'],
     ['public/js/admin-footprint.js', 'public/js/admin-footprint.min.js']
   ];
@@ -509,7 +511,7 @@ test('küçültülmüş varlıklar güncel kaynaktan üretilmiş', () => {
 test('HTML içinden çağrılan her app metodu küçültülmüş dosyada durur', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
   // Bayi ve egitim ekranlari ayri (tembel yuklenen) dosyalarda; hepsi birlikte bakilir.
-  const kucuk = ['app.min.js', 'admin-resellers.min.js', 'admin-courses.min.js', 'courses.min.js', 'admin-footprint.min.js']
+  const kucuk = ['app.min.js', 'admin-resellers.min.js', 'admin-courses.min.js', 'courses.min.js', 'admin-footprint.min.js', 'digital.min.js', 'admin-digital.min.js']
     .map(ad => fs.readFileSync(path.join(__dirname, '..', 'public', 'js', ad), 'utf8')).join('\n');
   const cagrilan = [...new Set([...html.matchAll(/\bapp\.([A-Za-z_$][\w$]*)\s*\(/g)].map(m => m[1]))];
   assert.ok(cagrilan.length > 50, 'çağrı taraması beklenenden az sonuç verdi');
@@ -519,7 +521,7 @@ test('HTML içinden çağrılan her app metodu küçültülmüş dosyada durur',
 
 test('küçültülmüş dosyalar geçerli JavaScript', () => {
   const vm = require('node:vm');
-  for (const dosya of ['app.min.js', 'api.min.js', 'admin-resellers.min.js', 'courses.min.js', 'admin-courses.min.js', 'track.min.js', 'admin-footprint.min.js']) {
+  for (const dosya of ['app.min.js', 'api.min.js', 'admin-resellers.min.js', 'courses.min.js', 'admin-courses.min.js', 'track.min.js', 'admin-footprint.min.js', 'digital.min.js', 'admin-digital.min.js']) {
     const kod = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', dosya), 'utf8');
     assert.doesNotThrow(() => new vm.Script(kod), `${dosya} sözdizimi bozuk`);
   }

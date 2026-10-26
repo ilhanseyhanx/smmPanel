@@ -169,6 +169,35 @@ const API = {
   trackCourseReading: (data) => API.request('/courses/track', { method: 'POST', body: JSON.stringify(data) }),
   courseEvent: (data) => API.request('/courses/event', { method: 'POST', body: JSON.stringify(data) }),
 
+  // Dijital urunler (musteri)
+  getDigitalProducts: (lang = 'tr') => API.request(`/digital/products?lang=${encodeURIComponent(lang)}`),
+  buyDigitalProduct: (productId, quantity) => API.request('/digital/orders', { method: 'POST', body: JSON.stringify({ product_id: productId, quantity, consent: true }) }),
+  getDigitalOrders: (page = 1) => API.request(`/digital/orders?page=${encodeURIComponent(page)}`),
+  getDigitalOrder: (id) => API.request(`/digital/orders/${encodeURIComponent(id)}`),
+  runDigitalCheck: (emails) => API.request('/digital/check', { method: 'POST', body: JSON.stringify({ emails }) }),
+  getDigitalChecks: () => API.request('/digital/checks'),
+  getDigitalCheck: (id) => API.request(`/digital/checks/${encodeURIComponent(id)}`),
+
+  // Dijital urunler (admin)
+  getAdminDigitalOverview: () => API.request('/admin/digital/overview'),
+  getAdminDigitalProviders: () => API.request('/admin/digital/providers'),
+  addAdminDigitalProvider: (data) => API.request('/admin/digital/providers', { method: 'POST', body: JSON.stringify(data) }),
+  updateAdminDigitalProvider: (id, data) => API.request(`/admin/digital/providers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  refreshAdminDigitalProvider: (id) => API.request(`/admin/digital/providers/${id}/refresh`, { method: 'POST' }),
+  deleteAdminDigitalProvider: (id) => API.request(`/admin/digital/providers/${id}`, { method: 'DELETE' }),
+  getAdminDigitalCatalog: (providerId, refresh = false) => API.request(`/admin/digital/providers/${providerId}/catalog${refresh ? '?refresh=1' : ''}`),
+  getAdminDigitalProducts: () => API.request('/admin/digital/products'),
+  addAdminDigitalProduct: (data) => API.request('/admin/digital/products', { method: 'POST', body: JSON.stringify(data) }),
+  updateAdminDigitalProduct: (id, data) => API.request(`/admin/digital/products/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteAdminDigitalProduct: (id) => API.request(`/admin/digital/products/${id}`, { method: 'DELETE' }),
+  syncAdminDigitalProducts: () => API.request('/admin/digital/products/sync', { method: 'POST' }),
+  getAdminDigitalOrders: (params = {}) => API.request(`/admin/digital/orders?${new URLSearchParams(params).toString()}`),
+  getAdminDigitalOrder: (id) => API.request(`/admin/digital/orders/${id}`),
+  refundAdminDigitalOrder: (id, amount) => API.request(`/admin/digital/orders/${id}/refund`, { method: 'POST', body: JSON.stringify(amount ? { amount } : {}) }),
+  syncAdminDigitalOrder: (id) => API.request(`/admin/digital/orders/${id}/sync`, { method: 'POST' }),
+  getAdminDigitalChecker: () => API.request('/admin/digital/checker'),
+  saveAdminDigitalChecker: (data) => API.request('/admin/digital/checker', { method: 'PUT', body: JSON.stringify(data) }),
+
   // Egitimler (admin)
   getAdminCourses: () => API.request('/admin/courses'),
   getAdminCourse: (id) => API.request(`/admin/courses/${id}`),

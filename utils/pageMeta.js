@@ -47,6 +47,13 @@ const SAYFALAR = {
     title: 'Sosyal Medya Eğitimleri - Instagram, TikTok, YouTube | Jet SMM Panel',
     description: 'Instagram, TikTok ve YouTube hesabını büyütmek için adım adım yazılı ve görselli eğitim serileri. Her eğitimin ilk dersleri ücretsiz, tamamı bakiyenle.'
   },
+  // Dijital urun magazasi (hazir hesaplar vb.). Urun kartlari server.js'te
+  // SPA isleyicisinde basilir; satin alma icin giris gerekir.
+  'dijital-urunler': {
+    view: 'view-dijital-urunler',
+    title: 'Dijital Ürünler - Hazır Hesap ve Dijital Ürün Satın Al | Jet SMM Panel',
+    description: 'Hazır hesaplar ve dijital ürünler: bakiyenle öde, hesap bilgilerin saniyeler içinde paneline teslim edilsin. Güncel stok, adet fiyatı ve garanti süresi.'
+  },
   blog: {
     view: 'view-blog',
     title: 'Sosyal Medya Büyüme Rehberi - Blog | Jet SMM Panel',

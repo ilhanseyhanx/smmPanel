@@ -372,7 +372,6 @@ Object.assign(SmmApp.prototype, {
     }
     try {
       const res = await API.buyDigitalProduct(product.id, qty);
-      this.jt('digital_purchase', { label: product.name, value_kurus: Math.round(Number(res.order?.charge || 0) * 100), meta: { product_id: product.id, quantity: qty } });
       if (this.currentUser) { this.currentUser.balance = res.balance; this.updateUserHeader(); }
       if (res.order.status === 'completed') {
         this.renderDigitalDelivery(res.order, res.items, res.usage, true);

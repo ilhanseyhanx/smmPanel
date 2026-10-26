@@ -123,9 +123,6 @@ const ICERIK_GORUNUMLERI = [
   // kendi icerigi 470 kelimeydi). app.js navigate() gorunumu bulamayinca
   // /blog adresini sunucudan ister.
   'view-blog',
-  // Egitim sayfalari (katalog / egitim / ders) yalnizca /egitimler
-  // adreslerinde basilir; baska adreste bos kabugu da gonderilmez.
-  'view-egitimler',
   // Dijital urun katalogu yalnizca /dijital-urunler adresinde basilir.
   'view-dijital-urunler',
   // Kimlik formu markali satis sayfalarinin HTML'inde bulunmamali. Google

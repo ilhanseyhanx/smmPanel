@@ -32,6 +32,8 @@ const FP_KINDS = {
   topup_start: ['💳', 'Bakiye yüklemeye başladı'],
   coupon_submit: ['🎟️', 'Kupon denedi'],
   ticket_submit: ['🎧', 'Destek formu gönderdi'],
+  digital_buy_open: ['🛍️', 'Dijital ürün satın al penceresini açtı'],
+  // Gecmis kayitlar (egitimler 26 Eki 2026'da kaldirildi).
   course_buy_open: ['🎓', 'Eğitim satın al penceresini açtı'],
   course_checkout: ['💳', 'Eğitim için kart ödemesi başlattı'],
   api_error: ['⚠️', 'Hata aldı'],
@@ -43,6 +45,7 @@ const FP_KINDS = {
   login_success: ['🔓', 'Giriş yaptı'],
   topup_success: ['💰', 'BAKİYE YÜKLEDİ'],
   order_created: ['📦', 'SİPARİŞ VERDİ'],
+  digital_purchase: ['🛍️', 'DİJİTAL ÜRÜN ALDI'],
   course_purchase: ['🎓', 'EĞİTİM SATIN ALDI'],
   ticket_created: ['🎧', 'Destek talebi açtı'],
   coupon_redeemed: ['🎟️', 'Kupon kullandı']
@@ -97,7 +100,7 @@ Object.assign(SmmApp.prototype, {
     if (r.did_login) f.push('<span class="fp-flag">Giriş</span>');
     if (r.did_topup) f.push(`<span class="fp-flag good">Yükleme${r.topup ? ` ${this.fpTL(r.topup)}` : ''}</span>`);
     if (r.did_order) f.push('<span class="fp-flag good">Sipariş</span>');
-    if (r.did_course) f.push('<span class="fp-flag good">Eğitim</span>');
+    if (r.did_course) f.push('<span class="fp-flag good">Dijital ürün</span>');
     if (r.had_error) f.push('<span class="fp-flag bad">Hata</span>');
     if (r.interacted === 0 && (r.pageviews || 0) <= 1) f.push('<span class="fp-flag mid" title="Etkileşimsiz tek sayfa: olası bot">Şüpheli</span>');
     return f.join(' ') || '<span class="fp-muted">—</span>';
@@ -225,15 +228,15 @@ Object.assign(SmmApp.prototype, {
         ${kpi('fa-door-open', '', `%${s.bounce_rate}`, 'Hemen çıkma', 'tek sayfa ve 15 sn altı')}
         ${kpi('fa-id-card', 'cyan', this.fpNum(s.registered), 'Kayıt olan', `%${s.register_rate} · ${this.fpNum(s.logins)} giriş${s.google_registered || s.google_logins ? ` · Google ile: ${this.fpNum(s.google_registered)} kayıt / ${this.fpNum(s.google_logins)} giriş` : ''}`)}
         ${kpi('fa-wallet', '', this.fpTL(s.topup), 'Bakiye yükleme', `${this.fpNum(s.topups)} oturumda`)}
-        ${kpi('fa-cart-shopping', 'cyan', this.fpTL(s.revenue), 'Sipariş + eğitim', `${this.fpNum(s.orders)} sipariş · ${this.fpNum(s.courses)} eğitim`)}
-        ${kpi('fa-percent', '', `%${s.conversion_rate}`, 'Dönüşüm', 'sipariş/eğitim alan oturum')}
+        ${kpi('fa-cart-shopping', 'cyan', this.fpTL(s.revenue), 'Sipariş + dijital ürün', `${this.fpNum(s.orders)} sipariş · ${this.fpNum(s.courses)} dijital ürün`)}
+        ${kpi('fa-percent', '', `%${s.conversion_rate}`, 'Dönüşüm', 'sipariş/dijital ürün alan oturum')}
         ${kpi('fa-triangle-exclamation', 'cyan', this.fpNum(s.errors), 'Hata alan oturum')}
         ${kpi('fa-robot', '', `${this.fpNum(s.bots)}`, 'Ayıklanan bot isteği', `${this.fpNum(s.suspicious)} şüpheli oturum ayrıca gizlendi`)}
       </div>
       <div class="crs-chart-grid mb-20">
         ${this.fpBars(tl, 'sessions', d.timeline.unit === 'hour' ? 'Saatlik oturum' : 'Günlük oturum', tLabel)}
         ${this.fpBars(tl, 'registered', 'Kayıt olan', tLabel)}
-        ${this.fpBars(tl, 'converted', 'Sipariş/eğitim alan oturum', tLabel)}
+        ${this.fpBars(tl, 'converted', 'Sipariş/dijital ürün alan oturum', tLabel)}
         ${this.fpBars(d.hours, 'n', 'Saatlere göre oturum (TR)', r => `${String(r.h).padStart(2, '0')}:00`)}
       </div>
       ${this.fpCard('Satış hunisi', `<div class="fp-funnel">${funnel}</div>`, 'adımı geçen oturum sayısı')}
@@ -245,7 +248,7 @@ Object.assign(SmmApp.prototype, {
       ${this.fpCard('Kampanyalar ve reklamlar (UTM / reklam tıklaması)', this.fpTable(['Kaynak', 'Ortam', 'Kampanya', 'Oturum', 'Kayıt', 'Dönüşen', 'Yüklenen', 'Ciro'], d.campaigns.map(r => `<tr><td>${this.fpE(r.source)}</td><td>${this.fpE(r.medium)}</td><td>${this.fpE(r.campaign)}</td><td>${this.fpNum(r.sessions)}</td><td>${this.fpNum(r.registered)}</td><td>${this.fpNum(r.converted)}</td><td>${this.fpTL(r.topup)}</td><td>${this.fpTL(r.revenue)}</td></tr>`), 'Bu dönemde UTM etiketli ya da reklamdan gelen ziyaret yok. Linklerine ?utm_source=...&utm_campaign=... ekleyerek takip edebilirsin.'))}
       <div class="fp-grid">
         ${this.fpCard('Giriş sayfaları', this.fpTable(['Sayfa', 'Oturum', 'Hemen çıkma', 'Kayıt', 'Dönüşüm'], d.landings.map(r => `<tr><td class="fp-wrap">${this.fpE(r.path)}</td><td>${this.fpNum(r.sessions)}</td><td>%${r.bounce_rate}</td><td>${this.fpNum(r.registered)}</td><td>%${r.conversion_rate}</td></tr>`)), 'ziyaretçinin ilk açtığı sayfa')}
-        ${this.fpCard('Satın almadan çıkılan sayfalar', this.fpTable(['Son sayfa', 'Oturum'], d.exits.map(r => `<tr><td class="fp-wrap">${this.fpE(r.path)}</td><td>${this.fpNum(r.sessions)}</td></tr>`)), 'sipariş/eğitim almadan ayrılanlar')}
+        ${this.fpCard('Satın almadan çıkılan sayfalar', this.fpTable(['Son sayfa', 'Oturum'], d.exits.map(r => `<tr><td class="fp-wrap">${this.fpE(r.path)}</td><td>${this.fpNum(r.sessions)}</td></tr>`)), 'sipariş/dijital ürün almadan ayrılanlar')}
       </div>
       ${this.fpCard('Sayfalar: görüntülenme, kalma süresi, kaydırma', this.fpTable(['Sayfa', 'Görüntülenme', 'Oturum', 'Ort. kalma', 'Ort. kaydırma'], d.pages.map(r => `<tr><td class="fp-wrap">${this.fpE(r.path)}</td><td>${this.fpNum(r.views)}</td><td>${this.fpNum(r.sessions)}</td><td>${r.avg_sec == null ? '—' : this.fpDur(r.avg_sec)}</td><td>${r.avg_scroll == null ? '—' : `%${r.avg_scroll}`}</td></tr>`)))}
       <div class="fp-grid">
@@ -319,7 +322,7 @@ Object.assign(SmmApp.prototype, {
         ${sel('channel', [['', 'Tüm kanallar'], ...Object.entries(FP_CHANNELS).filter(([k]) => k !== 'izlenmedi' && k !== 'bilinmiyor').map(([k, v]) => [k, v.label])])}
         ${sel('device', [['', 'Tüm cihazlar'], ['mobile', 'Mobil'], ['desktop', 'Masaüstü'], ['tablet', 'Tablet']])}
         ${sel('member', [['', 'Üye: hepsi'], ['1', 'Giriş yapmış'], ['0', 'Ziyaretçi']])}
-        ${yesNo('registered', 'Kayıt')}${yesNo('topup', 'Yükleme')}${yesNo('ordered', 'Sipariş')}${yesNo('course', 'Eğitim')}${yesNo('error', 'Hata')}
+        ${yesNo('registered', 'Kayıt')}${yesNo('topup', 'Yükleme')}${yesNo('ordered', 'Sipariş')}${yesNo('course', 'Dijital ürün')}${yesNo('error', 'Hata')}
         ${sel('real', [['', 'Gerçek oturumlar'], ['0', 'Şüpheliler dahil']])}
         <button type="button" class="btn btn-outline btn-sm" data-fp-clear>Temizle</button>
       </div>
@@ -528,7 +531,7 @@ Object.assign(SmmApp.prototype, {
       body.innerHTML = `
         ${this.fpCard('Hangi kanal üye ve müşteri getiriyor?', this.fpTable(['İlk kanal', 'Yeni üye', 'Ödeme yapan', 'Ödeme oranı'], ch), 'seçili dönemde kayıt olanlar')}
         ${this.fpCard('Nasıl kayıt oldular?', this.fpTable(['Kayıt yöntemi', 'Yeni üye', 'Ödeme yapan', 'Ödeme oranı'], (d.by_method || []).map(r => this.fpMethodRow(r))), 'Google düğmesi mi, kayıt formu mu')}
-        ${this.fpCard('Üyeler ve geldikleri yer', `${this.fpTable(['Üye / kayıt', 'İlk kanal / kaynak', 'İlk geldiği adres', 'İlk sayfa', 'Kayıttan önce', 'Oturum', 'Yatırdığı', 'Sipariş · harcama', 'Eğitim', 'Son görülme'], rows, 'Bu dönemde kayıt olan üye yok.')}
+        ${this.fpCard('Üyeler ve geldikleri yer', `${this.fpTable(['Üye / kayıt', 'İlk kanal / kaynak', 'İlk geldiği adres', 'İlk sayfa', 'Kayıttan önce', 'Oturum', 'Yatırdığı', 'Sipariş · harcama', 'Dijital ürün', 'Son görülme'], rows, 'Bu dönemde kayıt olan üye yok.')}
           <div class="table-pagination fp-pager">
             <button class="btn btn-outline btn-sm" ${d.page <= 1 ? 'disabled' : ''} data-fp-page="${d.page - 1}">Önceki</button>
             <span>${d.page} / ${Math.max(1, d.pages)}</span>
@@ -570,7 +573,7 @@ Object.assign(SmmApp.prototype, {
           <div class="glass-card stat-card"><div class="stat-icon cyan"><i class="fa-solid fa-user"></i></div><div><div class="stat-val" style="font-size:1.2rem;">${this.fpE(u.username)}</div><div class="stat-lbl">Kayıt: ${this.fpDate(u.created_at)}${this.fpSignupText(u)}</div></div></div>
           <div class="glass-card stat-card"><div class="stat-icon"><i class="fa-solid fa-route"></i></div><div><div class="stat-val">${this.fpNum(d.totals.sessions)}</div><div class="stat-lbl">Ziyaret</div><div class="course-kpi-sub">${this.fpNum(d.totals.pageviews)} sayfa · ${this.fpDur(d.totals.seconds)}</div></div></div>
           <div class="glass-card stat-card"><div class="stat-icon cyan"><i class="fa-solid fa-wallet"></i></div><div><div class="stat-val">${this.fpTL(d.money.deposit)}</div><div class="stat-lbl">Yatırdığı</div><div class="course-kpi-sub">bakiye: ${this.fpTL(u.balance)}</div></div></div>
-          <div class="glass-card stat-card"><div class="stat-icon"><i class="fa-solid fa-cart-shopping"></i></div><div><div class="stat-val">${this.fpTL(d.money.spent)}</div><div class="stat-lbl">Harcadığı</div><div class="course-kpi-sub">${this.fpNum(d.money.orders)} sipariş · ${this.fpNum(d.money.courses)} eğitim</div></div></div>
+          <div class="glass-card stat-card"><div class="stat-icon"><i class="fa-solid fa-cart-shopping"></i></div><div><div class="stat-val">${this.fpTL(d.money.spent)}</div><div class="stat-lbl">Harcadığı</div><div class="course-kpi-sub">${this.fpNum(d.money.orders)} sipariş · ${this.fpNum(d.money.courses)} dijital ürün</div></div></div>
         </div>
         ${a ? `<div class="fp-grid">${touch('İlk geldiği yer (ilk temas)', 'first')}${touch('Kayıt olduğu ziyaret', 'reg')}</div>
           <p class="course-admin-note">İlk ziyaret: ${this.fpDate(a.first_seen_at)} · kayıttan önce ${this.fpNum(a.sessions_before)} ziyaret${a.sessions_before > 1 ? ' (çerez onaylı tarayıcıda)' : ''}.</p>`

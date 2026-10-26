@@ -2,8 +2,9 @@
 
 // CANLI USD/TRY KURU (5 Eki 2026)
 //
-// Egitim fiyatlari TL'dir ve sabittir; Ingilizce sayfalarda gosterilen dolar
-// karsiligi bu kurla hesaplanir (fiyat / kur). Odeme her zaman TL'dir.
+// Dijital urun fiyatlari TL'dir; Ingilizce sayfada gosterilen dolar karsiligi
+// ve saglayici maliyetinin (USD) TL karsiligi bu kurla hesaplanir. Odeme her
+// zaman TL'dir.
 //
 // Kaynak sirasi:
 //   1) TCMB gunluk kurlar (today.xml, USD doviz satis)

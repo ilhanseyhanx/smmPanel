@@ -40,13 +40,6 @@ const SAYFALAR = {
     title: 'Hizmet Sayfaları - Platforma Göre Satın Al | Jet SMM Panel',
     description: 'Instagram, TikTok, YouTube ve diğer platformlar için takipçi, beğeni ve izlenme satın alma sayfaları. Platformunu seç, siparişini dakikalar içinde başlat.'
   },
-  // Egitim katalogu. Sayfa server.js'teki /egitimler rotasinda basilir; bu
-  // kayit adresi ayirir (satis sayfasi slug'i olamaz) ve SPA'ya tanitir.
-  egitimler: {
-    view: 'view-egitimler',
-    title: 'Sosyal Medya Eğitimleri - Instagram, TikTok, YouTube | Jet SMM Panel',
-    description: 'Instagram, TikTok ve YouTube hesabını büyütmek için adım adım yazılı ve görselli eğitim serileri. Her eğitimin ilk dersleri ücretsiz, tamamı bakiyenle.'
-  },
   // Dijital urun magazasi (hazir hesaplar vb.). Urun kartlari server.js'te
   // SPA isleyicisinde basilir; satin alma icin giris gerekir.
   'dijital-urunler': {

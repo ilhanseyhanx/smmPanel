@@ -489,8 +489,6 @@ test('küçültülmüş varlıklar güncel kaynaktan üretilmiş', () => {
     ['public/js/api.js', 'public/js/api.min.js'],
     ['public/js/app.js', 'public/js/app.min.js'],
     ['public/js/admin-resellers.js', 'public/js/admin-resellers.min.js'],
-    ['public/js/courses.js', 'public/js/courses.min.js'],
-    ['public/js/admin-courses.js', 'public/js/admin-courses.min.js'],
     ['public/js/digital.js', 'public/js/digital.min.js'],
     ['public/js/admin-digital.js', 'public/js/admin-digital.min.js'],
     ['public/js/track.js', 'public/js/track.min.js'],
@@ -510,8 +508,8 @@ test('küçültülmüş varlıklar güncel kaynaktan üretilmiş', () => {
 
 test('HTML içinden çağrılan her app metodu küçültülmüş dosyada durur', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
-  // Bayi ve egitim ekranlari ayri (tembel yuklenen) dosyalarda; hepsi birlikte bakilir.
-  const kucuk = ['app.min.js', 'admin-resellers.min.js', 'admin-courses.min.js', 'courses.min.js', 'admin-footprint.min.js', 'digital.min.js', 'admin-digital.min.js']
+  // Bayi, dijital urun ve ayak izi ekranlari ayri (tembel yuklenen) dosyalarda; hepsi birlikte bakilir.
+  const kucuk = ['app.min.js', 'admin-resellers.min.js', 'admin-footprint.min.js', 'digital.min.js', 'admin-digital.min.js']
     .map(ad => fs.readFileSync(path.join(__dirname, '..', 'public', 'js', ad), 'utf8')).join('\n');
   const cagrilan = [...new Set([...html.matchAll(/\bapp\.([A-Za-z_$][\w$]*)\s*\(/g)].map(m => m[1]))];
   assert.ok(cagrilan.length > 50, 'çağrı taraması beklenenden az sonuç verdi');
@@ -521,7 +519,7 @@ test('HTML içinden çağrılan her app metodu küçültülmüş dosyada durur',
 
 test('küçültülmüş dosyalar geçerli JavaScript', () => {
   const vm = require('node:vm');
-  for (const dosya of ['app.min.js', 'api.min.js', 'admin-resellers.min.js', 'courses.min.js', 'admin-courses.min.js', 'track.min.js', 'admin-footprint.min.js', 'digital.min.js', 'admin-digital.min.js']) {
+  for (const dosya of ['app.min.js', 'api.min.js', 'admin-resellers.min.js', 'track.min.js', 'admin-footprint.min.js', 'digital.min.js', 'admin-digital.min.js']) {
     const kod = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', dosya), 'utf8');
     assert.doesNotThrow(() => new vm.Script(kod), `${dosya} sözdizimi bozuk`);
   }
@@ -603,4 +601,20 @@ test('eski /api-docs adresi tek adimda yeni adrese 301 doner', async () => {
   const res = await sayfa('/api-docs');
   assert.equal(res.status, 301, `/api-docs ${res.status} döndü`);
   assert.equal(res.headers.location, '/smm-panel-api', 'yönlendirme hedefi yanlış');
+});
+
+// Egitimler 26 Eki 2026'da kaldirildi: Google'da indekslenmis eski adresler
+// 404 vermez, kalici olarak bloga yonlenir; menude, site haritasinda ve
+// llms.txt'te baglantisi kalmaz.
+test('eski eğitim adresleri 301 ile bloga yönlenir ve bağlantısı kalmaz', async () => {
+  for (const url of ['/egitimler', '/egitimler/instagram-0dan-10k', '/egitimler/instagram-0dan-10k/ilk-ders?lang=en']) {
+    const res = await request(app).get(url);
+    assert.equal(res.status, 301, `${url} yönlenmiyor`);
+    assert.equal(res.headers.location, '/blog');
+  }
+  const ana = (await sayfa('/')).text;
+  assert.ok(!ana.includes('href="/egitimler'), 'ana sayfada eğitim bağlantısı kaldı');
+  assert.ok(!(await sayfa('/sitemap.xml')).text.includes('/egitimler'), 'site haritasında eğitim adresi kaldı');
+  assert.ok(!(await sayfa('/llms.txt')).text.includes('/egitimler'), 'llms.txt eğitim adresi içeriyor');
+  assert.equal((await request(app).get('/api/courses')).status, 404, 'eğitim API ucu hâlâ açık');
 });

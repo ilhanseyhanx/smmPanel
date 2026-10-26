@@ -13,6 +13,7 @@ const { validate, bilingual } = require('../middleware/validate');
 const { fromKurus } = require('../utils/money');
 const { listActiveProducts, localizeProduct } = require('../utils/digitalProducts');
 const Store = require('../services/digitalStore');
+const footprint = require('../services/footprint');
 
 const router = express.Router();
 
@@ -88,6 +89,12 @@ router.post('/orders', authenticateToken, actionLimiter, validate(z.object({
 })), async (req, res, next) => {
   try {
     const result = await Store.purchase({ user: req.user, productId: req.body.product_id, quantity: req.body.quantity });
+    // Ayak izi: dijital urun alimi donusum sayilir (bkz. services/footprint.js).
+    footprint.serverEvent({
+      req, userId: req.user.id, kind: 'digital_purchase', label: result.order.product_name,
+      valueKurus: Math.round(Number(result.order.charge) * 100), path: '/dijital-urunler',
+      meta: { order_id: result.order.id, product_id: result.order.product_id, quantity: result.order.quantity }
+    });
     res.status(201).json(result);
   } catch (err) { sendError(res, err, next); }
 });

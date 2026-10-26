@@ -30,7 +30,7 @@ const PLATFORMS = {
 // Kok adresli slug'lar SPA rotalari ve sistem dosyalariyla cakismamali.
 const RESERVED_SLUGS = new Set([
   ...Object.keys(SAYFALAR).filter(Boolean),
-  'blog', 'api', 'admin', 'landing-page', 'hizmet-sayfalari', 'not-found', 'unsubscribe', 'sitemap.xml', 'robots.txt',
+  'blog', 'api', 'admin', 'landing-page', 'hizmet-sayfalari', 'egitimler', 'not-found', 'unsubscribe', 'sitemap.xml', 'robots.txt',
   'llms.txt', 'llms-full.txt', 'bingsiteauth.xml', 'css', 'js', 'favicon.ico', 'favicon.svg',
   'og-image.png', 'site.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'
 ]);

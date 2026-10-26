@@ -247,7 +247,7 @@ const SPA_ROTALARI = [
   'landing', 'services', 'blog', 'blog-detail', 'landing-page', 'hizmet-sayfalari', 'smm-panel-api',
   'about', 'terms', 'privacy', 'refund', 'register', 'auth', 'tickets',
   'orders', 'new-order', 'add-funds', 'profile', 'admin', 'not-found',
-  'payment-success', 'payment-failed', 'reset-password', 'verify-email', 'egitimler', 'dijital-urunler'
+  'payment-success', 'payment-failed', 'reset-password', 'verify-email', 'dijital-urunler'
 ];
 
 class SmmApp {
@@ -305,7 +305,7 @@ class SmmApp {
     const dictionary = {
       tr: {
         'nav.home': 'Ana Sayfa', 'nav.services': 'Hizmetler', 'nav.order': 'Sipariş Ver',
-        'nav.orders': 'Siparişlerim', 'nav.funds': 'Bakiye Yükle', 'nav.support': 'Destek', 'nav.courses': 'Eğitimler', 'nav.digital': 'Dijital Ürünler',
+        'nav.orders': 'Siparişlerim', 'nav.funds': 'Bakiye Yükle', 'nav.support': 'Destek', 'nav.digital': 'Dijital Ürünler',
         read_more: 'Devamını Oku', no_blog: 'Henüz yayınlanmış bir blog makalesi bulunmuyor.',
         standard: 'Standart', guaranteed: 'Garantili', order_now: 'Sipariş Ver',
         previous: 'Önceki', next: 'Sonraki', services_shown: 'servisten'
@@ -322,7 +322,7 @@ class SmmApp {
       },
       en: {
         'nav.home': 'Home', 'nav.services': 'Services', 'nav.order': 'New Order',
-        'nav.orders': 'My Orders', 'nav.funds': 'Add Funds', 'nav.support': 'Support', 'nav.courses': 'Courses', 'nav.digital': 'Digital Products',
+        'nav.orders': 'My Orders', 'nav.funds': 'Add Funds', 'nav.support': 'Support', 'nav.digital': 'Digital Products',
         read_more: 'Read More', no_blog: 'No published blog posts yet.',
         standard: 'Standard', guaranteed: 'Guaranteed', order_now: 'Order Now',
         previous: 'Previous', next: 'Next', services_shown: 'services'
@@ -373,10 +373,7 @@ class SmmApp {
     // Yasal sayfalar gibi uzun iceriklerde ceviri sozluk yerine dil bloklariyla
     // yapilir: .lang-tr / .lang-en gorunurlugu bu sinifla yonetilir.
     document.body.classList.toggle('locale-en', this.locale === 'en');
-    // Egitim sayfalarinin basligi ve aciklamasi sunucuda dile gore basilir;
-    // genel site metniyle ezilmez (sekme basligi ve arama motoru icin).
-    const sunucuBasligi = document.body.dataset.activeView === 'egitimler';
-    if (!sunucuBasligi) document.title = this.locale === 'en'
+    document.title = this.locale === 'en'
       ? 'SMM Panel - Automated Social Media Growth Panel'
       : 'SMM Panel - Otomatik Sosyal Medya Büyüme Paneli';
     const localizedMeta = {
@@ -399,7 +396,7 @@ class SmmApp {
       element.textContent = this.t(element.dataset.i18n);
     });
     const english = {
-      'Giriş Yap': 'Login', 'Kayıt Ol': 'Register', 'Çıkış Yap': 'Logout', 'Ana Sayfa': 'Home', 'Eğitimler': 'Courses',
+      'Giriş Yap': 'Login', 'Kayıt Ol': 'Register', 'Çıkış Yap': 'Logout', 'Ana Sayfa': 'Home', 'Dijital Ürünler': 'Digital Products',
       'Hizmetler': 'Services', 'Hizmet Sayfaları': 'Service Pages', 'Sipariş Ver': 'Order Now', 'Siparişlerim': 'My Orders', 'Bakiye Yükle': 'Add Funds',
       'Destek': 'Support', 'Admin Panel': 'Admin Panel', 'Tüm Hizmetler': 'All Services', 'Diğer': 'Other',
       'Servis Adı': 'Service Name', '1000 Adet Fiyatı': 'Price per 1000', 'Min / Max Limit': 'Min / Max Limit',
@@ -653,13 +650,6 @@ class SmmApp {
     localStorage.setItem('smm_language', this.locale);
     this.syncLanguageCookie();
     this.jt('lang_change', { label: this.locale });
-    // Egitim sayfalari sunucuda dile gore basilir: ayni sayfa secilen dilde yeniden acilir.
-    if (this.currentView === 'egitimler') {
-      const url = new URL(window.location.href);
-      url.searchParams.set('lang', this.locale);
-      window.location.assign(url.pathname + url.search);
-      return;
-    }
     document.documentElement.lang = this.locale;
     this.applyTranslations();
     await this.loadServicesData();
@@ -906,7 +896,6 @@ class SmmApp {
     const route = rawRoute || 'landing';
     this.referralCode = new URLSearchParams(query).get('ref');
     if (route.startsWith('blog/')) await this.loadBlogPostDetail(decodeURIComponent(route.slice(5)), false);
-    else if (route === 'egitimler' || route.startsWith('egitimler/')) await this.openCoursesPage();
     else if (route === 'register') this.showAuthPage('register');
     // /auth dogrudan acilinca (or. cikis yapmis kullanici /orders'tan buraya
     // yonlendirilir) form giris moduna kurulur: basliklar, e-posta alani ve
@@ -948,8 +937,6 @@ class SmmApp {
       const path = window.location.pathname.replace(/^\/+|\/+$/g, '') || 'landing';
       const [popRoute] = path.split('?');
       if (popRoute.startsWith('blog/')) this.loadBlogPostDetail(decodeURIComponent(popRoute.slice(5)), false);
-      // Egitim sayfalari her zaman sunucudan basilir; icerik adrese baglidir.
-      else if (popRoute === 'egitimler' || popRoute.startsWith('egitimler/')) window.location.reload();
       else if (!SPA_ROTALARI.includes(popRoute) && /^[a-z0-9-]+$/.test(popRoute)) this.openLandingPage(popRoute, false);
       else this.navigate(popRoute, false);
     });
@@ -3336,7 +3323,6 @@ class SmmApp {
     if (tabName === 'reviews') this.loadAdminReviews();
     if (tabName === 'landing-design') this.loadAdminLandingDesign();
     if (tabName === 'landing-pages') this.loadAdminLandingPages();
-    if (tabName === 'courses') this.openAdminCoursesTab();
     if (tabName === 'digital') this.openAdminDigitalTab();
     if (tabName === 'footprint') this.openAdminFootprintTab();
     if (tabName === 'ai-studio') this.loadAiStudio();
@@ -5497,45 +5483,10 @@ class SmmApp {
     return this.lazyModules[name];
   }
 
-  // Site dil secimi sunucuya cerezle iletilir (egitim sayfalari sunucuda
-  // dile gore basilir). Tercih asil olarak localStorage'da durur.
+  // Site dil secimi sunucuya cerezle de iletilir (smm_lang). Tercih asil
+  // olarak localStorage'da durur.
   syncLanguageCookie() {
     try { document.cookie = `smm_lang=${this.locale}; path=/; max-age=31536000; samesite=lax`; } catch {}
-  }
-
-  // Egitim sayfalari (/egitimler...): icerik sunucudan basili gelir; burada
-  // gorunum isaretlenir ve satin alma / okuma takibi modulu yuklenir.
-  async openCoursesPage() {
-    this.currentView = 'egitimler';
-    document.body.classList.add('neo-app-active');
-    document.body.dataset.activeView = 'egitimler';
-    const wrap = document.querySelector('#egitim-root .crs-wrap');
-    if (!wrap) return;
-    // Dil uyumu: adresteki ?lang site tercihini gunceller; adreste dil yoksa
-    // ve sayfa tercihten farkli basildiysa (cerez henuz yoktu) dogru dile gecilir.
-    const pageLang = wrap.dataset.lang === 'en' ? 'en' : 'tr';
-    const urlLang = new URLSearchParams(window.location.search).get('lang');
-    if (urlLang === 'en' || urlLang === 'tr') {
-      if (this.locale !== pageLang) {
-        this.locale = pageLang;
-        try { localStorage.setItem('smm_language', pageLang); } catch {}
-        document.documentElement.lang = pageLang;
-        const selector = document.getElementById('language-selector');
-        if (selector) selector.value = pageLang;
-        this.applyTranslations();
-      }
-    } else if (this.locale !== pageLang) {
-      this.syncLanguageCookie();
-      window.location.replace(`${window.location.pathname}?lang=${this.locale}`);
-      return;
-    }
-    this.syncLanguageCookie();
-    try {
-      await this.loadLazyModule('courses');
-      this.initCoursePage();
-    } catch {
-      showToast('Sayfa bileşenleri yüklenemedi. Sayfayı yenileyip tekrar deneyin.', 'error');
-    }
   }
 
   // Dijital urunler (/dijital-urunler): urun kartlari sunucudan basili gelir;
@@ -5564,15 +5515,6 @@ class SmmApp {
       this.showFootprintSection(this.footprintSection || 'overview');
     } catch {
       showToast('Ayak izi ekranı yüklenemedi. Sayfayı yenileyip tekrar deneyin.', 'error');
-    }
-  }
-
-  async openAdminCoursesTab() {
-    try {
-      await this.loadLazyModule('admin-courses');
-      this.showCourseSection(this.courseSection || 'list');
-    } catch {
-      showToast('Eğitim yönetim ekranı yüklenemedi. Sayfayı yenileyip tekrar deneyin.', 'error');
     }
   }
 
@@ -10694,12 +10636,11 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       try { sessionStorage.setItem('bekleyenMakineSecimi', JSON.stringify(this.pendingMachineOrder)); } catch {}
     }
 
-    // Egitim / dijital urun sayfasindan "satin al" ile girise gelindiyse ayni
-    // sayfaya donulur ve satin alma penceresi kaldigi yerden acilir
-    // (bkz. courses.js, digital.js).
+    // Dijital urun sayfasindan "satin al" ile girise gelindiyse ayni sayfaya
+    // donulur ve satin alma penceresi kaldigi yerden acilir (bkz. digital.js).
     let donusAdresi = '';
     try { donusAdresi = sessionStorage.getItem('girisSonrasiAdres') || ''; sessionStorage.removeItem('girisSonrasiAdres'); } catch {}
-    if (/^\/(egitimler|dijital-urunler)(\/|\?|$)/.test(donusAdresi)) {
+    if (/^\/(dijital-urunler)(\/|\?|$)/.test(donusAdresi)) {
       window.location.assign(donusAdresi);
       return;
     }

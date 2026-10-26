@@ -216,30 +216,6 @@ app.get('/sitemap.xml', async (req, res) => {
     if (dijitalUrun) {
       urls.push({ loc: `${base}/dijital-urunler`, priority: '0.7', changefreq: 'daily', lastmod: String(dijitalUrun.son || '').slice(0, 10) || undefined });
     }
-    // Egitimler: katalog, yayindaki egitimler ve UCRETSIZ dersleri. Kilitli
-    // dersler noindex oldugu icin haritaya girmez.
-    const egitimler = await require('./utils/courses').listPublishedCourses(dbAsync).catch(() => []);
-    if (egitimler.length) {
-      const C = require('./utils/courses');
-      const sonEgitim = egitimler.reduce((max, c) => {
-        const d = (c.updated_at || c.published_at || c.created_at || '').slice(0, 10);
-        return d > max ? d : max;
-      }, '');
-      // Ingilizce surumler ayni adreste ?lang=en ile sunulur; ayri giris olarak eklenir.
-      for (const lang of ['tr', 'en']) {
-        urls.push({ loc: `${base}${C.catalogUrl(lang)}`, priority: '0.8', changefreq: 'weekly', lastmod: sonEgitim || undefined });
-      }
-      for (const course of egitimler) {
-        const lastmod = (course.updated_at || course.published_at || course.created_at || '').slice(0, 10) || undefined;
-        const dersler = await C.listLessons(dbAsync, course.id).catch(() => []);
-        for (const lang of ['tr', 'en']) {
-          urls.push({ loc: `${base}${C.courseUrl(course, lang)}`, priority: '0.8', changefreq: 'weekly', lastmod });
-          dersler.forEach((ders, i) => {
-            if (C.isLessonFree(course, i)) urls.push({ loc: `${base}${C.lessonUrl(course, ders, lang)}`, priority: '0.6', changefreq: 'monthly', lastmod });
-          });
-        }
-      }
-    }
     // Sik degisen sayfalara lastmod: en guncel yazinin tarihi makul bir
     // vekildir (katalog ve blog listesi en gec o gun degismistir).
     const sonYazi = posts.reduce((max, p) => {
@@ -335,17 +311,6 @@ app.get('/llms.txt', async (req, res) => {
       for (const sayfa of satisSayfalari) {
         const ozet = String(sayfa.subtitle || '').replace(/\s+/g, ' ').trim().slice(0, 140);
         lines.push(`- [${String(sayfa.title).replace(/[\[\]]/g, '')}](${base}/${encodeURIComponent(sayfa.slug)})${ozet ? `: ${ozet}` : ''}`);
-      }
-      lines.push('');
-    }
-    const egitimler = await require('./utils/courses').listPublishedCourses(dbAsync).catch(() => []);
-    if (egitimler.length) {
-      const C = require('./utils/courses');
-      lines.push('## Eğitimler');
-      lines.push(`- [Sosyal Medya Eğitimleri](${base}${C.BASE_PATH}): Yazılı ve görselli eğitim serileri; her serinin ilk dersleri ücretsiz`);
-      for (const course of egitimler) {
-        const ozet = String(course.subtitle || '').replace(/\s+/g, ' ').trim().slice(0, 140);
-        lines.push(`- [${String(course.title).replace(/[\[\]]/g, '')}](${base}${C.courseUrl(course)})${ozet ? `: ${ozet}` : ''}`);
       }
       lines.push('');
     }
@@ -660,159 +625,12 @@ app.get('/blog/:slug', async (req, res) => {
 });
 
 // ----------------------------------------------------
-// EGITIMLER SSR: /egitimler, /egitimler/:egitim, /egitimler/:egitim/:ders
-// Uc sayfa turu de sitenin kabugunda tek gorunume (view-egitimler) basilir.
-// Kilitli dersin icerigi YALNIZCA sahibine (veya yoneticiye) basilir;
-// digerleri kilit kutusunu gorur ve sayfa noindex olur. Icerik oturuma gore
-// degistigi icin yanit "private" isaretlenir (ara onbellek tutmasin).
+// EGITIMLER KALDIRILDI (26 Eki 2026): hic satis olmadigi icin bolum kapatildi.
+// Google'da indekslenen /egitimler, /egitimler/:egitim ve ders adresleri 404
+// vermesin diye kalici olarak bloga yonlendirilir (icerik egitseldi, en yakin
+// karsilik blog). Veritabanindaki egitim kayitlari arsiv olarak duruyor.
 // ----------------------------------------------------
-app.get(['/egitimler', '/egitimler/:course', '/egitimler/:course/:lesson'], async (req, res, next) => {
-  try {
-    if (req.path.length > 1 && req.path.endsWith('/')) {
-      const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
-      return res.redirect(301, req.path.replace(/\/+$/, '') + query);
-    }
-    const { dbAsync } = require('./config/database');
-    const C = require('./utils/courses');
-    const CS = require('./services/courses');
-    const { optionalUser } = require('./middleware/auth');
-    const user = await optionalUser(req);
-    const isAdmin = user?.role === 'admin';
-    const base = String(process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-    const siteRow = await dbAsync.get("SELECT value FROM site_settings WHERE key = 'site_name'").catch(() => null);
-    const siteName = String(siteRow?.value || 'Jet SMM Panel').trim() || 'Jet SMM Panel';
-    // Dil: adresteki ?lang her zaman kazanir (paylasilan baglanti ve arama
-    // motoru icin), yoksa sitenin dil secimi (smm_lang cerezi).
-    const lang = req.query.lang === 'en' ? 'en' : req.query.lang === 'tr' ? 'tr' : (req.cookies?.smm_lang === 'en' ? 'en' : 'tr');
-    const en = lang === 'en';
-    // Dolar karsiligi yalnizca Ingilizce sayfada gosterilir (TL sabit, kur canli).
-    const rate = en ? (await require('./services/fx').getUsdTry()).rate : 0;
-
-    // sayfa: { root, title, description, paths: {tr, en}, jsonLd, noindex, image, ogType }
-    let sayfa;
-    if (!req.params.course) {
-      const courses = await C.listPublishedCourses(dbAsync);
-      const owned = await CS.ownedCourseIds(dbAsync, user?.id);
-      sayfa = {
-        root: C.renderCatalogHtml({ courses, ownedIds: owned, lang, rate }),
-        title: en
-          ? `Social Media Courses - Instagram, TikTok, YouTube | ${siteName}`
-          : `Sosyal Medya Eğitimleri - Instagram, TikTok, YouTube | ${siteName}`,
-        description: buildMetaDescription([en
-          ? 'Step-by-step written courses with visuals to grow on Instagram, TikTok and YouTube. The first lessons of every course are free; unlock the rest once.'
-          : 'Instagram, TikTok ve YouTube hesabını büyütmek için adım adım yazılı ve görselli eğitim serileri. Her eğitimin ilk dersleri ücretsiz, tamamı bakiyenle tek seferlik.'],
-        `${C.T[lang].catalogTitle} | ${siteName}`),
-        paths: { tr: C.catalogUrl('tr'), en: C.catalogUrl('en') },
-        jsonLd: C.catalogJsonLd({ base, courses, lang })
-      };
-    } else {
-      const data = await C.loadCourse(dbAsync, req.params.course, { includeDraft: true });
-      if (!data) return res.redirect(302, C.catalogUrl(lang));
-      const { course, lessons } = data;
-      const owned = await CS.isOwned(dbAsync, user?.id, course.id);
-      // Taslak egitim: yalnizca sahipleri (taslaga alinmadan once alanlar) ve yonetici.
-      if (course.status !== 'published' && !owned && !isAdmin) return res.redirect(302, C.catalogUrl(lang));
-      const completed = await CS.completedLessonIds(dbAsync, user?.id, course.id);
-      const yerel = C.localizeCourse(course, lang);
-      const ozet = buildMetaDescription([yerel.seo_description, yerel.subtitle, yerel.description], `${yerel.title} | ${siteName}`);
-
-      if (!req.params.lesson) {
-        sayfa = {
-          root: C.renderCourseHtml({ course, lessons, owned, isAdmin, completed, lang, rate }),
-          title: `${yerel.seo_title || yerel.title} | ${siteName}`,
-          description: ozet,
-          paths: { tr: C.courseUrl(course, 'tr'), en: C.courseUrl(course, 'en') },
-          jsonLd: C.courseJsonLd({ base, course, lessons, description: ozet, lang }),
-          noindex: course.status !== 'published',
-          image: yerel.cover_image_url
-        };
-      } else {
-        const index = lessons.findIndex(l => l.slug === req.params.lesson);
-        if (index === -1) return res.redirect(302, C.courseUrl(course, lang));
-        const lesson = lessons[index];
-        const free = C.isLessonFree(course, index);
-        const canRead = free || owned || isAdmin;
-        const row = canRead ? await dbAsync.get('SELECT content, content_en, updated_at FROM course_lessons WHERE id = ?', [lesson.id]) : null;
-        const content = row ? (en && String(row.content_en || '').trim() ? row.content_en : row.content) : '';
-        const yerelDers = C.localizeLesson(lesson, lang);
-        const dersOzet = buildMetaDescription([yerelDers.summary, content], `${yerelDers.title} - ${yerel.title} | ${siteName}`);
-        sayfa = {
-          root: C.renderLessonHtml({ course, lessons, lesson, content, canRead, owned, isAdmin, completed, lang, rate }),
-          title: `${yerelDers.title} - ${yerel.title} | ${siteName}`,
-          description: dersOzet,
-          paths: { tr: C.lessonUrl(course, lesson, 'tr'), en: C.lessonUrl(course, lesson, 'en') },
-          jsonLd: C.lessonJsonLd({ base, course, lesson: { ...lesson, updated_at: row?.updated_at }, description: dersOzet, lang }),
-          // Yalnizca yayindaki egitimin ucretsiz dersleri indekslenir.
-          noindex: !free || course.status !== 'published',
-          image: yerel.cover_image_url,
-          ogType: 'article'
-        };
-      }
-    }
-
-    require('./services/visitorTracker').recordVisit(req).catch(() => {});
-    require('./services/crawlerTracker').record(req, 200);
-
-    const pageUrl = `${base}${sayfa.paths[lang]}`;
-    const gorsel = sayfa.image && !String(sayfa.image).toLowerCase().endsWith('.svg')
-      ? (sayfa.image.startsWith('http') ? sayfa.image : `${base}${sayfa.image}`)
-      : `${base}/og-image.png`;
-
-    let html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
-    html = stripGatedMarkup(html, sessionState(req));
-    html = stripInactiveViews(html, 'view-egitimler');
-    html = await applyTelegramLink(html);
-    html = await applyLandingLinks(html);
-    html = html.split('http://localhost:3000').join(base);
-    html = html.replace(ANNOUNCEMENT_BLOCK, await announcementHtml());
-
-    html = html
-      .replace('<html lang="tr">', `<html lang="${lang}">`)
-      .replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeAttr(sayfa.title)}</title>`)
-      .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${escapeAttr(sayfa.description)}">`)
-      .replace(/<link rel="canonical"[^>]*>/, `<link rel="canonical" href="${pageUrl}">`)
-      .replace(/<meta property="og:type"[^>]*>/, `<meta property="og:type" content="${sayfa.ogType || 'website'}">`)
-      .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escapeAttr(sayfa.title)}">`)
-      .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escapeAttr(sayfa.description)}">`)
-      .replace(/<meta property="og:url"[^>]*>/, `<meta property="og:url" content="${pageUrl}">`)
-      .replace(/<meta property="og:image" content="[^"]*">/, `<meta property="og:image" content="${escapeAttr(gorsel)}">`)
-      .replace(/<meta name="twitter:title"[^>]*>/, `<meta name="twitter:title" content="${escapeAttr(sayfa.title)}">`)
-      .replace(/<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${escapeAttr(sayfa.description)}">`)
-      .replace(/<meta name="twitter:image"[^>]*>/, `<meta name="twitter:image" content="${escapeAttr(gorsel)}">`);
-    // Kapaklar 1200x675 uretilir; paylasim onizlemesi dogru oranla cizer.
-    if (sayfa.image) {
-      html = html
-        .replace(/<meta property="og:image:width"[^>]*>/, '<meta property="og:image:width" content="1200">')
-        .replace(/<meta property="og:image:height"[^>]*>/, '<meta property="og:image:height" content="675">');
-    }
-    // Iki dilli surum bildirimi: arama motoru TR ve EN sayfayi esler.
-    const hreflang = sayfa.noindex ? '' : [
-      `  <link rel="alternate" hreflang="tr" href="${base}${sayfa.paths.tr}">`,
-      `  <link rel="alternate" hreflang="en" href="${base}${sayfa.paths.en}">`,
-      `  <link rel="alternate" hreflang="x-default" href="${base}${sayfa.paths.tr}">`
-    ].join('\n') + '\n';
-    const semalar = (sayfa.jsonLd || []).map(obj => `  <script type="application/ld+json">${JSON.stringify(obj)}</script>\n`).join('');
-    html = html.replace('</head>', `${await buildSeoSnippet(false)}${hreflang}${semalar}${sayfa.noindex ? '  <meta name="robots" content="noindex, follow">\n' : ''}</head>`);
-
-    // Ust menude "Egitimler" etkin gorunur (varsayilan etkin olan Ana Sayfa'dir).
-    // Ic sayfa (neo) gorunumu JS beklemeden uygulanir; aksi halde sayfa once
-    // ana sayfa temasiyla cizilip app.js acilinca renk degistiriyordu.
-    html = html
-      .replace('<body>', '<body class="neo-app-active" data-active-view="egitimler">')
-      .replace('<a class="nav-link active" href="/"', '<a class="nav-link" href="/"')
-      .replace('<a class="nav-link" href="/egitimler"', `<a class="nav-link active" href="${C.catalogUrl(lang)}"`)
-      .replace('<section id="view-landing" class="app-view neo-landing">', '<section id="view-landing" class="app-view neo-landing" style="display: none;">')
-      .replace('<section id="view-egitimler" class="app-view" style="display: none;">', '<section id="view-egitimler" class="app-view" style="display: block;">')
-      .replace('<div class="main-content crs-page" id="egitim-root"></div>', `<div class="main-content crs-page" id="egitim-root">${sayfa.root}</div>`);
-    html = enforceSingleH1(html, 'view-egitimler');
-
-    res.setHeader('Cache-Control', 'private, no-cache');
-    res.setHeader('Vary', 'Cookie');
-    res.type('html').send(useMinifiedAssets(html));
-  } catch (err) {
-    next(err);
-  }
-});
+app.get(['/egitimler', '/egitimler/*splat'], (req, res) => res.redirect(301, '/blog'));
 
 // Serve frontend static assets.
 // index: false -> ana sayfa istekleri asagidaki SPA handler'ina duser; orada
@@ -855,8 +673,6 @@ app.use('/api/admin/health', saglikAuth, saglikAdmin, require('./routes/adminHea
 app.use('/api/admin/resellers', saglikAuth, saglikAdmin, require('./routes/adminResellers'));
 // Paket servis yonetimi (favoriler & paketler sekmesi).
 app.use('/api/admin/bundles', saglikAuth, saglikAdmin, require('./routes/adminBundles'));
-// Egitim yonetimi (Egitimler sekmesi).
-app.use('/api/admin/courses', saglikAuth, saglikAdmin, require('./routes/adminCourses'));
 // Dijital urun magazasi yonetimi (Dijital Urunler sekmesi).
 app.use('/api/admin/digital', saglikAuth, saglikAdmin, require('./routes/adminDigital'));
 // Ziyaretci ayak izi (Izleme > Ziyaretci Ayak Izi sekmesi).
@@ -866,7 +682,6 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/campaigns', require('./routes/campaigns'));
 app.use('/api/landing-pages', require('./routes/landingPages'));
-app.use('/api/courses', require('./routes/courses'));
 // Dijital urunler: katalog, satin alma, teslimat ve Gmail Checker.
 app.use('/api/digital', require('./routes/digital'));
 // Ziyaretci ayak izi paketleri (public/js/track.js).
@@ -1620,7 +1435,7 @@ async function startServer() {
     // Dijital urunler: hazirlanan siparislerin takibi (dakikada bir) ve
     // stok/maliyet tazeleme (10 dakikada bir).
     require('./services/digitalStore').startDigitalWorker();
-    // Egitim fiyatlarinin dolar karsiligi icin canli USD/TRY kuru (6 saatte bir).
+    // Dijital urunlerin dolar karsiligi ve zarar kontrolu icin canli USD/TRY kuru (6 saatte bir).
     require('./services/fx').startFxWorker();
     // Ayak izi: acilista yonetici izleri temizlenir, 90 gunden eski kayitlar gunluk silinir.
     require('./services/footprint').startFootprintWorker();

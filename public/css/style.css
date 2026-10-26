@@ -4782,113 +4782,11 @@ body.neo-app-active .service-bundle-badge, #view-admin .service-bundle-badge { b
 
 
 /* ========================================================================== */
-/* EĞİTİMLER (/egitimler) — katalog, eğitim sayfası, ders okuma, satın alma   */
-/* penceresi. Neo iç sayfa diliyle: siyah çerçeve, sert gölge, sarı/kırmızı.  */
+/* ORTAK PENCERE VE ADMIN BİLEŞENLERİ — Eğitimler bölümü 26 Eki 2026'da      */
+/* kaldırıldı; aşağıdaki sınıflar başka ekranlarda kullanılıyor:             */
+/* .crs-buy-* Dijital Ürünler pencereleri, .crs-chart* Ayak İzi grafikleri,  */
+/* .course-* admin form/araç çubuğu sınıfları (Dijital Ürünler, Ayak İzi).   */
 /* ========================================================================== */
-#view-egitimler .main-content::before { content: '08 / EĞİTİMLER'; }
-.crs-wrap { --crs-ink: #090909; --crs-paper: #fffef8; --crs-yellow: #ffde17; --crs-red: #ed2d2d; --crs-blue: #1769e8; --crs-green: #9af0b4; color: var(--crs-ink); }
-.crs-breadcrumb { opacity: 1; color: #333; }
-.crs-kicker { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 14px; padding: 5px 10px; border: 2px solid var(--crs-ink); background: var(--crs-yellow); font: 800 .7rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; letter-spacing: .06em; text-transform: uppercase; }
-.crs-muted { color: #555 !important; }
-.crs-price { font: 900 1.35rem 'Archivo Black', 'Archivo Black Fallback', sans-serif; letter-spacing: -.02em; }
-.crs-price.lg { font-size: clamp(1.8rem, 4vw, 2.4rem); }
-.crs-owned-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 2px solid var(--crs-ink); background: var(--crs-green); font: 800 .75rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; }
-.crs-draft-note { margin-bottom: 18px; padding: 10px 14px; border: 2px dashed var(--crs-ink); background: #fff3c4; font-weight: 700; }
-
-/* Katalog */
-.crs-catalog-head { max-width: 860px; margin-bottom: 34px; }
-.crs-catalog-head p { font-size: 1.05rem; line-height: 1.65; }
-.crs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 28px; }
-.crs-card.glass-card { display: flex; flex-direction: column; padding: 0 !important; text-decoration: none; color: var(--crs-ink); transition: transform .2s ease, box-shadow .2s ease; }
-.crs-card.glass-card:hover { transform: translate(-3px, -3px) !important; box-shadow: 12px 12px 0 #090909 !important; }
-.crs-card-cover, .crs-hero-cover { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-bottom: 3px solid var(--crs-ink); background: var(--crs-blue); }
-.crs-card-cover img, .crs-hero-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.crs-cover-fallback { display: grid; place-items: center; background: repeating-linear-gradient(45deg, #21a9f6 0 18px, #1d9be4 18px 36px); }
-.crs-cover-fallback i { font-size: 3rem; color: #fff; filter: drop-shadow(3px 3px 0 #090909); }
-.crs-card-body { display: flex; flex: 1; flex-direction: column; gap: 10px; padding: 18px 20px 20px; }
-.crs-card-meta, .crs-hero-meta { display: flex; flex-wrap: wrap; gap: 6px; }
-.crs-card-meta span, .crs-hero-meta span { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 2px solid var(--crs-ink); background: #fff; font: 700 .7rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; }
-body.neo-app-active #view-egitimler .crs-card-title { margin: 0; font-size: 1.3rem; line-height: 1.2; }
-.crs-card-sub { margin: 0; font-size: .92rem; line-height: 1.55; }
-.crs-card-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 12px; border-top: 2px dashed var(--crs-ink); }
-.crs-free-note { display: block; margin-top: 2px; font: 700 .72rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; color: #1a7f3c; text-transform: uppercase; }
-.crs-card-cta { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 2px solid var(--crs-ink); background: var(--crs-red); color: #fff; box-shadow: 3px 3px 0 #090909; font: 900 .78rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; white-space: nowrap; }
-.crs-empty { grid-column: 1 / -1; text-align: center; padding: 48px 20px !important; }
-.crs-empty i { font-size: 2.2rem; margin-bottom: 12px; }
-
-/* Eğitim sayfası */
-.crs-hero.glass-card { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, .9fr); gap: clamp(20px, 4vw, 44px); margin-bottom: 30px; }
-/* Genel neo h1 kurali :not(#...) yuzunden iki kimlik agirliginda; #egitim-root
-   eklenerek esitlenir, dosyada sonra geldigi icin bu kural kazanir. */
-body.neo-app-active #view-egitimler #egitim-root .crs-hero h1 { margin-bottom: 16px !important; font-size: clamp(1.9rem, 4vw, 3.1rem) !important; line-height: 1 !important; }
-#view-egitimler #egitim-root .crs-hero h1, #view-egitimler #egitim-root h1.crs-reader-title { overflow-wrap: anywhere; hyphens: auto; }
-.crs-hero-text, .crs-hero-side { min-width: 0; }
-.crs-hero-sub { font-size: 1.08rem; line-height: 1.6; margin-bottom: 16px; }
-.crs-hero-side { display: flex; flex-direction: column; gap: 16px; }
-.crs-hero-cover { border: 3px solid var(--crs-ink); }
-.crs-buybox { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 3px solid var(--crs-ink); background: var(--crs-paper); }
-.crs-buy-note { font: 700 .74rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; color: #444; }
-.crs-buy-btn { width: 100%; white-space: normal; text-align: center; }
-.crs-progress { margin-top: 18px; max-width: 460px; }
-.crs-progress-bar { height: 14px; border: 2px solid var(--crs-ink); background: #fff; }
-.crs-progress-bar span { display: block; height: 100%; background: #22c55e; }
-.crs-progress small { display: block; margin-top: 6px; font: 700 .74rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; }
-.crs-detail-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); gap: 30px; align-items: start; }
-.crs-lessons-box { position: sticky; top: 90px; }
-body.neo-app-active #view-egitimler .crs-lessons-box h2, body.neo-app-active #view-egitimler .crs-about > h2 { margin: 0 0 14px; font-size: 1.35rem; }
-#view-egitimler .crs-about.crs-prose > h2:first-child { margin-top: 0; }
-
-/* Ders listesi */
-.crs-lesson-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.crs-lesson a, .crs-lesson button { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; grid-template-areas: "num title min" "num tag tag"; align-items: center; gap: 2px 10px; width: 100%; padding: 10px 12px; border: 2px solid var(--crs-ink); background: #fff; color: var(--crs-ink); text-align: left; text-decoration: none; font: inherit; cursor: pointer; transition: background .15s ease, transform .15s ease; }
-.crs-lesson a:hover, .crs-lesson button:hover { background: #dff4ff; transform: translateX(2px); }
-.crs-lesson a:focus-visible, .crs-lesson button:focus-visible { outline: 3px solid var(--crs-blue); outline-offset: 2px; }
-.crs-lnum { grid-area: num; display: grid; place-items: center; width: 30px; height: 30px; border: 2px solid var(--crs-ink); background: var(--crs-yellow); font: 900 .82rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; }
-.crs-ltitle { grid-area: title; font-weight: 750; line-height: 1.3; overflow-wrap: anywhere; }
-.crs-lmin { grid-area: min; font: 700 .7rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; color: #555; white-space: nowrap; }
-.crs-ltag { grid-area: tag; justify-self: start; display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border: 2px solid var(--crs-ink); font: 800 .64rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; }
-.crs-ltag.free { background: var(--crs-green); }
-.crs-ltag.locked { background: #ffd6d6; }
-.crs-ltag.done { background: #c7f9d4; }
-.crs-lesson.is-locked .crs-lnum { background: #eee; }
-.crs-lesson.is-locked .crs-ltitle { color: #555; }
-.crs-lesson.is-current a { background: #fff8b8; box-shadow: 4px 4px 0 #090909; }
-.crs-lesson.is-done .crs-lnum { background: #22c55e; color: #fff; }
-
-/* Ders okuma */
-.crs-lesson-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 30px; align-items: start; }
-.crs-reader { min-width: 0; }
-.crs-reader-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 14px; font: 700 .74rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; color: #444; }
-body.neo-app-active #view-egitimler #egitim-root h1.crs-reader-title { margin-bottom: 26px !important; font-size: clamp(1.6rem, 3.4vw, 2.5rem) !important; line-height: 1.12 !important; text-transform: none; letter-spacing: -.03em; }
-.crs-aside-course { display: block; margin-bottom: 12px; color: var(--crs-ink); font: 900 1rem 'Archivo Black', 'Archivo Black Fallback', sans-serif; text-decoration: none; }
-.crs-aside-course:hover { text-decoration: underline; }
-.crs-aside-buy { width: 100%; margin-top: 14px; white-space: normal; }
-.crs-lesson-end { height: 1px; }
-.crs-pager { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; margin-top: 30px; padding-top: 20px; border-top: 3px solid var(--crs-ink); }
-.crs-locked { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 36px 20px; border: 3px dashed var(--crs-ink); background: var(--crs-paper); text-align: center; }
-.crs-locked-icon { display: grid; place-items: center; width: 64px; height: 64px; border: 3px solid var(--crs-ink); background: var(--crs-yellow); font-size: 1.6rem; box-shadow: 4px 4px 0 #090909; }
-.crs-locked p { max-width: 520px; }
-.crs-upsell { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-top: 28px; padding: 18px; border: 3px solid var(--crs-ink); background: var(--crs-yellow); box-shadow: 6px 6px 0 #090909; }
-.crs-upsell p { margin: 4px 0 0; }
-
-/* Okuma metni */
-.crs-prose { font-size: 1.04rem; line-height: 1.8; color: #1f1f1f; overflow-wrap: break-word; }
-.crs-prose > :first-child { margin-top: 0; }
-.crs-prose p { margin: 0 0 16px; color: #1f1f1f !important; }
-body.neo-app-active #view-egitimler .crs-prose h2, .crs-prose h2 { margin: 34px 0 12px; font-size: 1.5rem; line-height: 1.25; }
-body.neo-app-active #view-egitimler .crs-prose h3, .crs-prose h3 { margin: 26px 0 10px; font-size: 1.18rem; line-height: 1.3; }
-.crs-prose ul, .crs-prose ol { margin: 0 0 20px 24px; display: grid; gap: 8px; }
-.crs-prose blockquote { margin: 22px 0; padding: 14px 18px; border: 2px solid #090909; border-left-width: 8px; background: #fff8b8; }
-.crs-prose img { max-width: 100%; height: auto; border: 3px solid #090909; display: block; }
-.crs-prose figure { margin: 24px 0; }
-.crs-prose figcaption { margin-top: 8px; font: 700 .78rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; color: #555; }
-.crs-prose table { width: 100%; margin: 22px 0; border-collapse: collapse; display: block; overflow-x: auto; }
-.crs-prose th, .crs-prose td { padding: 10px 12px; border: 2px solid #090909; text-align: left; }
-.crs-prose th { background: #ffde17; }
-.crs-prose a { color: #1769e8; text-decoration: underline; font-weight: 700; }
-.crs-prose hr { margin: 28px 0; border: 0; border-top: 3px dashed #090909; }
-.crs-prose code { padding: 1px 5px; border: 1px solid #090909; background: #f3f3f3; font-family: 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; font-size: .9em; }
-
 /* Satın alma penceresi */
 .crs-buy-modal { position: relative; max-width: 520px; width: calc(100% - 32px); margin: 16px; }
 body.neo-app-active .crs-buy-modal.glass-card, .crs-buy-modal.glass-card { background: #fff !important; color: #090909; border: 3px solid #090909 !important; border-radius: 0 !important; box-shadow: 9px 9px 0 #090909 !important; }
@@ -4919,52 +4817,16 @@ body.neo-app-active .crs-buy-modal.glass-card, .crs-buy-modal.glass-card { backg
 .crs-buy-done > i { font-size: 2.2rem; color: #15803d; }
 .crs-buy-done p { margin: 0; color: #222 !important; }
 
-@media (max-width: 960px) {
-  /* minmax(0, 1fr): uzun baslik/dugme metni sutunu ekrandan genis itmesin. */
-  .crs-hero.glass-card, .crs-detail-grid, .crs-lesson-layout { grid-template-columns: minmax(0, 1fr); }
-  .crs-lessons-box { position: static; }
-}
-@media (max-width: 560px) {
-  .crs-card-foot { flex-direction: column; align-items: stretch; }
-  .crs-card-cta { justify-content: center; }
-  .crs-pager .btn { flex: 1 1 100%; justify-content: center; }
-  .crs-upsell .btn { width: 100%; }
-  .crs-prose { font-size: 1rem; }
-}
-
-/* Admin > Eğitimler */
-.course-admin-thumb { width: 64px; height: 36px; object-fit: cover; border: 2px solid #090909; display: block; }
-.course-admin-thumb.is-empty { display: grid; place-items: center; background: #21a9f6; color: #fff; }
+/* Admin form ve araç çubuğu */
 .course-admin-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .course-admin-actions .btn { min-height: 34px !important; padding: 4px 9px !important; }
 .course-admin-note { margin-top: 14px; font-size: .82rem; color: #444 !important; }
 .course-hint { color: #555; font-size: .78rem; font-weight: 500; }
-.course-editor-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 24px; align-items: start; }
 .course-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
 .course-form-grid .span-2 { grid-column: 1 / -1; }
-.course-toolbar { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
-.course-tool { min-width: 34px; height: 32px; padding: 0 8px; border: 2px solid #090909; background: #fff; color: #090909; font: 700 .8rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; cursor: pointer; }
-.course-tool:hover { background: #ffde17; }
-.course-content-editor { font-family: 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace !important; font-size: .86rem !important; line-height: 1.55; resize: vertical; }
-.course-lesson-admin-list { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; }
-.course-lesson-row { display: flex; align-items: center; gap: 10px; padding: 10px; border: 2px solid #090909; background: #fff; }
-.course-lesson-num { display: grid; place-items: center; flex: 0 0 30px; height: 30px; border: 2px solid #090909; background: #ffde17; font-weight: 900; }
-.course-lesson-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.course-lesson-info strong { overflow-wrap: anywhere; }
-.course-lesson-info small { color: #555; font-size: .74rem; overflow-wrap: anywhere; }
-.course-lesson-editor { margin-top: 16px; padding: 16px; border: 3px dashed #090909; background: #fffef8; }
-.course-lesson-editor h4 { margin: 0 0 12px; }
-.course-lesson-preview { margin-top: 10px; max-height: 520px; overflow-y: auto; padding: 16px; border: 2px solid #090909; background: #fff; }
 .course-stats-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 20px; padding: 14px 16px !important; }
 .course-stats-toolbar label { font: 800 .74rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; }
 .course-kpi-sub { margin-top: 4px; font-size: .72rem; color: inherit; opacity: .85; font-weight: 600; }
-.course-table-title { margin: 0; padding: 16px 18px 12px; font-size: 1.05rem; }
-.course-table-title small { font-family: 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; font-size: .7rem; color: #555; }
-.course-funnel { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
-.course-funnel-step { display: flex; flex-direction: column; gap: 4px; padding: 12px; border: 2px solid #090909; background: #fffef8; }
-.course-funnel-step strong { font: 900 1.5rem 'Archivo Black', 'Archivo Black Fallback', sans-serif; }
-.course-funnel-step span { font: 700 .7rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; color: #444; }
-.course-link-btn { padding: 0; border: 0; background: none; color: #1769e8; font: inherit; font-weight: 800; text-align: left; text-decoration: underline; cursor: pointer; }
 
 /* Günlük çubuk grafik: tek seri, tek renk, tek eksen; değer üzerine gelince. */
 .crs-chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 20px; }
@@ -4979,96 +4841,7 @@ body.neo-app-active .crs-buy-modal.glass-card, .crs-buy-modal.glass-card { backg
 .crs-bar:first-child:hover::after { left: 0; transform: none; }
 .crs-bar:last-child:hover::after { left: auto; right: 0; transform: none; }
 .crs-chart-axis { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font: 600 .68rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; color: #555; }
-@media (max-width: 1100px) { .course-editor-grid { grid-template-columns: 1fr; } }
-@media (max-width: 600px) { .course-form-grid { grid-template-columns: 1fr; } .course-lesson-row { flex-wrap: wrap; } }
-
-/* Eğitim içerik bileşenleri (scripts/course-content/YAZIM-KURALLARI.md).
-   Neo dil: siyah çerçeve, sert gölge; her bileşenin kendi rengi var. */
-.crs-price-row { display: flex; flex-direction: column; gap: 2px; }
-.crs-price-sub, .crs-try-note { font: 700 .78rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; color: #555; }
-.crs-card-foot .crs-price-sub { display: block; }
-.crs-prose mark { padding: 0 4px; background: #ffde17; color: #090909; box-shadow: 2px 2px 0 #090909; }
-.crs-prose .crs-callout, .crs-prose .crs-keypoints, .crs-prose .crs-task, .crs-prose .crs-template {
-  position: relative; margin: 26px 0; padding: 16px 18px 14px; border: 3px solid #090909; box-shadow: 6px 6px 0 #090909; background: #fff;
-}
-.crs-prose .crs-callout > :last-child, .crs-prose .crs-keypoints > :last-child, .crs-prose .crs-task > :last-child, .crs-prose .crs-template > :last-child { margin-bottom: 0; }
-.crs-prose .crs-callout-title { display: block; margin-bottom: 6px; font: 900 .98rem 'Archivo Black', 'Archivo Black Fallback', sans-serif; letter-spacing: -.01em; }
-.crs-prose .crs-callout.tip { background: #fff8c5; }
-.crs-prose .crs-callout.warn { background: #ffe7c2; }
-.crs-prose .crs-callout.danger { background: #ffd9d9; border-color: #b91c1c; box-shadow: 6px 6px 0 #b91c1c; }
-.crs-prose .crs-callout.info { background: #dff1ff; }
-.crs-prose .crs-callout.success { background: #d9f8e2; }
-.crs-prose .crs-callout p { margin: 0 0 8px; }
-
-/* Renkli tablolar: başlık rengi varyanta göre, satırlar zebra. */
-.crs-prose table.crs-table { display: table; width: 100%; margin: 24px 0; border: 3px solid #090909; border-collapse: collapse; box-shadow: 6px 6px 0 #090909; font-size: .95rem; }
-.crs-prose table.crs-table th { padding: 11px 12px; border: 2px solid #090909; color: #fff; font: 800 .8rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; letter-spacing: .03em; text-align: left; }
-.crs-prose table.crs-table td { padding: 10px 12px; border: 1px solid #090909; vertical-align: top; line-height: 1.55; }
-.crs-prose table.crs-table tbody tr:nth-child(even) td { background: #fafaf5; }
-.crs-prose table.crs-table.blue th { background: #1769e8; }
-.crs-prose table.crs-table.red th { background: #ed2d2d; }
-.crs-prose table.crs-table.green th { background: #16a34a; }
-.crs-prose table.crs-table.purple th { background: #7c3aed; }
-.crs-prose table.crs-table.yellow th { background: #ffde17; color: #090909; }
-.crs-prose table.crs-table:not(.blue):not(.red):not(.green):not(.purple):not(.yellow) th { background: #090909; }
-.crs-prose .crs-badge { display: inline-block; padding: 1px 7px; border: 2px solid #090909; font: 800 .7rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; white-space: nowrap; }
-.crs-prose .crs-badge.good { background: #9af0b4; }
-.crs-prose .crs-badge.bad { background: #ffb3b3; }
-.crs-prose .crs-badge.mid { background: #ffde17; }
-.crs-prose .crs-badge.new { background: #9edcff; }
-
-/* Adım kartları */
-.crs-prose ol.crs-steps { list-style: none; margin: 22px 0; padding: 0; display: grid; gap: 12px; counter-reset: crs-step; }
-.crs-prose ol.crs-steps > li { position: relative; padding: 14px 16px 14px 62px; border: 2px solid #090909; background: #fff; box-shadow: 4px 4px 0 #090909; counter-increment: crs-step; }
-.crs-prose ol.crs-steps > li::before { content: counter(crs-step); position: absolute; left: 12px; top: 12px; display: grid; place-items: center; width: 36px; height: 36px; border: 2px solid #090909; background: #ed2d2d; color: #fff; font: 900 1rem 'Archivo Black', 'Archivo Black Fallback', sans-serif; }
-
-/* Kontrol listesi */
-.crs-prose ul.crs-checklist { list-style: none; margin: 22px 0; padding: 14px 16px; border: 2px dashed #090909; background: #fffef8; display: grid; gap: 10px; }
-.crs-prose ul.crs-checklist > li { position: relative; padding-left: 34px; }
-.crs-prose ul.crs-checklist > li::before { content: '✓'; position: absolute; left: 0; top: 1px; display: grid; place-items: center; width: 22px; height: 22px; border: 2px solid #090909; background: #9af0b4; font-weight: 900; font-size: .8rem; }
-
-/* Karşılaştırma */
-.crs-prose .crs-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 24px 0; }
-.crs-prose .crs-compare-col { padding: 14px 16px; border: 3px solid #090909; box-shadow: 5px 5px 0 #090909; }
-.crs-prose .crs-compare-col.bad { background: #ffe1e1; }
-.crs-prose .crs-compare-col.good { background: #ddf9e5; }
-.crs-prose .crs-compare-title { display: block; margin-bottom: 8px; font: 900 1rem 'Archivo Black', 'Archivo Black Fallback', sans-serif; }
-.crs-prose .crs-compare-col ul { margin: 0 0 0 20px; }
-
-/* Şablon kutusu */
-.crs-prose .crs-template { background: #f4f1ff; border-style: dashed; }
-.crs-prose .crs-template-label { position: absolute; top: -13px; left: 14px; padding: 2px 8px; border: 2px solid #090909; background: #7c3aed; color: #fff; font: 800 .7rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; }
-.crs-prose .crs-template p { font-family: 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; font-size: .92rem; }
-
-/* Ders sonu */
-.crs-prose .crs-keypoints { background: #e8f3ff; margin-top: 36px; }
-.crs-prose .crs-keypoints ul { margin: 0 0 0 20px; }
-.crs-prose .crs-task { background: #090909; color: #fff; box-shadow: 6px 6px 0 #ed2d2d; }
-.crs-prose .crs-task p, .crs-prose .crs-task li { color: #fff !important; }
-.crs-prose .crs-task .crs-callout-title { color: #ffde17; }
-
-/* Ders infografiği */
-.crs-prose figure.crs-figure { margin: 26px 0; }
-.crs-prose figure.crs-figure img { width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; box-shadow: 6px 6px 0 #090909; background: #fffef8; }
-.crs-hero-cover img, .crs-card-cover img { aspect-ratio: 16 / 9; }
-
-@media (max-width: 640px) {
-  .crs-prose .crs-compare { grid-template-columns: 1fr; }
-  .crs-prose table.crs-table { display: block; overflow-x: auto; }
-  .crs-prose ol.crs-steps > li { padding-left: 56px; }
-}
-
-/* Admin: Ingilizce surum bolumu (egitim ve ders formu). */
-.course-en-block { margin: 6px 0 16px; padding: 12px 14px; border: 2px dashed #090909; background: #f3f8ff; }
-.course-en-block > summary { cursor: pointer; font-weight: 800; }
-.course-en-block[open] > summary { margin-bottom: 12px; }
-
-/* Gorev kutusu koyu zeminli: genel neo p rengi (#222) burada okunmaz kalir. */
-body.neo-app-active #view-egitimler #egitim-root .crs-prose .crs-task p,
-body.neo-app-active #view-egitimler #egitim-root .crs-prose .crs-task li { color: #fff !important; }
-body.neo-app-active #view-egitimler #egitim-root .crs-prose .crs-task strong { color: #ffde17; }
-
-html[lang="en"] #view-egitimler .main-content::before { content: '08 / COURSES'; }
+@media (max-width: 600px) { .course-form-grid { grid-template-columns: 1fr; } }
 
 /* ========================================================================== */
 /* Admin > Ziyaretçi Ayak İzi                                                 */
@@ -5129,7 +4902,7 @@ html[lang="en"] #view-egitimler .main-content::before { content: '08 / COURSES';
 
 /* ========================================================================== */
 /* DİJİTAL ÜRÜNLER (/dijital-urunler) — katalog, satın alma, siparişler,     */
-/* Gmail Checker. Eğitimlerle aynı neo dil; pencereler .crs-buy-* sınıflarını */
+/* Gmail Checker. Neo iç sayfa dili; pencereler ortak .crs-buy-* sınıflarını   */
 /* ortak kullanır.                                                            */
 /* ========================================================================== */
 #view-dijital-urunler .main-content::before { content: '09 / DİJİTAL ÜRÜNLER'; }

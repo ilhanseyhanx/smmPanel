@@ -38,14 +38,14 @@ const CLIENT_KINDS = new Set([
   'service_search', 'service_view', 'click', 'outbound_click',
   'auth_view', 'register_submit', 'login_submit',
   'order_click', 'order_submit', 'topup_start', 'coupon_submit', 'ticket_submit',
-  'course_buy_open', 'course_checkout',
+  'digital_buy_open',
   'api_error', 'js_error', 'rage_click',
   'lang_change', 'consent'
 ]);
 // Sunucunun yazdigi (istemci engellense de kaybolmayan) basari adimlari.
 const SERVER_KINDS = new Set([
   'register_success', 'login_success', 'topup_success', 'order_created',
-  'course_purchase', 'ticket_created', 'coupon_redeemed'
+  'digital_purchase', 'ticket_created', 'coupon_redeemed'
 ]);
 const ERROR_KINDS = new Set(['api_error', 'js_error', 'rage_click', 'not_found']);
 
@@ -405,6 +405,8 @@ async function serverEvent({ req = null, sessionId = null, userId = null, kind, 
        VALUES (?, ?, ?, ?, ?, ?, ?, 'server', ?)`,
       [sid, userId, kind, text(path, 200), text(label, 160), valueKurus == null ? null : Math.trunc(Number(valueKurus)) || 0, metaText, Date.now()]
     );
+    // did_course sutunu 26 Eki 2026'dan beri DIJITAL URUN alimini tutar
+    // (egitimler kaldirildi; hic egitim satisi olmamisti, sutun bostu).
     const v = Math.max(0, Math.trunc(Number(valueKurus) || 0));
     await dbAsync.run(
       `UPDATE track_sessions SET
@@ -421,8 +423,8 @@ async function serverEvent({ req = null, sessionId = null, userId = null, kind, 
        WHERE id = ?`,
       [userId,
         kind === 'register_success' ? 1 : 0, kind === 'login_success' ? 1 : 0, kind === 'topup_success' ? 1 : 0,
-        kind === 'order_created' ? 1 : 0, kind === 'course_purchase' ? 1 : 0,
-        kind === 'topup_success' ? v : 0, kind === 'order_created' || kind === 'course_purchase' ? v : 0, sid]
+        kind === 'order_created' ? 1 : 0, kind === 'digital_purchase' ? 1 : 0,
+        kind === 'topup_success' ? v : 0, kind === 'order_created' || kind === 'digital_purchase' ? v : 0, sid]
     );
     if (userId && session.visitor_id && (kind === 'register_success' || kind === 'login_success')) {
       // Onayli tarayicinin kayit/giris oncesi gezinmeleri de kullaniciya baglanir.

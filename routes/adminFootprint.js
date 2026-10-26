@@ -323,7 +323,7 @@ router.get('/users', async (req, res, next) => {
                 AND p.method NOT LIKE 'Bonus%' AND p.method NOT LIKE 'Kupon%') deposit_kurus,
              (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) orders,
              (SELECT COALESCE(SUM(charge_kurus - refunded_kurus), 0) FROM orders o WHERE o.user_id = u.id) spent_kurus,
-             (SELECT COUNT(*) FROM course_purchases c WHERE c.user_id = u.id) courses
+             (SELECT COUNT(*) FROM digital_orders c WHERE c.user_id = u.id AND c.status IN ('completed', 'processing', 'refunded')) courses
       FROM users u LEFT JOIN user_acquisition a ON a.user_id = u.id
       WHERE ${clause} ORDER BY u.created_at DESC LIMIT ? OFFSET ?`, [...params, limit, (page - 1) * limit]);
     // Kanal bazinda kazanim ozeti (secili donemde kayit olanlar).
@@ -373,7 +373,7 @@ router.get('/users/:id', async (req, res, next) => {
                 AND method NOT LIKE 'Bonus%' AND method NOT LIKE 'Kupon%') deposit_kurus,
              (SELECT COUNT(*) FROM orders WHERE user_id = ?) orders,
              (SELECT COALESCE(SUM(charge_kurus - refunded_kurus), 0) FROM orders WHERE user_id = ?) spent_kurus,
-             (SELECT COUNT(*) FROM course_purchases WHERE user_id = ?) courses`, [id, id, id, id]);
+             (SELECT COUNT(*) FROM digital_orders WHERE user_id = ? AND status IN ('completed', 'processing', 'refunded')) courses`, [id, id, id, id]);
     res.json({
       user: { ...user, balance: fromKurus(user.balance_kurus) },
       acquisition, totals, channels, top_pages: topPages,

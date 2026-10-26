@@ -718,6 +718,8 @@ async function runMigrations() {
   await dbAsync.run('CREATE INDEX IF NOT EXISTS idx_site_visits_source ON site_visits(source_type, visit_date)');
 
   // --- EGITIMLER (4 Eki 2026) ---------------------------------------------
+  // Bolum 26 Eki 2026'da kaldirildi (hic satis olmadi); tablolar ve kayitlar
+  // arsiv olarak kalir, uygulama artik okumaz/yazmaz.
   // Kendi urunumuz: yazi + gorselden olusan egitim serileri. Ilk N ders
   // (free_lesson_count) herkese acik ve indekslenir; kalanlar satin alana
   // acilir. Satin alma bakiyeden yapilir; bakiye yetmezse eksik tutar

@@ -250,26 +250,20 @@ function productImageUrl(config) {
  * Bakiye yuklemesi icin gecici bir urun olusturur.
  * @returns {{productId: string, url: string}} musterinin yonlendirilecegi adres
  */
-async function createTopUpProduct({ amountKurus, merchantOid, courseTitle = '' }) {
+async function createTopUpProduct({ amountKurus, merchantOid }) {
   const config = await getConfig();
   if (!config.pat) throw configError('Shopier ödemesi henüz yapılandırılmamış. Admin panelinden Kişisel Erişim Anahtarını ekleyin.');
   if (!config.webhookToken) throw configError('Shopier webhook kaydı yapılmadan ödeme alınamaz (ödeme onayı gelmez, bakiye yüklenmez).');
   if (!config.baseUrl) throw configError('PUBLIC_BASE_URL ayarlanmadan Shopier ödemesi alınamaz.');
 
   const amount = (amountKurus / 100).toFixed(2);
-  // Egitim icin eksik tutar odemesinde musteri Shopier sayfasinda neyi
-  // odedigini gorur; teknik olarak yine bakiye yuklemesidir (tutar bakiyeye
-  // yazilir, egitim bakiyeden alinir).
-  const egitim = String(courseTitle || '').replace(/\s+/g, ' ').trim().slice(0, 80);
   const product = await request('post', '/products', {
     body: {
-      title: egitim ? `Eğitim: ${egitim} (₺${amount})` : `Bakiye Yükleme ₺${amount}`,
+      title: `Bakiye Yükleme ₺${amount}`,
       type: 'digital',
       // Bu metin Shopier'de HERKESE ACIK urun sayfasinda gorunur; kullanici
       // adi buraya yazilmaz. Referans opak bir jetondur, destek icin kalir.
-      description: egitim
-        ? `Jet SMM Panel eğitim ödemesi. Ödeme onaylandığında tutar bakiyenize yüklenir ve "${egitim}" eğitimi hesabınızda otomatik açılır. Referans: ${merchantOid}`
-        : `Jet SMM Panel bakiye yüklemesi. Ödeme onaylandığında bakiyeniz otomatik yüklenir. Referans: ${merchantOid}`,
+      description: `Jet SMM Panel bakiye yüklemesi. Ödeme onaylandığında bakiyeniz otomatik yüklenir. Referans: ${merchantOid}`,
       media: [{ type: 'image', url: productImageUrl(config), placement: 1 }],
       priceData: { currency: 'TRY', price: amount },
       // Dijital urun; kargo yok ama alan zorunlu.

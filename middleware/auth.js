@@ -80,7 +80,7 @@ async function authenticateToken(req, res, next) {
 
 // Oturum varsa kullaniciyi dondurur, yoksa (veya gecersizse) null. Herkese
 // acik sayfalarda "giris yapan kisiye farkli goster" icin kullanilir
-// (or. satin alinmis egitim dersleri); istegi asla reddetmez, cerezi silmez.
+// (or. ayak izi kaydi); istegi asla reddetmez, cerezi silmez.
 async function optionalUser(req) {
   const token = getRequestToken(req);
   if (!token) return null;

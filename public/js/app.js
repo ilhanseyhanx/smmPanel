@@ -387,11 +387,9 @@ class SmmApp {
         'Fast social media services for Instagram, TikTok, YouTube, and other platforms.'
       )
     };
-    if (!sunucuBasligi) {
-      document.querySelector('meta[name="description"]')?.setAttribute('content', localizedMeta.description);
-      document.querySelector('meta[property="og:title"]')?.setAttribute('content', localizedMeta['og:title']);
-      document.querySelector('meta[property="og:description"]')?.setAttribute('content', localizedMeta['og:description']);
-    }
+    document.querySelector('meta[name="description"]')?.setAttribute('content', localizedMeta.description);
+    document.querySelector('meta[property="og:title"]')?.setAttribute('content', localizedMeta['og:title']);
+    document.querySelector('meta[property="og:description"]')?.setAttribute('content', localizedMeta['og:description']);
     document.querySelectorAll('[data-i18n]').forEach(element => {
       element.textContent = this.t(element.dataset.i18n);
     });

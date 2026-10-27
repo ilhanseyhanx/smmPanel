@@ -522,14 +522,16 @@ Object.assign(SmmApp.prototype, {
         panel.innerHTML = `<div class="glass-card dg-empty"><i class="fa-solid fa-receipt" aria-hidden="true"></i><p>${this.escapeHtml(this.dgText('Henüz dijital ürün siparişin yok.', 'You have no digital product orders yet.'))}</p></div>`;
         return;
       }
+      // data-label: telefonda tablo karta donunce her degerin basligi olur.
+      const label = (tr, en) => this.escapeHtml(this.dgText(tr, en));
       const rows = orders.map(o => `<tr>
-          <td>#D${Number(o.id)}</td>
-          <td><strong>${this.escapeHtml(o.product_name)}</strong>${o.status === 'failed' && o.failure_reason ? `<br><small class="dg-muted">${this.escapeHtml(o.failure_reason)}</small>` : ''}</td>
-          <td>${Number(o.quantity).toLocaleString('tr-TR')}</td>
-          <td>${this.dgMoney(o.charge)}${o.refunded > 0 ? `<br><small class="dg-muted">${this.escapeHtml(this.dgText('İade', 'Refund'))}: ${this.dgMoneyText(o.refunded)}</small>` : ''}</td>
-          <td>${this.dgStatus(o.status)}</td>
-          <td>${this.escapeHtml(this.dgDate(o.created_at))}</td>
-          <td>${['completed', 'refunded'].includes(o.status) && o.item_count > 0
+          <td class="dg-c-id" data-label="${label('Sipariş', 'Order')}">#D${Number(o.id)}</td>
+          <td class="dg-c-name"><strong>${this.escapeHtml(o.product_name)}</strong>${o.status === 'failed' && o.failure_reason ? `<br><small class="dg-muted">${this.escapeHtml(o.failure_reason)}</small>` : ''}</td>
+          <td class="dg-c-qty" data-label="${label('Adet', 'Qty')}">${Number(o.quantity).toLocaleString('tr-TR')}</td>
+          <td class="dg-c-amt" data-label="${label('Tutar', 'Amount')}">${this.dgMoney(o.charge)}${o.refunded > 0 ? `<br><small class="dg-muted">${this.escapeHtml(this.dgText('İade', 'Refund'))}: ${this.dgMoneyText(o.refunded)}</small>` : ''}</td>
+          <td class="dg-c-st" data-label="${label('Durum', 'Status')}">${this.dgStatus(o.status)}</td>
+          <td class="dg-c-date" data-label="${label('Tarih', 'Date')}">${this.escapeHtml(this.dgDate(o.created_at))}</td>
+          <td class="dg-c-act">${['completed', 'refunded'].includes(o.status) && o.item_count > 0
             ? `<button type="button" class="btn btn-primary btn-sm" data-dg-view="${Number(o.id)}"><i class="fa-solid fa-key"></i> ${this.escapeHtml(this.dgText('Bilgileri Gör', 'View Details'))}</button>`
             : (o.status === 'processing' ? `<small class="dg-muted">${this.escapeHtml(this.dgText('Birkaç dakika içinde hazır', 'Ready in a few minutes'))}</small>` : '—')}</td>
         </tr>`).join('');
@@ -539,7 +541,7 @@ Object.assign(SmmApp.prototype, {
           <span>${p.page} / ${p.pages}</span>
           <button type="button" class="btn btn-outline btn-sm" data-dg-page="${p.page + 1}"${p.page >= p.pages ? ' disabled' : ''}>›</button>
         </div>` : '';
-      panel.innerHTML = `<div class="glass-card dg-table-card"><div class="table-responsive"><table class="custom-table">
+      panel.innerHTML = `<div class="glass-card dg-table-card"><div class="table-responsive"><table class="custom-table dg-rtable dg-orders-table">
           <thead><tr><th>#</th><th>${this.escapeHtml(this.dgText('Ürün', 'Product'))}</th><th>${this.escapeHtml(this.dgText('Adet', 'Qty'))}</th><th>${this.escapeHtml(this.dgText('Tutar', 'Amount'))}</th><th>${this.escapeHtml(this.dgText('Durum', 'Status'))}</th><th>${this.escapeHtml(this.dgText('Tarih', 'Date'))}</th><th></th></tr></thead>
           <tbody>${rows}</tbody></table></div>${pager}</div>`;
       // Hazirlanan siparis varsa liste kendini tazeler (sekme acik kaldikca).
@@ -682,16 +684,17 @@ Object.assign(SmmApp.prototype, {
       const data = await API.getDigitalChecks();
       const checks = data.checks || [];
       if (!checks.length) { box.innerHTML = ''; return; }
+      const label = (tr, en) => this.escapeHtml(this.dgText(tr, en));
       box.innerHTML = `<div class="glass-card dg-table-card">
-        <h3 class="dg-sub">${this.escapeHtml(this.dgText('Son sorguların', 'Your recent checks'))}</h3>
-        <div class="table-responsive"><table class="custom-table">
-          <thead><tr><th>${this.escapeHtml(this.dgText('Tarih', 'Date'))}</th><th>${this.escapeHtml(this.dgText('Adres', 'Addresses'))}</th><th>live</th><th>${this.escapeHtml(this.dgText('Tutar', 'Amount'))}</th><th></th></tr></thead>
+        <h3 class="dg-sub">${label('Son sorguların', 'Your recent checks')}</h3>
+        <div class="table-responsive"><table class="custom-table dg-rtable dg-checks-table">
+          <thead><tr><th>${label('Tarih', 'Date')}</th><th>${label('Adres', 'Addresses')}</th><th>live</th><th>${label('Tutar', 'Amount')}</th><th></th></tr></thead>
           <tbody>${checks.map(c => `<tr>
-            <td>${this.escapeHtml(this.dgDate(c.created_at))}</td>
-            <td>${Number(c.checked)} / ${Number(c.email_count)}</td>
-            <td>${c.summary ? Number(c.summary.live || 0) : '—'}</td>
-            <td>${c.status === 'failed' ? `<span class="badge badge-canceled">${this.escapeHtml(this.dgText('İade edildi', 'Refunded'))}</span>` : this.dgMoney(c.charge)}</td>
-            <td>${c.status === 'completed' ? `<button type="button" class="btn btn-outline btn-sm" data-dg-check-open="${Number(c.id)}">${this.escapeHtml(this.dgText('Sonuçlar', 'Results'))}</button>` : ''}</td>
+            <td class="dg-c-date" data-label="${label('Tarih', 'Date')}">${this.escapeHtml(this.dgDate(c.created_at))}</td>
+            <td class="dg-c-qty" data-label="${label('Adres', 'Addresses')}">${Number(c.checked)} / ${Number(c.email_count)}</td>
+            <td class="dg-c-live" data-label="live">${c.summary ? Number(c.summary.live || 0) : '—'}</td>
+            <td class="dg-c-amt" data-label="${label('Tutar', 'Amount')}">${c.status === 'failed' ? `<span class="badge badge-canceled">${label('İade edildi', 'Refunded')}</span>` : this.dgMoney(c.charge)}</td>
+            <td class="dg-c-act">${c.status === 'completed' ? `<button type="button" class="btn btn-outline btn-sm" data-dg-check-open="${Number(c.id)}">${this.escapeHtml(this.dgText('Sonuçlar', 'Results'))}</button>` : ''}</td>
           </tr>`).join('')}</tbody>
         </table></div></div>`;
     } catch {

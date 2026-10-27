@@ -4982,7 +4982,7 @@ body.neo-app-active #view-dijital-urunler .dg-card-title { display: -webkit-box;
 .dg-usage p { margin: 6px 0 0; font-size: .88rem; line-height: 1.5; white-space: pre-line; }
 
 /* Gmail Checker */
-.dg-checker { display: grid; gap: 20px; }
+.dg-checker { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
 body.neo-app-active #view-dijital-urunler .dg-checker-form h2 { margin: 0 0 8px; font-size: 1.4rem; }
 .dg-check-input { font-family: 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace !important; font-size: .86rem !important; resize: vertical; }
 .dg-check-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
@@ -4997,6 +4997,8 @@ body.neo-app-active #view-dijital-urunler .dg-checker-form h2 { margin: 0 0 8px;
 .dg-check-result .dg-chips { padding: 12px; }
 .dg-check-result.glass-card { padding: 0 !important; }
 .dg-check-table { max-height: 420px; overflow-y: auto; }
+#view-dijital-urunler .dg-check-table td { white-space: normal; }
+#view-dijital-urunler .dg-check-table td:last-child { width: 1%; white-space: nowrap; text-align: right; }
 
 /* Admin > Dijital Ürünler */
 .dga-modal { width: calc(100% - 32px); max-width: 760px; max-height: calc(100vh - 32px); overflow-y: auto; margin: 16px; }
@@ -5033,6 +5035,33 @@ body.neo-app-active #view-dijital-urunler .dg-checker-form h2 { margin: 0 0 8px;
   .dg-stats li { padding: 12px; column-gap: 10px; }
   .dg-stats li i { width: 38px; height: 38px; font-size: 1rem; }
   .dg-stats li strong { font-size: 1.25rem; }
+  .dg-stats li:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+/* Siparişlerim ve Gmail Checker geçmişi: dar ekranda her satır bir kart olur,
+   başlıklar data-label'dan gelir (yana kaydırmalı tablo yerine). */
+@media (max-width: 760px) {
+  #view-dijital-urunler .dg-rtable { min-width: 0; }
+  #view-dijital-urunler .dg-rtable thead { display: none; }
+  #view-dijital-urunler .dg-rtable, #view-dijital-urunler .dg-rtable tbody { display: block; width: 100%; }
+  #view-dijital-urunler .dg-rtable tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; padding: 16px; border-bottom: 2px solid #090909; background: #fff; }
+  #view-dijital-urunler .dg-rtable tr:last-child { border-bottom: 0; }
+  #view-dijital-urunler .dg-rtable td { display: block; min-width: 0; padding: 0; border: 0; background: transparent; white-space: normal; overflow-wrap: anywhere; }
+  #view-dijital-urunler .dg-rtable tr:hover td { background: transparent; }
+  #view-dijital-urunler .dg-rtable td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 3px; font: 700 .64rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; letter-spacing: .05em; text-transform: uppercase; color: #555; }
+  #view-dijital-urunler .dg-rtable .dg-c-name { grid-area: name; font-size: 1rem; }
+  #view-dijital-urunler .dg-rtable .dg-c-id { grid-area: id; }
+  #view-dijital-urunler .dg-rtable .dg-c-qty { grid-area: qty; }
+  #view-dijital-urunler .dg-rtable .dg-c-amt { grid-area: amt; }
+  #view-dijital-urunler .dg-rtable .dg-c-st { grid-area: st; }
+  #view-dijital-urunler .dg-rtable .dg-c-date { grid-area: date; }
+  #view-dijital-urunler .dg-rtable .dg-c-live { grid-area: live; }
+  #view-dijital-urunler .dg-rtable .dg-c-act { grid-area: act; align-self: end; }
+  #view-dijital-urunler .dg-rtable .dg-c-act .btn { width: 100%; justify-content: center; }
+  #view-dijital-urunler .dg-rtable td.dg-c-live::before { text-transform: none; }
+  #view-dijital-urunler .dg-orders-table tr { grid-template-areas: "name name" "qty amt" "st date" "id act"; }
+  #view-dijital-urunler .dg-checks-table tr { grid-template-areas: "date date" "qty live" "amt act"; }
+  #view-dijital-urunler .dg-sub { margin: 16px 16px 8px; }
 }
 
 /* Satın alma penceresi: masaüstünde iki sütun, mobilde alttan açılan panel. */

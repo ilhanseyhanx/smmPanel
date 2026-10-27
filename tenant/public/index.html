@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="/assets/storefront.css?v=20260920c">
+  <link rel="stylesheet" href="/assets/storefront.css?v=20261027a">
   <style>:root { --primary: %%PRIMARY%%; }</style>
 </head>
 <body>
@@ -27,6 +27,7 @@
         <a href="/" data-nav="home" data-auth="guest">Ana Sayfa</a>
         <a href="/services" data-nav="services">Servisler</a>
         <a href="/order" data-nav="order" data-auth="user">Yeni Sipariş</a>
+        <a href="/bakiye" data-nav="funds" data-auth="user">Bakiye Yükle</a>
         <a href="/orders" data-nav="orders" data-auth="user">Siparişlerim</a>
         <a href="/account" data-nav="account" data-auth="user">Hesabım</a>
       </nav>
@@ -128,6 +129,26 @@
       </div>
     </section>
 
+    <!-- BAKIYE YUKLE -->
+    <section class="sf-view" data-view="funds" hidden>
+      <div class="sf-page-head"><h1>Bakiye Yükle</h1></div>
+      <div class="sf-funds-grid">
+        <div class="sf-card">
+          <div class="sf-method-tabs" id="sf-method-tabs" role="tablist" aria-label="Ödeme yöntemi"></div>
+          <div id="sf-method-body"><p class="sf-muted">Yükleniyor…</p></div>
+        </div>
+        <aside class="sf-card">
+          <h3 class="sf-card-title">Son yüklemelerin</h3>
+          <div id="sf-payments" class="sf-payments"><p class="sf-muted">Yükleniyor…</p></div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- YASAL SAYFA -->
+    <section class="sf-view" data-view="page" hidden>
+      <article class="sf-card sf-legal" id="sf-legal"><p class="sf-muted">Yükleniyor…</p></article>
+    </section>
+
     <!-- HESABIM -->
     <section class="sf-view" data-view="account" hidden>
       <div class="sf-page-head"><h1>Hesabım</h1></div>
@@ -135,7 +156,7 @@
         <div class="sf-card">
           <h3>Bakiye</h3>
           <p class="sf-big" id="sf-account-balance">₺0,00</p>
-          <p class="sf-muted">Bakiye yüklemek için site yöneticisiyle iletişime geçin.</p>
+          <a href="/bakiye" data-nav="funds" class="sf-btn sf-btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Bakiye Yükle</a>
           <p class="sf-muted" id="sf-contact"></p>
         </div>
         <div class="sf-card">
@@ -150,10 +171,13 @@
   </main>
 
   <footer class="sf-footer">
-    <div class="sf-container">© <span id="sf-year"></span> %%SITE_NAME%%</div>
+    <div class="sf-container sf-footer-inner">
+      <span>© <span id="sf-year"></span> %%SITE_NAME%%</span>
+      <nav class="sf-footer-links" id="sf-footer-links" aria-label="Yasal bilgiler"></nav>
+    </div>
   </footer>
 
   <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
-  <script src="/assets/storefront.js?v=20260920c" defer></script>
+  <script src="/assets/storefront.js?v=20261027a" defer></script>
 </body>
 </html>

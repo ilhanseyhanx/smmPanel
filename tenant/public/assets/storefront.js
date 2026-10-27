@@ -3,9 +3,14 @@
 (function () {
   'use strict';
 
-  const state = { site: null, customer: null, categories: [], services: [], servicesLoaded: false };
-  const USER_VIEWS = new Set(['order', 'orders', 'account']);
-  const ROUTES = { '/': 'home', '/services': 'services', '/order': 'order', '/orders': 'orders', '/account': 'account' };
+  const state = { site: null, customer: null, categories: [], services: [], servicesLoaded: false, methods: [], method: null, payTimer: null };
+  const USER_VIEWS = new Set(['order', 'orders', 'account', 'funds']);
+  const ROUTES = { '/': 'home', '/services': 'services', '/order': 'order', '/orders': 'orders', '/account': 'account', '/bakiye': 'funds' };
+
+  // Yasal sayfalar /sayfa/<slug> adresinde acilir.
+  function routeOf(path) {
+    return path.startsWith('/sayfa/') ? 'page' : (ROUTES[path] || 'home');
+  }
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -288,6 +293,230 @@
     }
   }
 
+  // ------------------------------------------------------------- bakiye yukle
+  // Para bayinin kendi hesabina gider: havale bildirimi bayi onayiyla,
+  // kart (PayTR) ve kripto (NOWPayments) saglayici onayiyla bakiyeye yazilir.
+  const PAY_STATUS = {
+    pending: ['Bekliyor', 'pending'],
+    completed: ['Yüklendi', 'completed'],
+    failed: ['Başarısız', 'canceled'],
+    rejected: ['Reddedildi', 'canceled']
+  };
+  const METHOD_ICON = { bank: 'fa-building-columns', paytr: 'fa-credit-card', nowpayments: 'fa-bitcoin-sign' };
+
+  async function loadFunds() {
+    const [methods, history] = await Promise.all([api('/payments/methods'), api('/payments/history')]);
+    state.methods = methods.methods;
+    if (!state.methods.some(m => m.method === state.method)) state.method = state.methods[0]?.method || null;
+    renderMethodTabs();
+    renderMethod();
+    renderPayments(history.payments);
+    watchReturn();
+  }
+
+  function renderMethodTabs() {
+    const tabs = $('#sf-method-tabs');
+    tabs.hidden = state.methods.length < 2;
+    tabs.innerHTML = state.methods.map(m => `<button type="button" role="tab" aria-selected="${m.method === state.method}" class="${m.method === state.method ? 'active' : ''}" data-pay-method="${m.method}"><i class="fa-solid ${METHOD_ICON[m.method] || 'fa-wallet'}" aria-hidden="true"></i> ${escapeHtml(m.label)}</button>`).join('');
+  }
+
+  function amountField(m) {
+    return `<label>Tutar (₺) <small>En az ${money(m.min)}, en fazla ${money(m.max)}</small><input name="amount" type="number" inputmode="decimal" min="${m.min}" max="${m.max}" step="0.01" required></label>`;
+  }
+
+  function renderMethod() {
+    const box = $('#sf-method-body');
+    const m = state.methods.find(x => x.method === state.method);
+    if (!m) {
+      const contact = [state.site?.settings?.support_email, state.site?.settings?.telegram].filter(Boolean).map(escapeHtml).join(' · ');
+      box.innerHTML = `<div class="sf-empty"><i class="fa-solid fa-wallet" aria-hidden="true"></i><p>Bu sitede şu anda çevrim içi ödeme yöntemi yok.</p>${contact ? `<p class="sf-muted">Bakiye yüklemek için iletişime geç: ${contact}</p>` : ''}</div>`;
+      return;
+    }
+    if (m.method === 'bank') {
+      box.innerHTML = `
+        <div class="sf-accounts">
+          <h3>Hesap bilgileri</h3>
+          <div class="sf-accounts-text">${escapeHtml(m.accounts)}</div>
+          ${m.instructions ? `<p class="sf-muted">${escapeHtml(m.instructions)}</p>` : ''}
+        </div>
+        <form class="sf-form" id="sf-pay-form" data-method="bank" novalidate>
+          <p class="sf-muted sf-step">Parayı yukarıdaki hesaba gönderdikten sonra bu formu doldur. Onaylanınca bakiyene eklenir.</p>
+          ${amountField(m)}
+          <label>Gönderdiğin hesap<input name="bank_name" maxlength="80" placeholder="Örn: Ziraat Bankası, Papara" required></label>
+          <label>Gönderen adı soyadı<input name="sender_name" maxlength="120" autocomplete="name" required></label>
+          <label>Not <small>(isteğe bağlı)</small><input name="note" maxlength="300"></label>
+          <p class="sf-form-error" role="alert"></p>
+          <button type="submit" class="sf-btn sf-btn-primary sf-btn-block">Ödeme Bildirimi Gönder</button>
+        </form>`;
+    } else if (m.method === 'paytr') {
+      box.innerHTML = `
+        <form class="sf-form" id="sf-pay-form" data-method="paytr" novalidate>
+          <p class="sf-muted sf-step">Güvenli kart ödeme sayfasına yönlendirileceksin. Ödeme onaylanınca bakiyen otomatik yüklenir.</p>
+          ${amountField(m)}
+          <p class="sf-form-error" role="alert"></p>
+          <button type="submit" class="sf-btn sf-btn-primary sf-btn-block"><i class="fa-solid fa-lock" aria-hidden="true"></i> Kartla Öde</button>
+        </form>`;
+    } else if (m.method === 'nowpayments') {
+      const coins = (m.coins || []).map(c => `<option value="${escapeHtml(c.code)}">${escapeHtml(c.label)} · ${escapeHtml(c.network)}${c.recommended ? ' (önerilen)' : ''}</option>`).join('');
+      box.innerHTML = `
+        <form class="sf-form" id="sf-pay-form" data-method="nowpayments" novalidate>
+          <p class="sf-muted sf-step">Seçtiğin coin için ödeme adresi oluşturulur. Ödeme ağda onaylanınca bakiyen otomatik yüklenir.</p>
+          ${amountField(m)}
+          <label>Coin<select name="pay_currency">${coins}</select></label>
+          <p class="sf-form-error" role="alert"></p>
+          <button type="submit" class="sf-btn sf-btn-primary sf-btn-block">Ödeme Adresi Oluştur</button>
+        </form>
+        <div id="sf-crypto-box"></div>`;
+    }
+  }
+
+  async function submitPayment(event) {
+    event.preventDefault();
+    const form = event.target;
+    const method = form.dataset.method;
+    const errorEl = $('.sf-form-error', form);
+    const button = $('button[type=submit]', form);
+    errorEl.textContent = '';
+    const body = Object.fromEntries(new FormData(form).entries());
+    body.amount = Number(String(body.amount || '').replace(',', '.'));
+    if (!(body.amount > 0)) { errorEl.textContent = 'Yüklemek istediğin tutarı yaz.'; return; }
+    button.disabled = true;
+    try {
+      if (method === 'bank') {
+        const data = await api('/payments/bank', { method: 'POST', body: JSON.stringify(body) });
+        toast(data.message);
+        form.reset();
+        loadPaymentHistory();
+      } else if (method === 'paytr') {
+        const data = await api('/payments/paytr/token', { method: 'POST', body: JSON.stringify(body) });
+        location.href = data.payment_url;
+        return;
+      } else if (method === 'nowpayments') {
+        const data = await api('/payments/nowpayments/create', { method: 'POST', body: JSON.stringify(body) });
+        showCryptoBox(data);
+        loadPaymentHistory();
+      }
+    } catch (err) {
+      errorEl.textContent = err.message;
+      if (err.status === 401) { setCustomer(null); navigate('/'); }
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function showCryptoBox(data) {
+    $('#sf-crypto-box').innerHTML = `<div class="sf-crypto">
+      <img src="${escapeHtml(data.qr)}" alt="Ödeme adresinin QR kodu" width="168" height="168">
+      <div class="sf-crypto-info">
+        <p>Tam olarak <strong>${escapeHtml(String(data.pay_amount))} ${escapeHtml(String(data.pay_currency).toUpperCase())}</strong> gönder.<br><span class="sf-muted">${escapeHtml(data.coin)} · ${money(data.amount)}</span></p>
+        <div class="sf-copy"><code id="sf-crypto-address">${escapeHtml(data.pay_address)}</code><button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-copy="#sf-crypto-address">Kopyala</button></div>
+        <p class="sf-muted" id="sf-crypto-status">Ödeme bekleniyor. Bu sayfa durumu kendisi kontrol eder.</p>
+      </div>
+    </div>`;
+    pollPayment(data.merchant_oid, 120, 15000);
+  }
+
+  function pollPayment(oid, tries, interval) {
+    clearTimeout(state.payTimer);
+    const tick = async left => {
+      if (left <= 0 || location.pathname !== '/bakiye') return;
+      try {
+        const data = await api('/payments/status/' + encodeURIComponent(oid));
+        const p = data.payment;
+        if (p.status !== 'pending') {
+          if (state.customer) { state.customer.balance = data.balance; setCustomer(state.customer); }
+          const message = p.status === 'completed'
+            ? `${money(p.amount)} bakiyene eklendi.`
+            : `Ödeme tamamlanmadı${p.failure_reason ? ': ' + p.failure_reason : '.'}`;
+          toast(message, p.status === 'completed' ? '' : 'error');
+          const status = $('#sf-crypto-status');
+          if (status) status.textContent = message;
+          loadPaymentHistory();
+          return;
+        }
+      } catch { /* ag hatasi: sonraki denemede tekrar bakilir */ }
+      state.payTimer = setTimeout(() => tick(left - 1), interval);
+    };
+    tick(tries);
+  }
+
+  // Kart odemesinden donus: /bakiye?odeme=<kayit> (onay birkac saniye surebilir).
+  function watchReturn() {
+    const oid = new URLSearchParams(location.search).get('odeme');
+    if (!oid) return;
+    history.replaceState({}, '', '/bakiye');
+    toast('Ödemen kontrol ediliyor…');
+    pollPayment(oid, 20, 3000);
+  }
+
+  async function loadPaymentHistory() {
+    try { renderPayments((await api('/payments/history')).payments); } catch { /* liste sonra tazelenir */ }
+  }
+
+  function renderPayments(list) {
+    $('#sf-payments').innerHTML = list.length ? `<ul class="sf-pay-list">${list.slice(0, 15).map(p => {
+      const [label, cls] = PAY_STATUS[p.status] || PAY_STATUS.pending;
+      return `<li>
+        <div><strong>${money(p.amount)}</strong> <span class="sf-muted">${escapeHtml(p.method_label)}</span>
+          <div class="sf-muted sf-small">${formatDate(p.created_at)}${p.failure_reason ? ' · ' + escapeHtml(p.failure_reason) : ''}</div></div>
+        <span class="sf-badge sf-badge-${cls}">${label}</span></li>`;
+    }).join('')}</ul>` : '<p class="sf-muted">Henüz yükleme yok.</p>';
+  }
+
+  async function copyText(selector, button) {
+    const el = $(selector);
+    if (!el) return;
+    try {
+      await navigator.clipboard.writeText(el.textContent);
+      button.textContent = 'Kopyalandı';
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  }
+
+  // ------------------------------------------------------------- yasal sayfalar
+  // Duz metin: "## " baslik, "- " madde, bos satir paragraf. Once kacis, sonra bicim.
+  function formatLegal(text) {
+    return String(text || '').split(/\n{2,}/).map(block => {
+      const out = [];
+      let list = [];
+      let para = [];
+      const flushList = () => { if (list.length) { out.push(`<ul>${list.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`); list = []; } };
+      const flushPara = () => { if (para.length) { out.push(`<p>${para.map(escapeHtml).join('<br>')}</p>`); para = []; } };
+      block.split('\n').map(line => line.trim()).filter(Boolean).forEach(line => {
+        if (line.startsWith('## ')) { flushPara(); flushList(); out.push(`<h2>${escapeHtml(line.slice(3))}</h2>`); }
+        else if (line.startsWith('- ')) { flushPara(); list.push(line.slice(2)); }
+        else { flushList(); para.push(line); }
+      });
+      flushPara();
+      flushList();
+      return out.join('');
+    }).join('');
+  }
+
+  async function loadPage(slug) {
+    const box = $('#sf-legal');
+    box.innerHTML = '<p class="sf-muted">Yükleniyor…</p>';
+    try {
+      const page = await api('/pages/' + encodeURIComponent(slug));
+      document.title = `${page.title} · ${state.site?.name || ''}`;
+      box.innerHTML = `<h1>${escapeHtml(page.title)}</h1>${formatLegal(page.body)}`;
+    } catch (err) {
+      box.innerHTML = `<p class="sf-muted">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  async function loadFooterLinks() {
+    try {
+      const data = await api('/pages');
+      $('#sf-footer-links').innerHTML = data.pages.map(p => `<a href="/sayfa/${encodeURIComponent(p.slug)}" data-nav="page">${escapeHtml(p.title)}</a>`).join('');
+    } catch { /* alt bilgi bagintisiz da calisir */ }
+  }
+
   // ------------------------------------------------------------- yonlendirme
   async function showView(view) {
     if (USER_VIEWS.has(view) && !state.customer) view = 'home';
@@ -295,7 +524,11 @@
     $$('.sf-view').forEach(section => { section.hidden = section.dataset.view !== view; });
     $$('.sf-nav a').forEach(link => link.classList.toggle('active', link.dataset.nav === view));
     window.scrollTo(0, 0);
+    if (view !== 'page' && state.site) document.title = state.site.name;
+    if (view !== 'funds') clearTimeout(state.payTimer);
     try {
+      if (view === 'funds') await loadFunds();
+      if (view === 'page') await loadPage(decodeURIComponent(location.pathname.slice('/sayfa/'.length)));
       if (view === 'services') { await loadServices(); renderServices(); }
       if (view === 'order') {
         await loadServices();
@@ -312,7 +545,7 @@
 
   function navigate(path) {
     if (location.pathname !== path) history.pushState({}, '', path);
-    showView(ROUTES[path] || 'home');
+    showView(routeOf(path));
   }
 
   function bindEvents() {
@@ -339,7 +572,15 @@
         return;
       }
       const refillBtn = event.target.closest('[data-refill]');
-      if (refillBtn) requestRefill(Number(refillBtn.dataset.refill), refillBtn);
+      if (refillBtn) { requestRefill(Number(refillBtn.dataset.refill), refillBtn); return; }
+      const payTab = event.target.closest('[data-pay-method]');
+      if (payTab) { state.method = payTab.dataset.payMethod; renderMethodTabs(); renderMethod(); return; }
+      const copy = event.target.closest('[data-copy]');
+      if (copy) copyText(copy.dataset.copy, copy);
+    });
+    // Odeme formu her yontem seciminde yeniden cizilir; olay belgeden dinlenir.
+    document.addEventListener('submit', event => {
+      if (event.target.id === 'sf-pay-form') submitPayment(event);
     });
     $('#sf-login-form').addEventListener('submit', event => submitAuth(event, 'login'));
     $('#sf-register-form').addEventListener('submit', event => submitAuth(event, 'register'));
@@ -351,7 +592,7 @@
     $('#sf-order-comments').addEventListener('input', updateCharge);
     $('#sf-order-form').addEventListener('submit', submitOrder);
     $('#sf-orders-refresh').addEventListener('click', loadOrders);
-    window.addEventListener('popstate', () => showView(ROUTES[location.pathname] || 'home'));
+    window.addEventListener('popstate', () => showView(routeOf(location.pathname)));
   }
 
   async function init() {
@@ -368,7 +609,8 @@
     } catch {
       setCustomer(null);
     }
-    showView(ROUTES[location.pathname] || 'home');
+    loadFooterLinks();
+    showView(routeOf(location.pathname));
   }
 
   init();

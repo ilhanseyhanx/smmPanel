@@ -14,6 +14,7 @@ const { requestRefill } = require('../services/refills');
 const { tenantCatalog, tenantPriceForService, logTenantActivity } = require('../services/resellers');
 const securityMonitor = require('../services/securityMonitor');
 const { tenantSettings } = require('./resolve');
+const { listPages, getPage } = require('./legalPages');
 const {
   signCustomerSession, setCustomerCookie, clearCustomerCookie, loadCustomer, requireCustomer
 } = require('./session');
@@ -280,6 +281,26 @@ router.get('/orders', requireCustomer, async (req, res, next) => {
       })),
       page
     });
+  } catch (err) { next(err); }
+});
+
+// Yasal sayfalar (alt bilgideki baglantilar). Bayi duzenlemediyse sablondan.
+function siteHost(req) {
+  return String(req.get('host') || '').replace(/:\d+$/, '');
+}
+
+router.get('/pages', async (req, res, next) => {
+  try {
+    const pages = await listPages(req.tenant, siteHost(req));
+    res.json({ pages: pages.map(p => ({ slug: p.slug, title: p.title })) });
+  } catch (err) { next(err); }
+});
+
+router.get('/pages/:slug', async (req, res, next) => {
+  try {
+    const page = await getPage(req.tenant, String(req.params.slug), siteHost(req));
+    if (!page) return res.status(404).json({ error: 'Sayfa bulunamadı.', error_en: 'Page not found.' });
+    res.json({ slug: page.slug, title: page.title, body: page.body });
   } catch (err) { next(err); }
 });
 

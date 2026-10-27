@@ -35,7 +35,7 @@ let admin;
 
 function site(host = HOST, agent = request.agent(app)) {
   const call = method => url => agent[method](url).set('Host', host);
-  return { get: call('get'), post: call('post'), put: call('put'), agent };
+  return { get: call('get'), post: call('post'), put: call('put'), delete: call('delete'), agent };
 }
 
 async function jetKullanici(username) {
@@ -247,6 +247,50 @@ test('NOWPayments: bayinin anahtarıyla adres alınır, imzalı finished bildiri
   } finally {
     NowPayments.createPayment = gercek;
   }
+});
+
+test('yasal sayfalar şablondan bayinin bilgileriyle dolar', async () => {
+  const liste = await site().get('/api/pages');
+  assert.deepEqual(liste.body.pages.map(p => p.slug), ['gizlilik', 'mesafeli-satis', 'iade', 'kvkk']);
+  const once = await site().get('/api/pages/mesafeli-satis');
+  assert.match(once.body.body, /Satıcı: Ödeme SMM/);
+  assert.match(once.body.body, /Adres: Belirtilmedi/);
+  assert.doesNotMatch(once.body.body, /\{\{/);
+
+  const eksik = await panel.get('/api/panel/pages');
+  assert.ok(eksik.body.missing_info.includes('Adres'));
+  const kayit = await panel.put('/api/panel/site').send({
+    name: 'Ödeme SMM', legal_name: 'Ali Veli Dijital Hizmetler', legal_address: 'Kadıköy, İstanbul', phone: '0555 000 00 00', support_email: 'destek@odeme.com'
+  });
+  assert.equal(kayit.status, 200, JSON.stringify(kayit.body));
+  const sonra = await site().get('/api/pages/mesafeli-satis');
+  assert.match(sonra.body.body, /Satıcı: Ali Veli Dijital Hizmetler/);
+  assert.match(sonra.body.body, /Adres: Kadıköy, İstanbul/);
+  assert.match(sonra.body.body, /odeme\.panel\.test/);
+  assert.match((await site().get('/api/pages/kvkk')).body.body, /destek@odeme\.com/);
+  assert.equal((await site().get('/api/pages/yok')).status, 404);
+  assert.deepEqual((await panel.get('/api/panel/pages')).body.missing_info, []);
+});
+
+test('bayi yasal sayfayı düzenler ve şablona geri döndürebilir', async () => {
+  const kaydet = await panel.put('/api/panel/pages/iade').send({
+    title: 'İade Koşulları', body: '<script>x()</script>Siparişlerde iade yalnızca bakiyeye yapılır. Ayrıntı için bize yazın.'
+  });
+  assert.equal(kaydet.status, 200, JSON.stringify(kaydet.body));
+  const ozel = await site().get('/api/pages/iade');
+  assert.equal(ozel.body.title, 'İade Koşulları');
+  assert.doesNotMatch(ozel.body.body, /<script>/);
+  assert.match(ozel.body.body, /iade yalnızca bakiyeye/);
+  const panelListe = await panel.get('/api/panel/pages');
+  assert.equal(panelListe.body.pages.find(p => p.slug === 'iade').customized, true);
+
+  assert.equal((await panel.put('/api/panel/pages/yok').send({ title: 'Yok', body: 'x'.repeat(30) })).status, 404);
+  assert.equal((await site().put('/api/panel/pages/iade').send({ title: 'Hack', body: 'x'.repeat(30) })).status, 401);
+
+  assert.equal((await panel.delete('/api/panel/pages/iade')).status, 200);
+  const sablon = await site().get('/api/pages/iade');
+  assert.equal(sablon.body.title, 'İade Politikası');
+  assert.match(sablon.body.body, /Bakiyeye otomatik iade/);
 });
 
 test('bayi silinince ödeme kayıtları ve ayarları da silinir', async () => {

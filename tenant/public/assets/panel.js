@@ -8,7 +8,10 @@
     services: { path: '/admin/services', title: 'Servisler & Fiyatlar' },
     customers: { path: '/admin/customers', title: 'Müşteriler' },
     orders: { path: '/admin/orders', title: 'Siparişler' },
+    payments: { path: '/admin/payments', title: 'Ödemeler' },
+    paysettings: { path: '/admin/payment-settings', title: 'Ödeme Ayarları' },
     site: { path: '/admin/site', title: 'Site Ayarları' },
+    pages: { path: '/admin/pages', title: 'Yasal Sayfalar' },
     logs: { path: '/admin/logs', title: 'Kayıtlar' }
   };
   const STATUS = {
@@ -18,7 +21,7 @@
     partial: ['Kısmi', 'partial'],
     canceled: ['İptal', 'canceled']
   };
-  const state = { me: null, services: null, selected: new Set(), orderPage: 1, logTab: 'activity', logs: null };
+  const state = { me: null, services: null, selected: new Set(), orderPage: 1, payPage: 1, logTab: 'activity', logs: null, pages: [], callbackUrls: {} };
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -498,6 +501,9 @@
     form.announcement.value = s.announcement;
     form.support_email.value = s.support_email;
     form.telegram.value = s.telegram;
+    form.legal_name.value = s.legal_name;
+    form.legal_address.value = s.legal_address;
+    form.phone.value = s.phone;
   }
 
   async function saveSite(event) {
@@ -505,7 +511,8 @@
     const form = event.currentTarget;
     const errorEl = $('.sf-form-error', form);
     errorEl.textContent = '';
-    const body = Object.fromEntries(['name', 'primary_color', 'description', 'announcement', 'support_email', 'telegram'].map(key => [key, form[key].value.trim()]));
+    const body = Object.fromEntries(['name', 'primary_color', 'description', 'announcement', 'support_email', 'telegram', 'legal_name', 'legal_address', 'phone']
+      .map(key => [key, form.elements.namedItem(key).value.trim()]));
     try {
       const res = await api('/site', { method: 'PUT', body: JSON.stringify(body) });
       toast(res.message);
@@ -513,6 +520,217 @@
       $$('.sf-brand-name').forEach(el => { el.textContent = body.name; });
     } catch (err) {
       errorEl.textContent = err.message;
+    }
+  }
+
+  // ------------------------------------------------------------- odemeler
+  // Musteri parasi bayinin hesabina gider; havale bildirimi burada onaylanir,
+  // kart ve kripto saglayici onayiyla kendiliginden bakiyeye yazilir.
+  const PAY_STATUS = {
+    pending: ['Bekliyor', 'pending'],
+    completed: ['Yüklendi', 'completed'],
+    failed: ['Başarısız', 'canceled'],
+    rejected: ['Reddedildi', 'canceled']
+  };
+  const METHOD_LABEL = { bank: 'Havale / EFT', paytr: 'Kart (PayTR)', nowpayments: 'Kripto' };
+
+  function setPayCount(count) {
+    const el = $('#pn-pay-count');
+    el.hidden = !(count > 0);
+    el.textContent = count > 99 ? '99+' : String(count || '');
+  }
+
+  async function loadPayments() {
+    const params = new URLSearchParams({ page: String(state.payPage) });
+    const status = $('#pn-pay-status').value;
+    const method = $('#pn-pay-method').value;
+    if (status) params.set('status', status);
+    if (method) params.set('method', method);
+    const d = await api('/payments?' + params.toString());
+    setPayCount(d.pending_bank);
+    const alert = $('#pn-pay-alert');
+    alert.hidden = !(d.pending_bank > 0);
+    alert.textContent = d.pending_bank > 0 ? `Onay bekleyen ${d.pending_bank} havale bildirimi var. Parayı hesabında gördükten sonra onayla.` : '';
+    $('#pn-payments').innerHTML = d.payments.length ? d.payments.map(p => {
+      const [label, cls] = PAY_STATUS[p.status] || PAY_STATUS.pending;
+      const detail = p.method === 'bank'
+        ? [p.sender_name && `Gönderen: ${escapeHtml(p.sender_name)}`, p.bank_name && escapeHtml(p.bank_name), p.note && escapeHtml(p.note)].filter(Boolean).join('<br>')
+        : '';
+      const actions = p.method === 'bank' && p.status === 'pending'
+        ? `<div class="pn-row-actions"><button type="button" class="sf-btn sf-btn-primary sf-btn-sm" data-pay-approve="${p.id}" data-amount="${p.amount}" data-name="${escapeHtml(p.customer || '')}">Onayla</button><button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-pay-reject="${p.id}">Reddet</button></div>`
+        : '';
+      return `<tr>
+        <td>#${p.id}</td>
+        <td>${escapeHtml(p.customer || '—')}</td>
+        <td>${escapeHtml(METHOD_LABEL[p.method] || p.method_label)}</td>
+        <td class="pn-num">${money(p.amount)}</td>
+        <td>${detail || '<span class="sf-muted">—</span>'}</td>
+        <td><span class="sf-badge sf-badge-${cls}">${label}</span>${p.failure_reason ? `<span class="pn-sub">${escapeHtml(p.failure_reason)}</span>` : ''}</td>
+        <td>${formatDate(p.created_at)}</td>
+        <td>${actions}</td></tr>`;
+    }).join('') : '<tr><td colspan="8" class="sf-muted">Ödeme kaydı yok.</td></tr>';
+    $('#pn-pay-pager').innerHTML = d.pages > 1 ? `
+      <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-pay-page="${d.page - 1}" ${d.page <= 1 ? 'disabled' : ''}>Önceki</button>
+      <span class="sf-muted">${d.page} / ${d.pages} · ${num(d.total)} ödeme</span>
+      <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-pay-page="${d.page + 1}" ${d.page >= d.pages ? 'disabled' : ''}>Sonraki</button>` : `<span class="sf-muted">${num(d.total)} ödeme</span>`;
+  }
+
+  async function approvePayment(id, amount, name) {
+    const ok = await confirmBox('Havale onayı', `${money(amount)} tutarı ${name || 'müşterinin'} bakiyesine eklenecek. Parayı hesabında gördün mü?`, 'Onayla ve Yükle');
+    if (!ok) return;
+    try {
+      const res = await api(`/payments/${id}/approve`, { method: 'POST' });
+      toast(res.message);
+      loadPayments();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  function rejectPayment(id) {
+    openModal('Bildirimi reddet', `
+      <form class="sf-form" id="pn-reject-form" novalidate>
+        <label>Sebep <small>(müşteri görür)</small><input name="reason" class="sf-input" maxlength="300" placeholder="Örn: Ödeme hesaba ulaşmadı"></label>
+        <p class="sf-form-error" role="alert"></p>
+        <button type="submit" class="sf-btn sf-btn-primary">Reddet</button>
+      </form>`);
+    $('#pn-reject-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      try {
+        const res = await api(`/payments/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason: form.elements.namedItem('reason').value.trim() }) });
+        closeModal();
+        toast(res.message);
+        loadPayments();
+      } catch (err) {
+        $('.sf-form-error', form).textContent = err.message;
+      }
+    });
+  }
+
+  // ------------------------------------------------------------- odeme ayarlari
+  const SECRET_LABELS = {
+    merchant_id: 'Mağaza no (Merchant ID)',
+    merchant_key: 'Merchant Key',
+    merchant_salt: 'Merchant Salt',
+    api_key: 'API anahtarı',
+    ipn_secret: 'IPN gizli anahtarı'
+  };
+  const PAY_FIELDS = ['accounts', 'instructions', 'merchant_id', 'merchant_key', 'merchant_salt', 'api_key', 'ipn_secret'];
+
+  function secretInput(m, key) {
+    const placeholder = m.saved[key] ? 'Kayıtlı. Değiştirmek için yenisini yaz.' : 'Henüz girilmedi';
+    return `<label>${SECRET_LABELS[key]}<input name="${key}" class="sf-input" type="password" autocomplete="off" spellcheck="false" placeholder="${placeholder}"></label>`;
+  }
+
+  function paySettingsCard(m) {
+    const urls = state.callbackUrls;
+    let fields = '';
+    if (m.method === 'bank') {
+      fields = `
+        <label>Hesap bilgileri <small>(müşteri aynen görür: banka, IBAN, alıcı adı, Papara no)</small><textarea name="accounts" class="sf-input" rows="5" maxlength="2000">${escapeHtml(m.accounts)}</textarea></label>
+        <label>Müşteriye not <small>(isteğe bağlı)</small><input name="instructions" class="sf-input" maxlength="1000" value="${escapeHtml(m.instructions)}" placeholder="Örn: Açıklamaya kullanıcı adını yaz"></label>`;
+    } else if (m.method === 'paytr') {
+      fields = `${['merchant_id', 'merchant_key', 'merchant_salt'].map(key => secretInput(m, key)).join('')}
+        <label class="sf-check"><input type="checkbox" name="test_mode" ${m.test_mode ? 'checked' : ''}> Test modu (gerçek çekim yapılmaz)</label>
+        <div class="pn-note">PayTR mağaza panelinde <strong>Bildirim URL</strong> alanına bunu yaz:<code>${escapeHtml(urls.paytr || '')}</code></div>`;
+    } else if (m.method === 'nowpayments') {
+      fields = `${['api_key', 'ipn_secret'].map(key => secretInput(m, key)).join('')}
+        <div class="pn-note">IPN gizli anahtarını NOWPayments panelinde <strong>Store Settings → IPN</strong> bölümünden alırsın. Bildirim adresi her ödemeyle otomatik gönderilir.</div>`;
+    }
+    const badge = m.enabled ? ['Açık', 'completed'] : m.configured ? ['Kapalı', 'pending'] : ['Bilgi eksik', 'canceled'];
+    return `<form class="sf-card sf-form pn-pay-card" data-pay-settings="${m.method}" novalidate>
+      <div class="pn-pay-head"><h3>${escapeHtml(m.label)}</h3><span class="sf-badge sf-badge-${badge[1]}">${badge[0]}</span></div>
+      <label class="sf-check"><input type="checkbox" name="enabled" ${m.enabled ? 'checked' : ''}> Müşterilere göster</label>
+      ${fields}
+      <div class="pn-pay-limits">
+        <label>En az (₺)<input name="min" type="number" class="sf-input" min="1" step="0.01" value="${m.min}"></label>
+        <label>En fazla (₺)<input name="max" type="number" class="sf-input" min="1" step="0.01" value="${m.max}"></label>
+      </div>
+      <p class="sf-form-error" role="alert"></p>
+      <button type="submit" class="sf-btn sf-btn-primary">Kaydet</button>
+    </form>`;
+  }
+
+  async function loadPaySettings() {
+    const d = await api('/payment-settings');
+    state.callbackUrls = d.callback_urls;
+    $('#pn-pay-settings').innerHTML = d.methods.map(paySettingsCard).join('');
+  }
+
+  async function savePaySettings(form) {
+    const field = name => form.elements.namedItem(name);
+    const errorEl = $('.sf-form-error', form);
+    errorEl.textContent = '';
+    const body = { enabled: field('enabled').checked, min: Number(field('min').value), max: Number(field('max').value) };
+    PAY_FIELDS.forEach(key => { if (field(key)) body[key] = field(key).value.trim(); });
+    if (field('test_mode')) body.test_mode = field('test_mode').checked;
+    const button = $('button[type=submit]', form);
+    button.disabled = true;
+    try {
+      const res = await api('/payment-settings/' + form.dataset.paySettings, { method: 'PUT', body: JSON.stringify(body) });
+      toast(res.message);
+      form.outerHTML = paySettingsCard(res.method);
+    } catch (err) {
+      errorEl.textContent = err.message;
+      button.disabled = false;
+    }
+  }
+
+  // ------------------------------------------------------------- yasal sayfalar
+  async function loadPagesView() {
+    const d = await api('/pages');
+    state.pages = d.pages;
+    const alert = $('#pn-pages-alert');
+    alert.hidden = !d.missing_info.length;
+    alert.innerHTML = d.missing_info.length
+      ? `Metinlerde "Belirtilmedi" yazmasın diye <a href="/admin/site" data-go="site">Site Ayarları</a> sayfasından şunları doldur: ${d.missing_info.map(escapeHtml).join(', ')}.`
+      : '';
+    $('#pn-pages').innerHTML = d.pages.map(p => `<tr>
+      <td><strong>${escapeHtml(p.title)}</strong><span class="pn-sub">/sayfa/${escapeHtml(p.slug)}</span></td>
+      <td>${p.customized ? `<span class="sf-badge sf-badge-processing">Düzenlendi</span><span class="pn-sub">${formatDate(p.updated_at)}</span>` : '<span class="sf-badge sf-badge-completed">Otomatik</span>'}</td>
+      <td><div class="pn-row-actions">
+        <a class="sf-btn sf-btn-ghost sf-btn-sm" href="/sayfa/${encodeURIComponent(p.slug)}" target="_blank" rel="noopener">Görüntüle</a>
+        <button type="button" class="sf-btn sf-btn-primary sf-btn-sm" data-page-edit="${escapeHtml(p.slug)}">Düzenle</button>
+        ${p.customized ? `<button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-page-reset="${escapeHtml(p.slug)}">Otomatiğe Dön</button>` : ''}
+      </div></td></tr>`).join('');
+  }
+
+  function editPage(slug) {
+    const page = state.pages.find(p => p.slug === slug);
+    if (!page) return;
+    openModal(page.title, `
+      <form class="sf-form" id="pn-page-form" novalidate>
+        <label>Başlık<input name="title" class="sf-input" maxlength="120" value="${escapeHtml(page.title)}" required></label>
+        <label>Metin <small>("## " ile başlayan satır başlık, "- " madde, boş satır yeni paragraf)</small><textarea name="body" class="sf-input pn-page-body" rows="18" maxlength="30000">${escapeHtml(page.body)}</textarea></label>
+        <p class="sf-form-error" role="alert"></p>
+        <button type="submit" class="sf-btn sf-btn-primary">Kaydet</button>
+      </form>`, { wide: true });
+    $('#pn-page-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      try {
+        const res = await api('/pages/' + encodeURIComponent(slug), {
+          method: 'PUT',
+          body: JSON.stringify({ title: form.elements.namedItem('title').value.trim(), body: form.elements.namedItem('body').value })
+        });
+        closeModal();
+        toast(res.message);
+        loadPagesView();
+      } catch (err) {
+        $('.sf-form-error', form).textContent = err.message;
+      }
+    });
+  }
+
+  async function resetPage(slug) {
+    if (!await confirmBox('Otomatiğe dön', 'Düzenlediğin metin silinir; sayfa site bilgilerinle otomatik dolar.', 'Otomatiğe Dön')) return;
+    try {
+      const res = await api('/pages/' + encodeURIComponent(slug), { method: 'DELETE' });
+      toast(res.message);
+      loadPagesView();
+    } catch (err) {
+      toast(err.message, 'error');
     }
   }
 
@@ -535,7 +753,13 @@
     refill_requested: 'Telafi istendi',
     service_price_changed: 'Servis fiyatı değişti',
     services_bulk_changed: 'Toplu servis işlemi',
-    site_settings_changed: 'Site ayarları değişti'
+    site_settings_changed: 'Site ayarları değişti',
+    payment_notice: 'Havale bildirimi geldi',
+    payment_completed: 'Bakiye yüklendi',
+    payment_rejected: 'Havale bildirimi reddedildi',
+    payment_settings_changed: 'Ödeme ayarı değişti',
+    page_saved: 'Yasal sayfa düzenlendi',
+    page_reset: 'Yasal sayfa otomatiğe döndü'
   };
   const ACTORS = { owner: 'Siz', customer: 'Müşteri', jet_admin: 'Yönetim', system: 'Sistem' };
 
@@ -599,6 +823,9 @@
       if (view === 'services') await loadServices();
       if (view === 'customers') await loadCustomers();
       if (view === 'orders') await loadOrders();
+      if (view === 'payments') await loadPayments();
+      if (view === 'paysettings') await loadPaySettings();
+      if (view === 'pages') await loadPagesView();
       if (view === 'site') await loadSite();
       if (view === 'logs') await loadLogs(true);
     } catch (err) {
@@ -622,6 +849,8 @@
     $('#pn-login').hidden = true;
     $('#pn-app').hidden = false;
     showView(viewFromPath(location.pathname));
+    // Menude bekleyen havale sayisi (sayfa acilir acilmaz gorunsun).
+    api('/payments?status=pending&method=bank').then(d => setPayCount(d.pending_bank)).catch(() => {});
   }
 
   function bind() {
@@ -636,6 +865,11 @@
     $('#pn-cust-search').addEventListener('input', debounce(loadCustomers, 300));
     $('#pn-ord-status').addEventListener('change', () => { state.orderPage = 1; loadOrders(); });
     $('#pn-ord-search').addEventListener('input', debounce(() => { state.orderPage = 1; loadOrders(); }, 300));
+    $('#pn-pay-status').addEventListener('change', () => { state.payPage = 1; loadPayments(); });
+    $('#pn-pay-method').addEventListener('change', () => { state.payPage = 1; loadPayments(); });
+    document.addEventListener('submit', event => {
+      if (event.target.matches('[data-pay-settings]')) { event.preventDefault(); savePaySettings(event.target); }
+    });
     $('#pn-svc-all').addEventListener('change', event => {
       const rows = filteredServices().slice(0, 400);
       rows.forEach(s => { if (event.target.checked) state.selected.add(s.id); else state.selected.delete(s.id); });
@@ -671,6 +905,16 @@
       if (ban) { toggleBan(Number(ban.dataset.custBan), ban.dataset.banned !== '1', ban.dataset.name); return; }
       const page = t.closest('[data-page]');
       if (page && !page.disabled) { state.orderPage = Number(page.dataset.page); loadOrders(); return; }
+      const payPage = t.closest('[data-pay-page]');
+      if (payPage && !payPage.disabled) { state.payPage = Number(payPage.dataset.payPage); loadPayments(); return; }
+      const approve = t.closest('[data-pay-approve]');
+      if (approve) { approvePayment(Number(approve.dataset.payApprove), Number(approve.dataset.amount), approve.dataset.name); return; }
+      const reject = t.closest('[data-pay-reject]');
+      if (reject) { rejectPayment(Number(reject.dataset.payReject)); return; }
+      const pageEdit = t.closest('[data-page-edit]');
+      if (pageEdit) { editPage(pageEdit.dataset.pageEdit); return; }
+      const pageReset = t.closest('[data-page-reset]');
+      if (pageReset) { resetPage(pageReset.dataset.pageReset); return; }
       const tab = t.closest('[data-log-tab]');
       if (tab) { state.logTab = tab.dataset.logTab; loadLogs(); }
     });

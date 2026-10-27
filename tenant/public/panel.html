@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="/assets/storefront.css?v=20260920c">
-  <link rel="stylesheet" href="/assets/panel.css?v=20260920c">
+  <link rel="stylesheet" href="/assets/storefront.css?v=20261027a">
+  <link rel="stylesheet" href="/assets/panel.css?v=20261027a">
   <style>:root { --primary: %%PRIMARY%%; }</style>
 </head>
 <body class="pn-body">
@@ -43,7 +43,10 @@
         <a href="/admin/services" data-go="services"><i class="fa-solid fa-tags" aria-hidden="true"></i><span>Servisler & Fiyatlar</span></a>
         <a href="/admin/customers" data-go="customers"><i class="fa-solid fa-users" aria-hidden="true"></i><span>Müşteriler</span></a>
         <a href="/admin/orders" data-go="orders"><i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i><span>Siparişler</span></a>
+        <a href="/admin/payments" data-go="payments"><i class="fa-solid fa-money-bill-transfer" aria-hidden="true"></i><span>Ödemeler</span><b class="pn-nav-count" id="pn-pay-count" hidden></b></a>
+        <a href="/admin/payment-settings" data-go="paysettings"><i class="fa-solid fa-credit-card" aria-hidden="true"></i><span>Ödeme Ayarları</span></a>
         <a href="/admin/site" data-go="site"><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Site Ayarları</span></a>
+        <a href="/admin/pages" data-go="pages"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i><span>Yasal Sayfalar</span></a>
         <a href="/admin/logs" data-go="logs"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i><span>Kayıtlar</span></a>
       </nav>
       <div class="pn-sidebar-foot">
@@ -149,6 +152,51 @@
         <div class="pn-pager" id="pn-ord-pager"></div>
       </section>
 
+      <!-- ODEMELER -->
+      <section class="pn-view" data-view="payments" hidden>
+        <div class="pn-alert pn-alert-warn" id="pn-pay-alert" hidden></div>
+        <div class="pn-filters">
+          <select id="pn-pay-status" class="sf-input" aria-label="Durum">
+            <option value="">Tüm durumlar</option>
+            <option value="pending">Bekliyor</option>
+            <option value="completed">Yüklendi</option>
+            <option value="failed">Başarısız</option>
+            <option value="rejected">Reddedildi</option>
+          </select>
+          <select id="pn-pay-method" class="sf-input" aria-label="Yöntem">
+            <option value="">Tüm yöntemler</option>
+            <option value="bank">Havale / EFT / Papara</option>
+            <option value="paytr">Kredi / Banka Kartı</option>
+            <option value="nowpayments">Kripto Para</option>
+          </select>
+        </div>
+        <div class="sf-card sf-table-wrap">
+          <table class="sf-table pn-table">
+            <thead><tr><th>No</th><th>Müşteri</th><th>Yöntem</th><th>Tutar</th><th>Ayrıntı</th><th>Durum</th><th>Tarih</th><th></th></tr></thead>
+            <tbody id="pn-payments"></tbody>
+          </table>
+        </div>
+        <div class="pn-pager" id="pn-pay-pager"></div>
+      </section>
+
+      <!-- ODEME AYARLARI -->
+      <section class="pn-view" data-view="paysettings" hidden>
+        <p class="sf-muted pn-help">Müşterilerinin ödediği para doğrudan senin hesabına gider. Anahtarlar şifreli saklanır ve bir daha gösterilmez; değiştirmek için yenisini yazman yeter.</p>
+        <div class="pn-pay-grid" id="pn-pay-settings"><p class="sf-muted">Yükleniyor…</p></div>
+      </section>
+
+      <!-- YASAL SAYFALAR -->
+      <section class="pn-view" data-view="pages" hidden>
+        <div class="pn-alert pn-alert-warn" id="pn-pages-alert" hidden></div>
+        <p class="sf-muted pn-help">Sayfalar sitenin alt bilgisinde görünür. Düzenlemediğin sayfa, site ayarlarındaki bilgilerinle otomatik dolar. Metinler örnektir; gerekirse bir hukukçuya okut.</p>
+        <div class="sf-card sf-table-wrap">
+          <table class="sf-table pn-table">
+            <thead><tr><th>Sayfa</th><th>Durum</th><th></th></tr></thead>
+            <tbody id="pn-pages"></tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- SITE AYARLARI -->
       <section class="pn-view" data-view="site" hidden>
         <form class="sf-card sf-form pn-site-form" id="pn-site-form" novalidate>
@@ -160,6 +208,10 @@
           <label>Duyuru <small>(sitenin üstünde şerit olarak görünür; boş bırakılırsa gizlenir)</small><input name="announcement" class="sf-input" maxlength="300"></label>
           <label>Destek e-postası<input name="support_email" type="email" class="sf-input" maxlength="254"></label>
           <label>Telegram <small>(kullanıcı adı veya bağlantı)</small><input name="telegram" class="sf-input" maxlength="100"></label>
+          <h3 class="pn-form-section">Yasal bilgiler <small>(Mesafeli Satış ve KVKK sayfalarında satıcı olarak görünür)</small></h3>
+          <label>Ünvan veya ad soyad<input name="legal_name" class="sf-input" maxlength="160" placeholder="Örn: Ali Veli Dijital Hizmetler"></label>
+          <label>Adres<input name="legal_address" class="sf-input" maxlength="300"></label>
+          <label>Telefon<input name="phone" class="sf-input" maxlength="40" inputmode="tel"></label>
           <p class="sf-form-error" role="alert"></p>
           <button type="submit" class="sf-btn sf-btn-primary">Kaydet</button>
         </form>
@@ -185,6 +237,6 @@
   </div>
 
   <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
-  <script src="/assets/panel.js?v=20260920c" defer></script>
+  <script src="/assets/panel.js?v=20261027a" defer></script>
 </body>
 </html>

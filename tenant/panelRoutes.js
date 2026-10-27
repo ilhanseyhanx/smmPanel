@@ -20,6 +20,7 @@ const {
   METHODS: PAYMENT_METHODS, loadMethods, saveMethod, completePayment, closePayment, publicPayment
 } = require('../services/tenantPayments');
 const { invalidateTenantCache, tenantSettings, baseDomain } = require('./resolve');
+const { PAGE_MAP: LEGAL_PAGES, listPages } = require('./legalPages');
 const { signOwnerSession, setOwnerCookie, clearOwnerCookie, requireOwner } = require('./panelSession');
 
 const router = express.Router();
@@ -55,8 +56,17 @@ const siteSchema = z.object({
   description: z.string().trim().max(300).optional().default(''),
   announcement: z.string().trim().max(300).optional().default(''),
   support_email: z.union([z.literal(''), z.email().max(254)]).optional().default(''),
-  telegram: z.string().trim().max(100).optional().default('')
+  telegram: z.string().trim().max(100).optional().default(''),
+  // Yasal sayfalarda (mesafeli satis, KVKK) satici bilgisi olarak gecer.
+  legal_name: z.string().trim().max(160).optional().default(''),
+  legal_address: z.string().trim().max(300).optional().default(''),
+  phone: z.string().trim().max(40).optional().default('')
 });
+const pageSchema = z.object({
+  title: z.string().trim().min(2).max(120),
+  body: z.string().trim().min(20).max(30000)
+});
+const SITE_TEXT_KEYS = ['primary_color', 'description', 'announcement', 'support_email', 'telegram', 'legal_name', 'legal_address', 'phone'];
 
 function ip(req) {
   return securityMonitor.clientIp(req);
@@ -508,7 +518,10 @@ router.get('/site', (req, res) => {
     description: settings.description || '',
     announcement: settings.announcement || '',
     support_email: settings.support_email || '',
-    telegram: settings.telegram || ''
+    telegram: settings.telegram || '',
+    legal_name: settings.legal_name || '',
+    legal_address: settings.legal_address || '',
+    phone: settings.phone || ''
   });
 });
 
@@ -523,7 +536,10 @@ router.put('/site', validate(siteSchema), async (req, res, next) => {
       description: normalizePlainText(req.body.description, 300),
       announcement: normalizePlainText(req.body.announcement, 300),
       support_email: req.body.support_email,
-      telegram: normalizePlainText(req.body.telegram, 100)
+      telegram: normalizePlainText(req.body.telegram, 100),
+      legal_name: normalizePlainText(req.body.legal_name, 160),
+      legal_address: normalizePlainText(req.body.legal_address, 300),
+      phone: normalizePlainText(req.body.phone, 40)
     };
     await dbAsync.run(
       'UPDATE tenants SET name = ?, settings_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
@@ -531,7 +547,7 @@ router.put('/site', validate(siteSchema), async (req, res, next) => {
     );
     const changes = {};
     if (name !== req.tenant.name) changes.name = { from: req.tenant.name, to: name };
-    for (const key of ['primary_color', 'description', 'announcement', 'support_email', 'telegram']) {
+    for (const key of SITE_TEXT_KEYS) {
       if ((before[key] || '') !== (settings[key] || '')) changes[key] = { from: before[key] || '', to: settings[key] || '' };
     }
     if (Object.keys(changes).length) await ownerActivity(req, 'site_settings_changed', changes);
@@ -571,6 +587,51 @@ router.get('/logs', async (req, res, next) => {
         type: l.type, order_id: l.order_id, note: l.note, created_at: l.created_at
       }))
     });
+  } catch (err) { next(err); }
+});
+
+// --------------------------------------------------------- yasal sayfalar
+// Duzenlenmemis sayfa sablondan gelir; kaydedilince metin sabitlenir,
+// "Sablona don" kaydi silip yeniden otomatik doldurmaya gecer.
+function panelHost(req) {
+  return String(req.get('host') || '').replace(/:\d+$/, '');
+}
+
+router.get('/pages', async (req, res, next) => {
+  try {
+    const settings = tenantSettings(req.tenant);
+    const missing = [
+      !settings.legal_name && 'Ünvan / ad soyad',
+      !settings.legal_address && 'Adres',
+      !settings.support_email && 'Destek e-postası'
+    ].filter(Boolean);
+    res.json({ pages: await listPages(req.tenant, panelHost(req)), missing_info: missing });
+  } catch (err) { next(err); }
+});
+
+router.put('/pages/:slug', validate(pageSchema), async (req, res, next) => {
+  try {
+    const slug = String(req.params.slug);
+    if (!LEGAL_PAGES.has(slug)) return res.status(404).json({ error: 'Sayfa bulunamadı.' });
+    const title = normalizePlainText(req.body.title, 120);
+    const body = normalizePlainText(req.body.body, 30000);
+    await dbAsync.run(
+      `INSERT INTO tenant_pages (tenant_id, slug, title, body, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(tenant_id, slug) DO UPDATE SET title = excluded.title, body = excluded.body, updated_at = CURRENT_TIMESTAMP`,
+      [req.tenant.id, slug, title, body]
+    );
+    await ownerActivity(req, 'page_saved', { page: title });
+    res.json({ message: `"${title}" kaydedildi.` });
+  } catch (err) { next(err); }
+});
+
+router.delete('/pages/:slug', async (req, res, next) => {
+  try {
+    const slug = String(req.params.slug);
+    if (!LEGAL_PAGES.has(slug)) return res.status(404).json({ error: 'Sayfa bulunamadı.' });
+    await dbAsync.run('DELETE FROM tenant_pages WHERE tenant_id = ? AND slug = ?', [req.tenant.id, slug]);
+    await ownerActivity(req, 'page_reset', { page: LEGAL_PAGES.get(slug).title });
+    res.json({ message: 'Sayfa şablona döndü; bilgileriniz otomatik doldurulacak.' });
   } catch (err) { next(err); }
 });
 

@@ -247,6 +247,9 @@ const API = {
   getAdminUserDetail: (userId) => API.request(`/admin/users/${userId}/detail`),
 
   // Bayiler (child panel) yonetimi
+  getResellerMe: () => API.request('/reseller/me'),
+  applyReseller: (payload) => API.request('/reseller/apply', { method: 'POST', body: JSON.stringify(payload) }),
+  setAdminResellerSubscription: (id, action, days) => API.request(`/admin/resellers/${id}/subscription`, { method: 'POST', body: JSON.stringify({ action, days }) }),
   getAdminResellers: () => API.request('/admin/resellers'),
   saveAdminResellerSettings: (settings) => API.request('/admin/resellers/settings', { method: 'PUT', body: JSON.stringify(settings) }),
   createAdminReseller: (payload) => API.request('/admin/resellers', { method: 'POST', body: JSON.stringify(payload) }),

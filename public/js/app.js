@@ -247,7 +247,7 @@ const SPA_ROTALARI = [
   'landing', 'services', 'blog', 'blog-detail', 'landing-page', 'hizmet-sayfalari', 'smm-panel-api',
   'about', 'terms', 'privacy', 'refund', 'register', 'auth', 'tickets',
   'orders', 'new-order', 'add-funds', 'profile', 'admin', 'not-found',
-  'payment-success', 'payment-failed', 'reset-password', 'verify-email', 'dijital-urunler'
+  'payment-success', 'payment-failed', 'reset-password', 'verify-email', 'dijital-urunler', 'bayilik'
 ];
 
 class SmmApp {
@@ -1097,6 +1097,8 @@ class SmmApp {
       this.loadAdminStats();
     } else if (viewName === 'dijital-urunler') {
       this.openDigitalStore();
+    } else if (viewName === 'bayilik') {
+      this.openResellerPage();
     }
   }
 
@@ -5543,6 +5545,17 @@ class SmmApp {
       this.initDigitalStore();
     } catch {
       showToast(this.ui('Sayfa bileşenleri yüklenemedi. Sayfayı yenileyip tekrar deneyin.', 'Page components could not be loaded. Refresh the page and try again.'), 'error');
+    }
+  }
+
+  // Bayilik (/bayilik): tanitim sunucudan basili gelir; basvuru formu ve
+  // panel durumu reseller.js modulunde.
+  async openResellerPage() {
+    try {
+      await this.loadLazyModule('reseller');
+      this.renderResellerAccount();
+    } catch {
+      showToast('Sayfa bileşenleri yüklenemedi. Sayfayı yenileyip tekrar deneyin.', 'error');
     }
   }
 
@@ -10767,7 +10780,7 @@ print(sonuc.get("error") or sonuc.get("order"))`;
     // donulur ve satin alma penceresi kaldigi yerden acilir (bkz. digital.js).
     let donusAdresi = '';
     try { donusAdresi = sessionStorage.getItem('girisSonrasiAdres') || ''; sessionStorage.removeItem('girisSonrasiAdres'); } catch {}
-    if (/^\/(dijital-urunler)(\/|\?|$)/.test(donusAdresi)) {
+    if (/^\/(dijital-urunler|bayilik)(\/|\?|$)/.test(donusAdresi)) {
       window.location.assign(donusAdresi);
       return;
     }

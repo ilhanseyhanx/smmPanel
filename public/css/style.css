@@ -5064,6 +5064,57 @@ body.neo-app-active #view-dijital-urunler .dg-checker-form h2 { margin: 0 0 8px;
   #view-dijital-urunler .dg-sub { margin: 16px 16px 8px; }
 }
 
+/* Bayilik (/bayilik): tanitim + basvuru / panel durumu kutusu. */
+.bp-wrap { display: grid; gap: 34px; padding-bottom: 60px; color: #090909; }
+.bp-hero { display: grid; gap: 14px; max-width: 820px; }
+.bp-kicker { display: inline-flex; align-items: center; gap: 8px; justify-self: start; padding: 6px 12px; border: 2px solid #090909; background: #ffde17; font: 800 .74rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; }
+body.neo-app-active #view-bayilik .bp-hero h1 { margin: 0; font: 900 clamp(2rem, 5vw, 3.4rem)/1.05 'Archivo Black', 'Archivo Black Fallback', sans-serif; letter-spacing: -.02em; text-wrap: balance; }
+.bp-hero p { margin: 0; font-size: 1.05rem; line-height: 1.6; max-width: 62ch; }
+.bp-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.bp-price strong { font: 900 2.2rem 'Archivo Black', 'Archivo Black Fallback', sans-serif; }
+.bp-price span { font: 700 .82rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; }
+.bp-card { display: grid; gap: 14px; padding: 24px; border: 3px solid #090909; background: #fff; box-shadow: 8px 8px 0 #090909; }
+body.neo-app-active #view-bayilik .bp-card h2 { margin: 0; font-size: 1.35rem; }
+.bp-cta { grid-template-columns: minmax(0, 1fr) auto; align-items: center; background: #ffde17; }
+.bp-cta p { margin: 6px 0 0; }
+.bp-cta-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.bp-form { max-width: 620px; }
+.bp-form label { display: grid; gap: 6px; font-weight: 700; }
+.bp-form label small { font-weight: 500; color: #444; }
+.bp-slug { display: flex; align-items: stretch; min-width: 0; }
+.bp-slug input { flex: 1 1 auto; min-width: 0; }
+.bp-slug span { display: flex; align-items: center; padding: 0 12px; border: 2px solid #090909; border-left: 0; background: #f3f3f3; font: 700 .86rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; white-space: nowrap; }
+.bp-preview { margin: 0; font: 700 .84rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; color: #1769e8; overflow-wrap: anywhere; }
+.bp-preview:empty, .bp-error:empty { display: none; }
+.bp-error { margin: 0; color: #c81e1e; font-weight: 700; }
+.bp-muted { margin: 0; color: #555; font-size: .9rem; }
+.bp-mine-head { display: grid; gap: 8px; }
+.bp-dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 16px; margin: 0; }
+.bp-dl dt { font-weight: 700; }
+.bp-dl dd { margin: 0; overflow-wrap: anywhere; }
+.bp-mine .btn { justify-self: start; }
+.bp-section { display: grid; gap: 18px; }
+body.neo-app-active #view-bayilik .bp-section h2 { margin: 0; font: 900 1.6rem 'Archivo Black', 'Archivo Black Fallback', sans-serif; }
+.bp-features { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 16px; }
+.bp-features li { padding: 18px; border: 3px solid #090909; background: #fff; box-shadow: 5px 5px 0 #090909; }
+.bp-features i { display: grid; place-items: center; width: 42px; height: 42px; border: 2px solid #090909; background: #21a9f6; color: #090909; font-size: 1.1rem; }
+body.neo-app-active #view-bayilik .bp-features h3 { margin: 12px 0 6px; font-size: 1.05rem; }
+.bp-features p { margin: 0; line-height: 1.55; font-size: .93rem; }
+.bp-steps { list-style: none; counter-reset: bp; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 16px; }
+.bp-steps li { counter-increment: bp; position: relative; padding: 18px 18px 18px 64px; border: 3px solid #090909; background: #9af0b4; }
+.bp-steps li::before { content: counter(bp); position: absolute; left: 16px; top: 16px; display: grid; place-items: center; width: 34px; height: 34px; border: 2px solid #090909; background: #fff; font: 900 1rem 'Archivo Black', 'Archivo Black Fallback', sans-serif; }
+body.neo-app-active #view-bayilik .bp-steps h3 { margin: 0 0 4px; font-size: 1rem; }
+.bp-steps p { margin: 0; font-size: .92rem; line-height: 1.5; }
+.bp-faq { display: grid; gap: 10px; max-width: 860px; }
+.bp-faq details { border: 2px solid #090909; background: #fff; }
+.bp-faq summary { cursor: pointer; padding: 14px 16px; font-weight: 800; }
+.bp-faq p { margin: 0; padding: 0 16px 16px; line-height: 1.6; }
+@media (max-width: 700px) {
+  .bp-cta { grid-template-columns: minmax(0, 1fr); }
+  .bp-card { padding: 18px; box-shadow: 5px 5px 0 #090909; }
+  .bp-slug span { font-size: .74rem; padding: 0 8px; }
+}
+
 /* Satın alma penceresi: masaüstünde iki sütun, mobilde alttan açılan panel. */
 body.dg-modal-open { overflow: hidden; }
 .dg-modal.dg-modal-wide { width: calc(100% - 32px); max-width: 880px; padding: 0 !important; overflow: hidden auto; }

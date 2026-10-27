@@ -31,6 +31,7 @@ const DOSYALAR = [
   { kaynak: 'public/js/admin-resellers.js', hedef: 'public/js/admin-resellers.min.js', tur: 'js' },
   // Yalnizca /dijital-urunler sayfasinda ve admin 'Dijital Urunler' sekmesinde yuklenir.
   { kaynak: 'public/js/digital.js', hedef: 'public/js/digital.min.js', tur: 'js' },
+  { kaynak: 'public/js/reseller.js', hedef: 'public/js/reseller.min.js', tur: 'js' },
   { kaynak: 'public/js/admin-digital.js', hedef: 'public/js/admin-digital.min.js', tur: 'js' },
   // Ziyaretci ayak izi: track.js her sayfada, admin-footprint.js yalnizca admin sekmesinde.
   { kaynak: 'public/js/track.js', hedef: 'public/js/track.min.js', tur: 'js' },

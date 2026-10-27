@@ -125,6 +125,8 @@ const ICERIK_GORUNUMLERI = [
   'view-blog',
   // Dijital urun katalogu yalnizca /dijital-urunler adresinde basilir.
   'view-dijital-urunler',
+  // Bayilik tanitimi yalnizca /bayilik adresinde basilir.
+  'view-bayilik',
   // Kimlik formu markali satis sayfalarinin HTML'inde bulunmamali. Google
   // Safe Browsing; or. "WhatsApp ... satin al" metniyle sifre alanini ayni
   // dokumanda gorurse sayfayi sahte giris/phishing olarak yorumlayabilir.

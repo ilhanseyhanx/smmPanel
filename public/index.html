@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20261027c">
+  <link rel="stylesheet" href="/css/style.css?v=20261027d">
 </head>
 <body>
 
@@ -69,6 +69,8 @@
       <li><a class="nav-link active" href="/" data-i18n="nav.home" onclick="app.navigate('landing'); return false;">Ana Sayfa</a></li>
       <li><a class="nav-link" href="/dijital-urunler" onclick="app.navigate('dijital-urunler'); return false;"><i class="fa-solid fa-bag-shopping" aria-hidden="true"></i> <span data-i18n="nav.digital">Dijital Ürünler</span></a></li>
       <li><a class="nav-link" href="/services" data-i18n="nav.services" onclick="app.navigate('services'); return false;">Hizmetler</a></li>
+      <!-- Bayilik: program kapaliyken gizli kalir (server.js 'hidden'i kaldirir). -->
+      <li data-reseller-nav hidden><a class="nav-link" href="/bayilik" onclick="app.navigate('bayilik'); return false;"><i class="fa-solid fa-shop" aria-hidden="true"></i> Bayilik</a></li>
       <li class="auth-required" style="display:none;"><a class="nav-link" href="/new-order" data-i18n="nav.order" onclick="app.navigate('new-order'); return false;">Sipariş Ver</a></li>
       <li class="auth-required" style="display:none;"><a class="nav-link" href="/orders" data-i18n="nav.orders" onclick="app.navigate('orders'); return false;">Siparişlerim</a></li>
       <li class="auth-required" style="display:none;"><a class="nav-link" href="/add-funds" data-i18n="nav.funds" onclick="app.navigate('add-funds'); return false;">Bakiye Yükle</a></li>
@@ -1253,6 +1255,12 @@ Canceled     iptal edildi</pre>
          siparişler ve Gmail Checker /js/digital.js'te (tembel yüklenir). -->
     <section id="view-dijital-urunler" class="app-view" style="display: none;">
       <div class="main-content dg-page" id="dijital-root"></div>
+    </section>
+
+    <!-- 6.7a. BAYİLİK (/bayilik): tanıtım sunucuda basılır (utils/resellerPage.js);
+         başvuru formu / panel durumu /js/reseller.js ile #bayilik-account'a çizilir. -->
+    <section id="view-bayilik" class="app-view" style="display: none;">
+      <div class="main-content bp-page" id="bayilik-root"></div>
     </section>
 
     <!-- 6.7b. HİZMET SAYFALARI VİTRİNİ (/hizmet-sayfalari): yayındaki satış
@@ -3990,7 +3998,7 @@ Canceled     iptal edildi</pre>
   <footer class="neo-footer">
     <div class="brand-wordmark">SMM<span>JET</span></div>
     <p>Hızlı. Güvenli. Ölçülebilir.<br>Sosyal büyümede yeni standart.</p>
-    <nav class="footer-links" aria-label="Alt bilgi menüsü"><a href="/about" onclick="app.navigate('about');return false;">Hakkımızda</a><a href="/services" onclick="app.navigate('services');return false;">Hizmetler</a><a href="/hizmet-sayfalari" onclick="app.navigate('hizmet-sayfalari');return false;">Hizmet Sayfaları</a><a href="/dijital-urunler" onclick="app.navigate('dijital-urunler');return false;">Dijital Ürünler</a><a href="/blog" onclick="app.navigate('blog');return false;">Blog</a><a href="/smm-panel-api" onclick="app.navigate('smm-panel-api');return false;">API</a><a href="/tickets" onclick="app.navigate('tickets');return false;">Destek</a><a href="/terms" onclick="app.navigate('terms');return false;">Kullanım Şartları</a><a href="/privacy" onclick="app.navigate('privacy');return false;">Gizlilik &amp; KVKK</a><a href="/refund" onclick="app.navigate('refund');return false;">İade Politikası</a></nav>
+    <nav class="footer-links" aria-label="Alt bilgi menüsü"><a href="/about" onclick="app.navigate('about');return false;">Hakkımızda</a><a href="/services" onclick="app.navigate('services');return false;">Hizmetler</a><a href="/hizmet-sayfalari" onclick="app.navigate('hizmet-sayfalari');return false;">Hizmet Sayfaları</a><a href="/dijital-urunler" onclick="app.navigate('dijital-urunler');return false;">Dijital Ürünler</a><a href="/bayilik" data-reseller-nav hidden onclick="app.navigate('bayilik');return false;">Bayilik</a><a href="/blog" onclick="app.navigate('blog');return false;">Blog</a><a href="/smm-panel-api" onclick="app.navigate('smm-panel-api');return false;">API</a><a href="/tickets" onclick="app.navigate('tickets');return false;">Destek</a><a href="/terms" onclick="app.navigate('terms');return false;">Kullanım Şartları</a><a href="/privacy" onclick="app.navigate('privacy');return false;">Gizlilik &amp; KVKK</a><a href="/refund" onclick="app.navigate('refund');return false;">İade Politikası</a></nav>
     <!-- Sosyal profiller: admin panelde adres girilen kanallar app.js
          tarafindan eklenir; Telegram varsayilan olarak burada durur ki
          JavaScript calismadan da (arama motoru botlari) gorunsun. -->
@@ -5125,8 +5133,8 @@ Canceled     iptal edildi</pre>
 
   <!-- App Main Scripts -->
   <!-- Ziyaretci ayak izi: api.js ve app.js'ten once yuklenir (window.JT). -->
-  <script src="/js/track.js?v=20261027c" defer></script>
-  <script src="/js/api.js?v=20261027c" defer></script>
-  <script src="/js/app.js?v=20261027c" defer></script>
+  <script src="/js/track.js?v=20261027d" defer></script>
+  <script src="/js/api.js?v=20261027d" defer></script>
+  <script src="/js/app.js?v=20261027d" defer></script>
 </body>
 </html>

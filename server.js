@@ -224,6 +224,10 @@ app.get('/sitemap.xml', async (req, res) => {
     if (dijitalUrun) {
       urls.push({ loc: `${base}/dijital-urunler`, priority: '0.7', changefreq: 'daily', lastmod: String(dijitalUrun.son || '').slice(0, 10) || undefined });
     }
+    // Bayilik tanitimi yalnizca program aciksa haritaya girer.
+    if ((await require('./services/resellers').getResellerSettings().catch(() => ({}))).public_page_enabled === true) {
+      urls.push({ loc: `${base}/bayilik`, priority: '0.6', changefreq: 'monthly' });
+    }
     // Sik degisen sayfalara lastmod: en guncel yazinin tarihi makul bir
     // vekildir (katalog ve blog listesi en gec o gun degismistir).
     const sonYazi = posts.reduce((max, p) => {
@@ -313,6 +317,9 @@ app.get('/llms.txt', async (req, res) => {
       `- [İade Politikası](${base}/refund): İade, düşüş telafisi (refill) ve garanti koşulları`,
       ''
     ];
+    if ((await require('./services/resellers').getResellerSettings().catch(() => ({}))).public_page_enabled === true) {
+      lines.splice(lines.length - 1, 0, `- [Bayi Paneli](${base}/bayilik): Kendi markanla hazır SMM paneli; Jet servisleri, kendi fiyatın, ödemeler doğrudan sana, ücretsiz deneme`);
+    }
     const satisSayfalari = await require('./utils/landingPages').listPublished(dbAsync).catch(() => []);
     if (satisSayfalari.length) {
       lines.push('## Hizmet Sayfaları');
@@ -1254,7 +1261,10 @@ app.use(async (req, res) => {
     // ve robots etiketleri burada adrese gore yeniden yazilir. Yapilmazsa
     // butun alt sayfalar ana sayfanin kopyasi gibi gorunur (Google bunu
     // "yinelenen icerik" + "anasayfaya canonical" olarak isaretliyordu).
-    const sayfa = pageForPath(req.path);
+    let sayfa = pageForPath(req.path);
+    // Bayilik programi kapaliyken /bayilik ve menu baglantisi yoktur.
+    const bayilikAcik = (await require('./services/resellers').getResellerSettings().catch(() => ({}))).public_page_enabled === true;
+    if (sayfa.view === 'view-bayilik' && !bayilikAcik) sayfa = pageForPath('/bayilik-kapali');
 
     // Ziyaret kaydi: yalnizca gercek sayfa acilislarinda calisir (statik dosya
     // ve /api istekleri buraya dusmez). Yanit beklemez, hata firlatmaz.
@@ -1269,6 +1279,7 @@ app.use(async (req, res) => {
     // Yalnizca bu adrese ait icerik gorunumu gonderilir; digerleri (ana sayfa,
     // hakkimizda, sozlesmeler, API dokumani) kaynaktan tamamen cikarilir.
     html = stripInactiveViews(html, sayfa.view);
+    if (bayilikAcik) html = html.replaceAll(' data-reseller-nav hidden', ' data-reseller-nav');
 
     const seo = await buildSeoParts();
     const base = String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
@@ -1371,6 +1382,15 @@ app.use(async (req, res) => {
         // Fonksiyonlu replace: urun metnindeki "$&" gibi diziler desen sayilmasin.
         html = html.replace('<div class="main-content dg-page" id="dijital-root"></div>', () => `<div class="main-content dg-page" id="dijital-root">${root}</div>`);
       } catch { /* DB hazir degilse istemci kendisi cizer */ }
+    } else if (sayfa.view === 'view-bayilik') {
+      // Tanitim sunucuda basilir; basvuru/durum kutusu public/js/reseller.js ile dolar.
+      try {
+        const R = require('./utils/resellerPage');
+        const ayar = await require('./services/resellers').getResellerSettings();
+        const taban = require('./tenant/resolve').baseDomain();
+        html = html.replace('<div class="main-content bp-page" id="bayilik-root"></div>', () => `<div class="main-content bp-page" id="bayilik-root">${R.renderResellerHtml(ayar, taban)}</div>`);
+        html = html.replace('</head>', () => `  <script type="application/ld+json">${R.resellerJsonLd(ayar, taban, base)}</script>\n</head>`);
+      } catch { /* ayar okunamazsa sayfa bos iskeletle acilir */ }
     } else if (sayfa.view === 'view-blog') {
       const ssr = await buildBlogSsr(base || '');
       if (ssr.cards) html = html.replace('<div class="blog-cards-grid" id="public-blog-cards">', `<div class="blog-cards-grid" id="public-blog-cards">${ssr.cards}`);

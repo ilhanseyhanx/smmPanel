@@ -47,6 +47,13 @@ const SAYFALAR = {
     title: 'Dijital Ürünler - Hazır Hesap ve Dijital Ürün Satın Al | Jet SMM Panel',
     description: 'Hazır hesaplar ve dijital ürünler: bakiyenle öde, hesap bilgilerin saniyeler içinde paneline teslim edilsin. Güncel stok, adet fiyatı ve garanti süresi.'
   },
+  // Bayi Paneli tanitimi + giris yapmis kullanicinin basvurusu/durumu.
+  // reseller_public_page kapaliyken server.js bu adresi 404'e cevirir.
+  bayilik: {
+    view: 'view-bayilik',
+    title: 'Bayilik - Kendi SMM Panelini Aç, 7 Gün Ücretsiz Dene | Jet SMM Panel',
+    description: 'Kendi markanla hazır SMM paneli: Jet servisleri, kendi fiyatın, ödemeler doğrudan sana. 7 gün ücretsiz dene, sonra aylık sabit ücret.'
+  },
   blog: {
     view: 'view-blog',
     title: 'Sosyal Medya Büyüme Rehberi - Blog | Jet SMM Panel',

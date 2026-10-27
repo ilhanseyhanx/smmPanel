@@ -165,7 +165,10 @@ function isBaseSubdomain(rawHost) {
 function tenantDispatcher(req, res, next) {
   tenantForHost(req.headers.host).then(tenant => {
     if (!tenant) {
-      if (!isBaseSubdomain(req.headers.host)) return next();
+      // X-Bayi-Custom: nginx'in bayi alan adlari icin varsayilan blogu ekler
+      // (Cloudflare for SaaS). Ana site adresinde etkisizdir.
+      const customDomain = req.headers['x-bayi-custom'] === '1' && !isMainHost(normalizeHost(req.headers.host));
+      if (!isBaseSubdomain(req.headers.host) && !customDomain) return next();
       res.setHeader('X-Robots-Tag', 'noindex, nofollow');
       return res.status(404).type('html').send(unknownSubdomainPage());
     }

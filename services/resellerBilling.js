@@ -217,6 +217,7 @@ async function runBillingCycle(now = new Date()) {
     const deleteAt = addDays(t.billing_suspended_at, settings.delete_after_days);
     if (!deleteAt) continue;
     if (deleteAt <= now) {
+      await require('./tenantDomains').releaseTenantDomains(t.id);
       await deleteTenantData(t.id);
       invalidateTenantCache();
       await dbAsync.run('INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, details) VALUES (NULL, ?, ?, ?, ?)',

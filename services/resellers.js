@@ -273,7 +273,7 @@ const RESERVED_SLUGS = new Set([
   'www', 'api', 'admin', 'panel', 'app', 'mail', 'smtp', 'ftp', 'ns1', 'ns2', 'cdn', 'static', 'assets',
   'jet', 'jetsmm', 'jetsmmpanel', 'smmjet', 'demo', 'test', 'destek', 'support', 'bayi', 'status',
   // Taban alan adinda (seyilstudios.com) baska islere ayrilmis adresler.
-  'legal', 'send', 'cf-bounce', 'email', 'mx', 'blog', 'docs', 'help'
+  'legal', 'send', 'cf-bounce', 'email', 'mx', 'blog', 'docs', 'help', 'bayi-origin', 'fallback'
 ]);
 
 function validateSlug(value) {

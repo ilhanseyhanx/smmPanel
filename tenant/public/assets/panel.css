@@ -95,6 +95,15 @@
 .pn-page-body { font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace; font-size: .86rem; line-height: 1.55; resize: vertical; }
 .pn-alert a { color: inherit; text-decoration: underline; }
 
+/* Alan adi */
+.pn-domain-main { margin: 0 0 6px; font-size: 1.05rem; font-weight: 700; overflow-wrap: anywhere; }
+.pn-domains { display: grid; gap: 14px; margin-top: 18px; }
+.pn-domain { display: grid; gap: 12px; }
+.pn-domain h3 { margin: 0; font-size: 1.02rem; overflow-wrap: anywhere; }
+.pn-domain-error { margin: 0; color: var(--danger); font-size: .86rem; font-weight: 600; }
+.pn-dns-table code { font-size: .82rem; overflow-wrap: anywhere; user-select: all; }
+.pn-dns-table td { white-space: normal; }
+
 /* Gorunum: tema kartlari ve sematik onizleme */
 .pn-theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 16px; margin-top: 14px; }
 .pn-theme { display: grid; gap: 10px; padding: 14px !important; }

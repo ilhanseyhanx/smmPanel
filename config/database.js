@@ -733,6 +733,16 @@ async function runMigrations() {
   // Bayi Paneli aboneligi (F3). plan_status: trial | active | past_due |
   // expired | comp (Jet'in ucretsiz verdigi). Eski satirlar 'comp' sayilir.
   await addColumnIfMissing('tenants', 'plan_status', "TEXT NOT NULL DEFAULT 'comp'");
+  // Bayinin kendi alan adi (F2b, Cloudflare for SaaS). cf_hostname: Cloudflare'e
+  // kaydedilen ad (www dahil); domain sutunu www'siz cozumleme anahtaridir.
+  await addColumnIfMissing('tenant_domains', 'cf_hostname', 'TEXT');
+  await addColumnIfMissing('tenant_domains', 'cf_hostname_id', 'TEXT');
+  await addColumnIfMissing('tenant_domains', 'cf_status', 'TEXT');
+  await addColumnIfMissing('tenant_domains', 'cf_ssl_status', 'TEXT');
+  await addColumnIfMissing('tenant_domains', 'cf_error', 'TEXT');
+  await addColumnIfMissing('tenant_domains', 'verify_txt_name', 'TEXT');
+  await addColumnIfMissing('tenant_domains', 'verify_txt_value', 'TEXT');
+  await addColumnIfMissing('tenant_domains', 'checked_at', 'DATETIME');
   // Bayi musterisinin sifre sifirlamasi: yalnizca jetonun ozeti saklanir.
   await addColumnIfMissing('tenant_customers', 'reset_token_hash', 'TEXT');
   await addColumnIfMissing('tenant_customers', 'reset_expires_at', 'DATETIME');

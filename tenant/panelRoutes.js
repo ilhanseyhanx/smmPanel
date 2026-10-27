@@ -24,6 +24,8 @@ const { PAGE_MAP: LEGAL_PAGES, listPages } = require('./legalPages');
 const Shopier = require('../services/shopier');
 const billing = require('../services/resellerBilling');
 const { THEME_KEYS, themeOf, publicThemes } = require('./themes');
+const cloudflare = require('../services/cloudflare');
+const tenantDomains = require('../services/tenantDomains');
 const { signOwnerSession, setOwnerCookie, clearOwnerCookie, requireOwner } = require('./panelSession');
 
 const router = express.Router();
@@ -592,6 +594,59 @@ router.get('/logs', async (req, res, next) => {
         type: l.type, order_id: l.order_id, note: l.note, created_at: l.created_at
       }))
     });
+  } catch (err) { next(err); }
+});
+
+// --------------------------------------------------------------- alan adi
+// Bayinin kendi alan adi (Cloudflare for SaaS, services/tenantDomains.js).
+const domainSchema = z.object({ domain: z.string().trim().min(4).max(253) });
+
+async function loadOwnDomain(req, res) {
+  const id = idParam(req.params.id);
+  const row = id && await dbAsync.get('SELECT * FROM tenant_domains WHERE id = ? AND tenant_id = ?', [id, req.tenant.id]);
+  if (!row) res.status(404).json({ error: 'Alan adı bulunamadı.' });
+  return row || null;
+}
+
+router.get('/domains', async (req, res, next) => {
+  try {
+    const rows = await dbAsync.all('SELECT * FROM tenant_domains WHERE tenant_id = ? ORDER BY id', [req.tenant.id]);
+    const base = baseDomain();
+    res.json({
+      configured: cloudflare.isConfigured(),
+      cname_target: cloudflare.config().cnameTarget || null,
+      subdomain: base ? `${req.tenant.slug}.${base}` : null,
+      max_domains: tenantDomains.MAX_DOMAINS,
+      domains: rows.map(tenantDomains.publicDomain)
+    });
+  } catch (err) { next(err); }
+});
+
+router.post('/domains', validate(domainSchema), async (req, res, next) => {
+  try {
+    const domain = await tenantDomains.addDomain(req.tenant, req.body.domain, { actorId: req.owner.id });
+    res.status(201).json({ message: `${domain.hostname} eklendi. Şimdi DNS kaydını ekle.`, domain });
+  } catch (err) {
+    if (err.status && err.status < 500) return res.status(err.status).json({ error: err.message, field: 'domain' });
+    next(err);
+  }
+});
+
+router.post('/domains/:id/check', async (req, res, next) => {
+  try {
+    const row = await loadOwnDomain(req, res);
+    if (!row) return;
+    const domain = await tenantDomains.refreshDomain(row);
+    res.json({ domain, message: domain.status === 'active' ? 'Alan adın aktif.' : 'Henüz doğrulanmadı; DNS kaydının yayılması birkaç dakika sürebilir.' });
+  } catch (err) { next(err); }
+});
+
+router.delete('/domains/:id', async (req, res, next) => {
+  try {
+    const row = await loadOwnDomain(req, res);
+    if (!row) return;
+    await tenantDomains.removeDomain(row, { actorId: req.owner.id });
+    res.json({ message: `${row.cf_hostname || row.domain} kaldırıldı.` });
   } catch (err) { next(err); }
 });
 

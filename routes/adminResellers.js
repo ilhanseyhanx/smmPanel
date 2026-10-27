@@ -17,6 +17,7 @@ const {
 } = require('../services/resellers');
 const billing = require('../services/resellerBilling');
 const { THEME_KEYS } = require('../tenant/themes');
+const tenantDomains = require('../services/tenantDomains');
 const { baseDomain, normalizeHost, invalidateTenantCache, tenantSettings } = require('../tenant/resolve');
 
 const router = express.Router();
@@ -507,7 +508,9 @@ router.delete('/:id/domains/:domainId', async (req, res, next) => {
     if (!tenant) return;
     const domain = await dbAsync.get('SELECT * FROM tenant_domains WHERE id = ? AND tenant_id = ?', [idParam(req.params.domainId), tenant.id]);
     if (!domain) return res.status(404).json({ error: 'Alan adı bulunamadı.' });
-    await dbAsync.run('DELETE FROM tenant_domains WHERE id = ?', [domain.id]);
+    // Cloudflare'e bagli (bayinin ekledigi) alan adinin kaydi da silinir.
+    if (domain.cf_hostname_id) await tenantDomains.removeDomain(domain, { actorType: 'jet_admin', actorId: req.user.id });
+    else await dbAsync.run('DELETE FROM tenant_domains WHERE id = ?', [domain.id]);
     await adminActivity(req, tenant.id, 'domain_removed', { domain: domain.domain });
     await audit(req, 'tenant_domain_removed', tenant.id, { domain: domain.domain });
     invalidateTenantCache();
@@ -606,6 +609,7 @@ router.delete('/:id', validate(deleteSchema), async (req, res, next) => {
     if (req.body.confirm !== tenant.slug) {
       return res.status(400).json({ error: `Silmeyi onaylamak için bayinin adresini ("${tenant.slug}") yazın.` });
     }
+    await tenantDomains.releaseTenantDomains(tenant.id);
     await deleteTenantData(tenant.id);
     await audit(req, 'tenant_deleted', tenant.id, { name: tenant.name, slug: tenant.slug, owner_user_id: tenant.owner_user_id });
     invalidateTenantCache();

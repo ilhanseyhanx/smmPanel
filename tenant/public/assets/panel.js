@@ -14,6 +14,7 @@
     pages: { path: '/admin/pages', title: 'Yasal Sayfalar' },
     subscription: { path: '/admin/subscription', title: 'Abonelik' },
     appearance: { path: '/admin/appearance', title: 'Görünüm' },
+    domain: { path: '/admin/domain', title: 'Alan Adı' },
     logs: { path: '/admin/logs', title: 'Kayıtlar' }
   };
   const STATUS = {
@@ -285,6 +286,87 @@
     $('#pn-invoices').innerHTML = d.invoices.length
       ? d.invoices.map(i => `<tr><td>${formatDate(i.created_at)}</td><td class="pn-num">${money(i.amount)}</td><td>${day(i.period_start)} – ${day(i.period_end)}</td></tr>`).join('')
       : '<tr><td colspan="3" class="sf-muted">Henüz ödeme yok.</td></tr>';
+  }
+
+  // ------------------------------------------------------------- alan adi
+  const DOMAIN_STATUS = { active: ['Aktif', 'completed'], pending: ['Doğrulanıyor', 'pending'], disabled: ['Kapalı', 'canceled'] };
+
+  function dnsName(hostname) {
+    return hostname.startsWith('www.') ? 'www' : hostname;
+  }
+
+  async function loadDomains() {
+    const d = await api('/domains');
+    state.domainInfo = d;
+    $('#pn-subdomain').innerHTML = d.subdomain
+      ? `<a href="https://${escapeHtml(d.subdomain)}" target="_blank" rel="noopener">${escapeHtml(d.subdomain)}</a>`
+      : '<span class="sf-muted">Alt adres tanımlı değil.</span>';
+    const form = $('#pn-domain-form');
+    form.hidden = !d.configured;
+    form.querySelector('button[type=submit]').disabled = d.domains.length >= d.max_domains;
+    $('#pn-domains').innerHTML = d.domains.map(item => {
+      const [label, cls] = DOMAIN_STATUS[item.status] || DOMAIN_STATUS.pending;
+      const dns = item.status === 'active' || !item.managed ? '' : `
+        <p class="pn-help" style="margin:0;">Alan adı firmanın DNS ayarlarına şu kaydı ekle:</p>
+        <div class="sf-table-wrap"><table class="sf-table pn-table pn-dns-table">
+          <thead><tr><th>Tür</th><th>Ad (Host)</th><th>Hedef / Değer</th></tr></thead>
+          <tbody>
+            <tr><td><strong>CNAME</strong></td><td><code>${escapeHtml(dnsName(item.hostname))}</code></td><td><code>${escapeHtml(d.cname_target || '')}</code></td></tr>
+            ${item.txt_name ? `<tr><td>TXT <span class="pn-sub">isteğe bağlı, doğrulamayı hızlandırır</span></td><td><code>${escapeHtml(item.txt_name)}</code></td><td><code>${escapeHtml(item.txt_value)}</code></td></tr>` : ''}
+          </tbody>
+        </table></div>
+        <p class="sf-muted pn-help" style="margin:0;">Alan adın Cloudflare'deyse kaydın proxy'sini (turuncu bulut) kapalı bırak. DNS'in yayılması birkaç dakika ile birkaç saat sürebilir; durum 10 dakikada bir kendiliğinden kontrol edilir.</p>`;
+      return `<article class="sf-card pn-domain">
+        <div class="pn-pay-head"><h3>${item.status === 'active' ? `<a href="https://${escapeHtml(item.hostname)}" target="_blank" rel="noopener">${escapeHtml(item.hostname)}</a>` : escapeHtml(item.hostname)}</h3><span class="sf-badge sf-badge-${cls}">${label}</span></div>
+        ${item.error && item.status !== 'active' ? `<p class="pn-domain-error">${escapeHtml(item.error)}</p>` : ''}
+        ${dns}
+        <div class="pn-row-actions pn-theme-actions">
+          ${item.managed && item.status !== 'active' ? `<button type="button" class="sf-btn sf-btn-primary sf-btn-sm" data-domain-check="${item.id}">Kontrol et</button>` : ''}
+          <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-domain-remove="${item.id}" data-name="${escapeHtml(item.hostname)}">Kaldır</button>
+        </div>
+      </article>`;
+    }).join('') || (d.configured ? '' : '<div class="sf-card"><p class="sf-muted" style="margin:0;">Kendi alan adını bağlama çok yakında açılacak.</p></div>');
+  }
+
+  async function addDomain(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const errorEl = $('.sf-form-error', form);
+    const button = $('button[type=submit]', form);
+    errorEl.textContent = '';
+    button.disabled = true;
+    try {
+      const res = await api('/domains', { method: 'POST', body: JSON.stringify({ domain: form.elements.namedItem('domain').value.trim() }) });
+      form.reset();
+      toast(res.message);
+      await loadDomains();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      button.disabled = false;
+    }
+  }
+
+  async function checkDomain(id, button) {
+    button.disabled = true;
+    try {
+      const res = await api(`/domains/${id}/check`, { method: 'POST' });
+      toast(res.message, res.domain.status === 'active' ? undefined : 'info');
+      await loadDomains();
+    } catch (err) {
+      toast(err.message, 'error');
+      button.disabled = false;
+    }
+  }
+
+  async function removeDomain(id, name) {
+    if (!await confirmBox('Alan adını kaldır', `${name} siteden ayrılacak; DNS kaydını da silebilirsin.`, 'Kaldır')) return;
+    try {
+      const res = await api(`/domains/${id}`, { method: 'DELETE' });
+      toast(res.message);
+      await loadDomains();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   // ------------------------------------------------------------- gorunum
@@ -909,6 +991,7 @@
     subscription_expired: 'Abonelik bitti, site askıya alındı',
     subscription_admin: 'Yönetim aboneliği güncelledi',
     theme_changed: 'Tema değişti',
+    domain_activated: 'Alan adı aktif oldu',
     page_reset: 'Yasal sayfa otomatiğe döndü'
   };
   const ACTORS = { owner: 'Siz', customer: 'Müşteri', jet_admin: 'Yönetim', system: 'Sistem' };
@@ -978,6 +1061,7 @@
       if (view === 'pages') await loadPagesView();
       if (view === 'subscription') await loadSubscription();
       if (view === 'appearance') await loadThemes();
+      if (view === 'domain') await loadDomains();
       if (view === 'site') await loadSite();
       if (view === 'logs') await loadLogs(true);
     } catch (err) {
@@ -1010,6 +1094,7 @@
     $('#pn-logout').addEventListener('click', logout);
     $('#pn-default-markup-form').addEventListener('submit', saveDefaultMarkup);
     $('#pn-site-form').addEventListener('submit', saveSite);
+    $('#pn-domain-form').addEventListener('submit', addDomain);
     $('#pn-color-picker').addEventListener('input', event => { $('#pn-site-form').primary_color.value = event.target.value; });
     $('#pn-svc-category').addEventListener('change', renderServices);
     $('#pn-svc-filter').addEventListener('change', renderServices);
@@ -1064,6 +1149,10 @@
       const reject = t.closest('[data-pay-reject]');
       if (reject) { rejectPayment(Number(reject.dataset.payReject)); return; }
       if (t.closest('[data-sub-continue]')) { subscriptionAction('continue'); return; }
+      const domainCheck = t.closest('[data-domain-check]');
+      if (domainCheck) { checkDomain(Number(domainCheck.dataset.domainCheck), domainCheck); return; }
+      const domainRemove = t.closest('[data-domain-remove]');
+      if (domainRemove) { removeDomain(Number(domainRemove.dataset.domainRemove), domainRemove.dataset.name); return; }
       const themeUse = t.closest('[data-theme-use]');
       if (themeUse) { useTheme(themeUse.dataset.themeUse); return; }
       if (t.closest('[data-sub-cancel]')) { subscriptionAction('cancel'); return; }

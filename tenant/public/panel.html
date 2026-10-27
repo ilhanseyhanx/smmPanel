@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="/assets/storefront.css?v=20261027c">
-  <link rel="stylesheet" href="/assets/panel.css?v=20261027d">
+  <link rel="stylesheet" href="/assets/panel.css?v=20261027e">
   <style>:root { --primary: %%PRIMARY%%; }</style>
 </head>
 <body class="pn-body">
@@ -45,6 +45,7 @@
         <a href="/admin/orders" data-go="orders"><i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i><span>Siparişler</span></a>
         <a href="/admin/payments" data-go="payments"><i class="fa-solid fa-money-bill-transfer" aria-hidden="true"></i><span>Ödemeler</span><b class="pn-nav-count" id="pn-pay-count" hidden></b></a>
         <a href="/admin/payment-settings" data-go="paysettings"><i class="fa-solid fa-credit-card" aria-hidden="true"></i><span>Ödeme Ayarları</span></a>
+        <a href="/admin/domain" data-go="domain"><i class="fa-solid fa-globe" aria-hidden="true"></i><span>Alan Adı</span></a>
         <a href="/admin/appearance" data-go="appearance"><i class="fa-solid fa-palette" aria-hidden="true"></i><span>Görünüm</span></a>
         <a href="/admin/site" data-go="site"><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Site Ayarları</span></a>
         <a href="/admin/pages" data-go="pages"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i><span>Yasal Sayfalar</span></a>
@@ -153,6 +154,25 @@
           </table>
         </div>
         <div class="pn-pager" id="pn-ord-pager"></div>
+      </section>
+
+      <!-- ALAN ADI -->
+      <section class="pn-view" data-view="domain" hidden>
+        <div class="pn-sub-grid">
+          <div class="sf-card">
+            <h3 class="pn-card-title">Sitenin adresi</h3>
+            <p id="pn-subdomain" class="pn-domain-main"></p>
+            <p class="sf-muted pn-help">Bu adres her zaman çalışır. Kendi alan adını bağlarsan site iki adreste de açılır.</p>
+          </div>
+          <form class="sf-card sf-form" id="pn-domain-form" novalidate>
+            <h3 class="pn-card-title">Kendi alan adını bağla</h3>
+            <label>Alan adı<input name="domain" class="sf-input" maxlength="253" placeholder="www.kankasmm.com" autocomplete="off" spellcheck="false" required></label>
+            <p class="sf-muted pn-help" style="margin:0;">www ile yazmanı öneririz. Kök adres (kankasmm.com) için alan adı firmanın CNAME düzleştirme desteklemesi gerekir.</p>
+            <p class="sf-form-error" role="alert"></p>
+            <button type="submit" class="sf-btn sf-btn-primary">Ekle</button>
+          </form>
+        </div>
+        <div id="pn-domains" class="pn-domains"></div>
       </section>
 
       <!-- GORUNUM (TEMA) -->
@@ -264,6 +284,6 @@
   </div>
 
   <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
-  <script src="/assets/panel.js?v=20261027d" defer></script>
+  <script src="/assets/panel.js?v=20261027e" defer></script>
 </body>
 </html>

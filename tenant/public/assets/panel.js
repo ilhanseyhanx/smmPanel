@@ -370,7 +370,54 @@
   }
 
   // ------------------------------------------------------------- gorunum
+  function renderBranding(b) {
+    const show = (id, url, kind) => {
+      $(id).innerHTML = url ? `<img src="${escapeHtml(url)}" alt="">` : '<i class="fa-solid fa-image" aria-hidden="true"></i>';
+      $(`[data-brand-remove="${kind}"]`).hidden = !url;
+    };
+    show('#pn-logo-preview', b.logo_url, 'logo');
+    show('#pn-favicon-preview', b.favicon_url, 'favicon');
+    $('#pn-hide-name').checked = b.hide_name;
+    $('#pn-hide-name').disabled = !b.logo_url;
+  }
+
+  function readAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('Dosya okunamadı.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function uploadBrand(input) {
+    const kind = input.dataset.brandUpload;
+    const file = input.files[0];
+    input.value = '';
+    if (!file) return;
+    const limit = kind === 'logo' ? 300 : 100;
+    if (file.size > limit * 1024) { toast(`Dosya en fazla ${limit} KB olabilir.`, 'error'); return; }
+    try {
+      const res = await api(`/branding/${kind}`, { method: 'POST', body: JSON.stringify({ data: await readAsDataUrl(file) }) });
+      toast(res.message);
+      renderBranding(res);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  async function removeBrand(kind) {
+    try {
+      const res = await api(`/branding/${kind}`, { method: 'DELETE' });
+      toast(res.message);
+      renderBranding(res);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
   async function loadThemes() {
+    renderBranding(await api('/branding'));
     const d = await api('/theme');
     $('#pn-themes').innerHTML = d.themes.map(t => {
       const current = t.key === d.current;
@@ -721,6 +768,9 @@
     form.support_email.value = s.support_email;
     form.telegram.value = s.telegram;
     form.legal_name.value = s.legal_name;
+    form.hero_title.value = s.hero_title;
+    form.hero_text.value = s.hero_text;
+    form.footer_text.value = s.footer_text;
     form.legal_address.value = s.legal_address;
     form.phone.value = s.phone;
   }
@@ -730,7 +780,7 @@
     const form = event.currentTarget;
     const errorEl = $('.sf-form-error', form);
     errorEl.textContent = '';
-    const body = Object.fromEntries(['name', 'primary_color', 'description', 'announcement', 'support_email', 'telegram', 'legal_name', 'legal_address', 'phone']
+    const body = Object.fromEntries(['name', 'primary_color', 'description', 'announcement', 'support_email', 'telegram', 'legal_name', 'legal_address', 'phone', 'hero_title', 'hero_text', 'footer_text']
       .map(key => [key, form.elements.namedItem(key).value.trim()]));
     try {
       const res = await api('/site', { method: 'PUT', body: JSON.stringify(body) });
@@ -992,6 +1042,7 @@
     subscription_admin: 'Yönetim aboneliği güncelledi',
     theme_changed: 'Tema değişti',
     domain_activated: 'Alan adı aktif oldu',
+    branding_changed: 'Logo / simge değişti',
     page_reset: 'Yasal sayfa otomatiğe döndü'
   };
   const ACTORS = { owner: 'Siz', customer: 'Müşteri', jet_admin: 'Yönetim', system: 'Sistem' };
@@ -1095,6 +1146,13 @@
     $('#pn-default-markup-form').addEventListener('submit', saveDefaultMarkup);
     $('#pn-site-form').addEventListener('submit', saveSite);
     $('#pn-domain-form').addEventListener('submit', addDomain);
+    document.addEventListener('change', event => {
+      if (event.target.matches('[data-brand-upload]')) uploadBrand(event.target);
+    });
+    $('#pn-hide-name').addEventListener('change', async event => {
+      try { renderBranding(await api('/branding', { method: 'PUT', body: JSON.stringify({ hide_name: event.target.checked }) })); toast('Kaydedildi.'); }
+      catch (err) { toast(err.message, 'error'); }
+    });
     $('#pn-color-picker').addEventListener('input', event => { $('#pn-site-form').primary_color.value = event.target.value; });
     $('#pn-svc-category').addEventListener('change', renderServices);
     $('#pn-svc-filter').addEventListener('change', renderServices);
@@ -1153,6 +1211,8 @@
       if (domainCheck) { checkDomain(Number(domainCheck.dataset.domainCheck), domainCheck); return; }
       const domainRemove = t.closest('[data-domain-remove]');
       if (domainRemove) { removeDomain(Number(domainRemove.dataset.domainRemove), domainRemove.dataset.name); return; }
+      const brandRemove = t.closest('[data-brand-remove]');
+      if (brandRemove) { removeBrand(brandRemove.dataset.brandRemove); return; }
       const themeUse = t.closest('[data-theme-use]');
       if (themeUse) { useTheme(themeUse.dataset.themeUse); return; }
       if (t.closest('[data-sub-cancel]')) { subscriptionAction('cancel'); return; }

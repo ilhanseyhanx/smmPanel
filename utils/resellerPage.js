@@ -5,6 +5,8 @@
 // #bayilik-account kutusuna public/js/reseller.js ile cizilir.
 // Sayfa, site_settings.reseller_public_page kapaliyken 404'tur (server.js).
 
+const THEME_LIST = require('../tenant/themes').publicThemes();
+
 function esc(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -18,7 +20,7 @@ function tl(value) {
 function faqItems(settings, baseDomain) {
   const fee = tl(settings.monthly_fee_tl);
   return [
-    ['Alan adı almam gerekiyor mu?', `Hayır. Panelin ${baseDomain ? `siteadin.${baseDomain}` : 'sana verilen alt adreste'} hemen açılır. Kendi alan adını bağlama seçeneği de gelecek.`],
+    ['Alan adı almam gerekiyor mu?', `Hayır. Panelin ${baseDomain ? `siteadin.${baseDomain}` : 'sana verilen alt adreste'} hemen açılır. İstersen kendi alan adını panelden bağlarsın: tek bir DNS kaydı yeter, SSL otomatik.`],
     ['Müşterilerimin ödediği para kime gider?', 'Doğrudan sana. Havale/EFT, PayTR, Shopier veya kripto hesabını panelden bağlarsın; Jet hiçbir tahsilat yapmaz.'],
     ['Sitemde Jet adı görünür mü?', 'Hayır. Site senin adınla ve renginle açılır; müşterilerin Jet\'i görmez.'],
     ['Servisler nereden geliyor?', `Jet'in servislerinden. Jet fiyatının %${settings.discount_percent} altına alırsın, satış fiyatını sen belirlersin; sipariş, durum takibi ve iade otomatiktir.`],
@@ -36,7 +38,7 @@ function renderResellerHtml(settings, baseDomain) {
     ['fa-wallet', 'Ödeme doğrudan sana', 'Havale/EFT, PayTR, Shopier ve kripto. Müşteri yüklediği bakiyeyle sipariş verir, para senin hesabına girer.'],
     ['fa-users', 'Müşteri yönetimi', 'Müşteri bakiyeleri, siparişler, havale onayı ve kayıtlar tek panelde. İptal ve kısmi iadeler müşteriye otomatik yansır.'],
     ['fa-scale-balanced', 'Yasal sayfalar hazır', 'Gizlilik, Mesafeli Satış, İade ve KVKK metinleri senin bilgilerinle otomatik dolar.'],
-    ['fa-eye-slash', 'Senin markan', 'Sitende Jet adı geçmez. Site adın, rengin ve duyurun senin.']
+    ['fa-eye-slash', 'Senin markan', 'Sitende Jet adı geçmez. Logon, site adın, rengin ve duyurun senin; istersen kendi alan adını da bağlarsın.']
   ];
   const steps = [
     ['Başvur', 'Site adını ve adresini seç. Panelin anında açılır.'],
@@ -55,6 +57,17 @@ function renderResellerHtml(settings, baseDomain) {
     <h2 id="bp-features-title">Panelde neler var?</h2>
     <ul class="bp-features">
       ${features.map(([icon, title, text]) => `<li><i class="fa-solid ${icon}" aria-hidden="true"></i><h3>${esc(title)}</h3><p>${text}</p></li>`).join('\n      ')}
+    </ul>
+  </section>
+  <section class="bp-section" aria-labelledby="bp-themes-title">
+    <h2 id="bp-themes-title">${THEME_LIST.length} hazır tema</h2>
+    <p class="bp-lead">Temanı panelden tek tıkla değiştirirsin; logo, renk ve ana sayfa metinleri de senin. ${baseDomain ? 'Her temayı demo sitede canlı dene.' : ''}</p>
+    <ul class="bp-themes">
+      ${THEME_LIST.map(t => `<li>
+        <div class="bp-theme-thumb" data-layout="${esc(t.layout)}" style="--t-bg:${esc(t.bg)};--t-accent:${esc(t.accent)}" aria-hidden="true"><i></i><b></b><s></s><u></u></div>
+        <h3>${esc(t.name)}</h3><p>${esc(t.note)}</p>
+        ${baseDomain ? `<a href="https://demo.${esc(baseDomain)}/?tema=${esc(t.key)}" target="_blank" rel="noopener">Canlı önizle <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>` : ''}
+      </li>`).join('\n      ')}
     </ul>
   </section>
   <section class="bp-section" aria-labelledby="bp-steps-title">

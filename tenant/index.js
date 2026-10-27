@@ -17,6 +17,7 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const TEMPLATE_PATH = path.join(PUBLIC_DIR, 'index.html');
 const PANEL_TEMPLATE_PATH = path.join(PUBLIC_DIR, 'panel.html');
 const { themeOf, fontHref, THEME_KEYS } = require('./themes');
+const tenantBranding = require('../services/tenantBranding');
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -55,6 +56,21 @@ function onColor(hex) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? '#0b0b0f' : '#ffffff';
 }
 
+const DEFAULT_HERO_TITLE = 'Sosyal medya hesaplarını [hızla büyüt]';
+const DEFAULT_HERO_TEXT = 'Takipçi, beğeni, izlenme ve daha fazlası. Hesabını oluştur, bakiyeni yükle ve siparişini saniyeler içinde ver.';
+
+// Giris basligi: [koseli parantez] icindeki kisim vurgu rengiyle yazilir.
+// Once tum metin kacirilir, sonra yalnizca ilk [..] <span> olur.
+function heroTitle(value) {
+  return escapeHtml(value || DEFAULT_HERO_TITLE).replace(/\[([^\]]{1,80})\]/, '<span>$1</span>').replace(/[[\]]/g, '');
+}
+
+// Demo site: ustte tema degistirici serit (yalnizca demo bayide).
+function demoBanner(current) {
+  const links = THEME_KEYS.map(key => `<a href="/?tema=${key}"${key === current ? ' class="active" aria-current="true"' : ''}>${escapeHtml(themeOf(key).name)}</a>`).join('');
+  return `  <div class="sf-demo-bar"><strong>Demo site · temaları dene:</strong>${links}</div>`;
+}
+
 // previewTheme: ?tema= ile gosterilen tema (kaydedilmez, dizine eklenmez).
 function renderStorefront(tenant, { previewTheme = null } = {}) {
   const settings = tenantSettings(tenant);
@@ -68,7 +84,16 @@ function renderStorefront(tenant, { previewTheme = null } = {}) {
     .replaceAll('%%FONT_HREF%%', escapeHtml(fontHref(theme)))
     .replaceAll('%%FONT_DISPLAY%%', theme.display ? `'${theme.display}', ${font}` : font)
     .replaceAll('%%FONT%%', font)
-    .replaceAll('%%ROBOTS%%', previewTheme ? '\n  <meta name="robots" content="noindex">' : '')
+    .replaceAll('%%ROBOTS%%', previewTheme || settings.demo ? '\n  <meta name="robots" content="noindex">' : '')
+    .replaceAll('%%FAVICON%%', settings.favicon_type ? `/brand/favicon?v=${escapeHtml(settings.favicon_v || '1')}` : 'data:,')
+    .replaceAll('%%BRAND_MARK%%', settings.logo_type
+      ? `<img class="sf-brand-logo" src="/brand/logo?v=${escapeHtml(settings.logo_v || '1')}" alt="">`
+      : '<span class="sf-brand-mark"><i class="fa-solid fa-bolt" aria-hidden="true"></i></span>')
+    .replaceAll('%%BRAND_NAME_CLASS%%', settings.logo_type && settings.hide_name ? 'sf-brand-name sf-sr-only' : 'sf-brand-name')
+    .replaceAll('%%HERO_TITLE%%', heroTitle(settings.hero_title))
+    .replaceAll('%%HERO_TEXT%%', escapeHtml(settings.hero_text || DEFAULT_HERO_TEXT))
+    .replaceAll('%%FOOTER_TEXT%%', settings.footer_text ? `<span class="sf-footer-text">${escapeHtml(settings.footer_text)}</span>` : '')
+    .replaceAll('%%DEMO_BANNER%%', settings.demo ? demoBanner(theme.key) : '')
     .replace('--primary: %%PRIMARY%%;', `--primary: ${primary}; --on-primary: ${onColor(primary)};`)
     .replaceAll('%%PRIMARY%%', primary)
     .replaceAll('%%DESCRIPTION%%', escapeHtml(settings.description || `${tenant.name} — sosyal medya hizmetleri paneli`));
@@ -106,6 +131,11 @@ function buildTenantApp() {
   // hakkini tuketmesin.
   app.use('/api/panel/login', rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, handler: rateLimitHandler }));
   app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+  // Demo bayi (Jet'in tema vitrini): kayit, giris, siparis ve odeme kapali.
+  app.use('/api', (req, res, next) => {
+    if (req.method === 'GET' || req.path.startsWith('/panel') || !tenantSettings(req.tenant).demo) return next();
+    res.status(403).json({ error: 'Bu bir demo site; kayıt, giriş ve sipariş kapalı.', error_en: 'This is a demo site; sign-up and orders are disabled.' });
+  });
 
   app.use('/api/panel', require('./panelRoutes'));
   app.use('/api/payments', require('./paymentRoutes'));
@@ -113,7 +143,7 @@ function buildTenantApp() {
   app.use(notFoundApi);
 
   app.get('/robots.txt', (req, res) => {
-    res.type('text/plain').send(req.tenant.status === 'active'
+    res.type('text/plain').send(req.tenant.status === 'active' && !tenantSettings(req.tenant).demo
       ? 'User-agent: *\nAllow: /\nDisallow: /admin\n'
       : 'User-agent: *\nDisallow: /\n');
   });
@@ -122,6 +152,16 @@ function buildTenantApp() {
     index: false,
     maxAge: process.env.NODE_ENV === 'production' ? '1d' : 0
   }));
+
+  // Bayinin logosu ve sekme simgesi (services/tenantBranding.js).
+  app.get('/brand/:kind', (req, res) => {
+    const kind = req.params.kind;
+    const type = tenantSettings(req.tenant)[`${kind}_type`];
+    const file = type && tenantBranding.assetPath(req.tenant.id, kind, type);
+    if (!file) return res.status(404).end();
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.type(tenantBranding.MIME[type]).sendFile(file, err => { if (err && !res.headersSent) res.status(404).end(); });
+  });
 
   // Yonetim paneli askidaki bayide de acilir: sahip durumu ve sebebi gorur.
   app.get(['/admin', /^\/admin\/.*/], (req, res) => {

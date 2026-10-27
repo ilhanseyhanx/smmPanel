@@ -140,6 +140,16 @@ a { color: var(--primary); text-decoration: none; }
 .sf-dl dt { color: var(--muted); }
 .sf-dl dd { margin: 0; font-weight: 600; word-break: break-all; }
 
+/* Logo, alt bilgi metni, demo seridi */
+.sf-brand-logo { display: block; height: 38px; width: auto; max-width: 190px; object-fit: contain; }
+.sf-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.sf-footer-text { flex-basis: 100%; order: 3; font-size: 0.84rem; white-space: pre-line; }
+.sf-demo-bar { display: flex; align-items: center; gap: 10px; overflow-x: auto; padding: 8px 16px; background: #0f172a; color: #e2e8f0; font-size: 0.84rem; scrollbar-width: none; }
+.sf-demo-bar::-webkit-scrollbar { display: none; }
+.sf-demo-bar strong { white-space: nowrap; }
+.sf-demo-bar a { flex: none; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(226, 232, 240, .25); color: #e2e8f0; font-weight: 600; white-space: nowrap; }
+.sf-demo-bar a:hover, .sf-demo-bar a.active { background: #e2e8f0; color: #0f172a; }
+
 /* Sifre sifirlama */
 .sf-link-btn { justify-self: center; border: 0; background: none; padding: 2px 4px; color: var(--primary); font: inherit; font-weight: 600; font-size: 0.88rem; cursor: pointer; }
 .sf-link-btn:hover { text-decoration: underline; }

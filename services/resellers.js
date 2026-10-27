@@ -265,6 +265,8 @@ async function deleteTenantData(tenantId) {
     }
     await tx.run('DELETE FROM tenants WHERE id = ?', [tenantId]);
   });
+  // Yuklenen logo ve simge de silinir.
+  await require('./tenantBranding').removeAll(tenantId).catch(() => {});
 }
 
 // Alt alan adinda kullanilir: kankasmm.<taban-alan-adi>
@@ -279,7 +281,8 @@ const RESERVED_SLUGS = new Set([
 function validateSlug(value) {
   const slug = String(value || '').trim().toLowerCase();
   if (!SLUG_PATTERN.test(slug) || slug.includes('--')) return { ok: false, slug, reason: 'format' };
-  if (RESERVED_SLUGS.has(slug) || /^demo\d*$/.test(slug)) return { ok: false, slug, reason: 'reserved' };
+  // demo, demo2, demo-xxx: Jet'in demo siteleri icin ayrilmis.
+  if (RESERVED_SLUGS.has(slug) || /^demo(\d*|-.*)$/.test(slug)) return { ok: false, slug, reason: 'reserved' };
   return { ok: true, slug };
 }
 

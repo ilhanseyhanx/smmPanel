@@ -15,3 +15,6 @@ database.sqlite-wal
 tmp/
 output/
 
+
+# Bayi sitelerinin yuklenen gorselleri (logo, simge); sunucuda kalir.
+uploads/

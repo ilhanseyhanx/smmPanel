@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="/assets/storefront.css?v=20261027c">
-  <link rel="stylesheet" href="/assets/panel.css?v=20261027e">
+  <link rel="stylesheet" href="/assets/panel.css?v=20261027f">
   <style>:root { --primary: %%PRIMARY%%; }</style>
 </head>
 <body class="pn-body">
@@ -178,6 +178,24 @@
       <!-- GORUNUM (TEMA) -->
       <section class="pn-view" data-view="appearance" hidden>
         <p class="sf-muted pn-help">Temayı seçmeden önce "Önizle" ile sitende nasıl duracağını yeni sekmede gör. Tema değişince ana renk temanın rengine döner; Site Ayarları'ndan yeniden değiştirebilirsin.</p>
+        <div class="sf-card pn-brand-card" id="pn-branding">
+          <h3 class="pn-card-title">Logo ve sekme simgesi</h3>
+          <div class="pn-brand-grid">
+            <div class="pn-brand-item">
+              <div class="pn-brand-preview" id="pn-logo-preview"></div>
+              <div class="pn-brand-text"><strong>Logo</strong><span class="sf-muted">PNG, JPG veya WebP · en fazla 300 KB · yatay logo önerilir</span>
+                <div class="pn-row-actions pn-theme-actions"><label class="sf-btn sf-btn-ghost sf-btn-sm pn-file-btn">Yükle<input type="file" accept="image/png,image/jpeg,image/webp" data-brand-upload="logo" hidden></label><button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-brand-remove="logo" hidden>Kaldır</button></div>
+              </div>
+            </div>
+            <div class="pn-brand-item">
+              <div class="pn-brand-preview is-icon" id="pn-favicon-preview"></div>
+              <div class="pn-brand-text"><strong>Sekme simgesi</strong><span class="sf-muted">PNG, ICO veya WebP · en fazla 100 KB · kare</span>
+                <div class="pn-row-actions pn-theme-actions"><label class="sf-btn sf-btn-ghost sf-btn-sm pn-file-btn">Yükle<input type="file" accept="image/png,image/x-icon,image/vnd.microsoft.icon,image/webp" data-brand-upload="favicon" hidden></label><button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-brand-remove="favicon" hidden>Kaldır</button></div>
+              </div>
+            </div>
+          </div>
+          <label class="sf-check pn-brand-hide"><input type="checkbox" id="pn-hide-name"> Logoda site adı yazıyor; menüde adı ayrıca gösterme</label>
+        </div>
         <div class="pn-theme-grid" id="pn-themes"><p class="sf-muted">Yükleniyor…</p></div>
       </section>
 
@@ -255,6 +273,10 @@
           <label>Duyuru <small>(sitenin üstünde şerit olarak görünür; boş bırakılırsa gizlenir)</small><input name="announcement" class="sf-input" maxlength="300"></label>
           <label>Destek e-postası<input name="support_email" type="email" class="sf-input" maxlength="254"></label>
           <label>Telegram <small>(kullanıcı adı veya bağlantı)</small><input name="telegram" class="sf-input" maxlength="100"></label>
+          <h3 class="pn-form-section">Ana sayfa metinleri <small>(boş bırakırsan varsayılan metin görünür)</small></h3>
+          <label>Giriş başlığı <small>([köşeli parantez] içi ana renkle yazılır)</small><input name="hero_title" class="sf-input" maxlength="120" placeholder="Sosyal medya hesaplarını [hızla büyüt]"></label>
+          <label>Giriş metni<textarea name="hero_text" class="sf-input" rows="2" maxlength="300" placeholder="Takipçi, beğeni, izlenme ve daha fazlası…"></textarea></label>
+          <label>Alt bilgi metni <small>(her sayfanın en altında görünür)</small><input name="footer_text" class="sf-input" maxlength="200" placeholder="Örn: 7/24 destek · Telegram: @kankasmm"></label>
           <h3 class="pn-form-section">Yasal bilgiler <small>(Mesafeli Satış ve KVKK sayfalarında satıcı olarak görünür)</small></h3>
           <label>Ünvan veya ad soyad<input name="legal_name" class="sf-input" maxlength="160" placeholder="Örn: Ali Veli Dijital Hizmetler"></label>
           <label>Adres<input name="legal_address" class="sf-input" maxlength="300"></label>
@@ -284,6 +306,6 @@
   </div>
 
   <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
-  <script src="/assets/panel.js?v=20261027e" defer></script>
+  <script src="/assets/panel.js?v=20261027f" defer></script>
 </body>
 </html>

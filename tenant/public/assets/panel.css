@@ -104,6 +104,17 @@
 .pn-dns-table code { font-size: .82rem; overflow-wrap: anywhere; user-select: all; }
 .pn-dns-table td { white-space: normal; }
 
+/* Gorunum: logo ve sekme simgesi */
+.pn-brand-card { display: grid; gap: 14px; margin-top: 14px; }
+.pn-brand-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
+.pn-brand-item { display: flex; gap: 14px; align-items: center; min-width: 0; }
+.pn-brand-preview { flex: none; display: grid; place-items: center; width: 132px; height: 64px; border-radius: 10px; border: 1px dashed var(--border); background: var(--surface-2); color: var(--muted); overflow: hidden; }
+.pn-brand-preview.is-icon { width: 64px; }
+.pn-brand-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.pn-brand-text { display: grid; gap: 4px; min-width: 0; font-size: .86rem; }
+.pn-file-btn { cursor: pointer; }
+.pn-brand-hide { font-size: .88rem; }
+
 /* Gorunum: tema kartlari ve sematik onizleme */
 .pn-theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 16px; margin-top: 14px; }
 .pn-theme { display: grid; gap: 10px; padding: 14px !important; }

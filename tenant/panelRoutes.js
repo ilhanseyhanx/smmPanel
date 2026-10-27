@@ -25,6 +25,7 @@ const Shopier = require('../services/shopier');
 const billing = require('../services/resellerBilling');
 const { THEME_KEYS, themeOf, publicThemes } = require('./themes');
 const cloudflare = require('../services/cloudflare');
+const tenantBranding = require('../services/tenantBranding');
 const tenantDomains = require('../services/tenantDomains');
 const { signOwnerSession, setOwnerCookie, clearOwnerCookie, requireOwner } = require('./panelSession');
 
@@ -65,13 +66,17 @@ const siteSchema = z.object({
   // Yasal sayfalarda (mesafeli satis, KVKK) satici bilgisi olarak gecer.
   legal_name: z.string().trim().max(160).optional().default(''),
   legal_address: z.string().trim().max(300).optional().default(''),
-  phone: z.string().trim().max(40).optional().default('')
+  phone: z.string().trim().max(40).optional().default(''),
+  // Ana sayfa metinleri (bossa varsayilan metin). [..] vurgu rengiyle yazilir.
+  hero_title: z.string().trim().max(120).optional().default(''),
+  hero_text: z.string().trim().max(300).optional().default(''),
+  footer_text: z.string().trim().max(200).optional().default('')
 });
 const pageSchema = z.object({
   title: z.string().trim().min(2).max(120),
   body: z.string().trim().min(20).max(30000)
 });
-const SITE_TEXT_KEYS = ['primary_color', 'description', 'announcement', 'support_email', 'telegram', 'legal_name', 'legal_address', 'phone'];
+const SITE_TEXT_KEYS = ['primary_color', 'description', 'announcement', 'support_email', 'telegram', 'legal_name', 'legal_address', 'phone', 'hero_title', 'hero_text', 'footer_text'];
 
 function ip(req) {
   return securityMonitor.clientIp(req);
@@ -528,7 +533,10 @@ router.get('/site', (req, res) => {
     telegram: settings.telegram || '',
     legal_name: settings.legal_name || '',
     legal_address: settings.legal_address || '',
-    phone: settings.phone || ''
+    phone: settings.phone || '',
+    hero_title: settings.hero_title || '',
+    hero_text: settings.hero_text || '',
+    footer_text: settings.footer_text || ''
   });
 });
 
@@ -546,7 +554,10 @@ router.put('/site', validate(siteSchema), async (req, res, next) => {
       telegram: normalizePlainText(req.body.telegram, 100),
       legal_name: normalizePlainText(req.body.legal_name, 160),
       legal_address: normalizePlainText(req.body.legal_address, 300),
-      phone: normalizePlainText(req.body.phone, 40)
+      phone: normalizePlainText(req.body.phone, 40),
+      hero_title: normalizePlainText(req.body.hero_title, 120),
+      hero_text: normalizePlainText(req.body.hero_text, 300),
+      footer_text: normalizePlainText(req.body.footer_text, 200)
     };
     await dbAsync.run(
       'UPDATE tenants SET name = ?, settings_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
@@ -647,6 +658,64 @@ router.delete('/domains/:id', async (req, res, next) => {
     if (!row) return;
     await tenantDomains.removeDomain(row, { actorId: req.owner.id });
     res.json({ message: `${row.cf_hostname || row.domain} kaldırıldı.` });
+  } catch (err) { next(err); }
+});
+
+// ----------------------------------------------------------- logo / simge
+const brandUploadSchema = z.object({ data: z.string().min(20).max(450_000) });
+const brandOptionsSchema = z.object({ hide_name: z.boolean() });
+
+function brandingState(tenant) {
+  const s = tenantSettings(tenant);
+  return {
+    logo_url: s.logo_type ? `/brand/logo?v=${s.logo_v || '1'}` : null,
+    favicon_url: s.favicon_type ? `/brand/favicon?v=${s.favicon_v || '1'}` : null,
+    hide_name: Boolean(s.hide_name)
+  };
+}
+
+async function saveSettings(tenantId, settings) {
+  await dbAsync.run('UPDATE tenants SET settings_json = ? WHERE id = ?', [JSON.stringify(settings), tenantId]);
+  invalidateTenantCache();
+}
+
+router.get('/branding', (req, res) => res.json(brandingState(req.tenant)));
+
+router.post('/branding/:kind', validate(brandUploadSchema), async (req, res, next) => {
+  try {
+    const kind = String(req.params.kind);
+    const saved = await tenantBranding.saveAsset(req.tenant.id, kind, req.body.data);
+    const settings = { ...tenantSettings(req.tenant), [`${kind}_type`]: saved.type, [`${kind}_v`]: saved.version };
+    await saveSettings(req.tenant.id, settings);
+    await ownerActivity(req, 'branding_changed', { [kind]: 'yüklendi' });
+    res.json({ message: kind === 'logo' ? 'Logo yüklendi.' : 'Sekme simgesi yüklendi.', ...brandingState({ settings_json: JSON.stringify(settings) }) });
+  } catch (err) {
+    if (err.status && err.status < 500) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.delete('/branding/:kind', async (req, res, next) => {
+  try {
+    const kind = String(req.params.kind);
+    await tenantBranding.removeAsset(req.tenant.id, kind);
+    const settings = { ...tenantSettings(req.tenant) };
+    delete settings[`${kind}_type`];
+    delete settings[`${kind}_v`];
+    await saveSettings(req.tenant.id, settings);
+    await ownerActivity(req, 'branding_changed', { [kind]: 'kaldırıldı' });
+    res.json({ message: 'Kaldırıldı.', ...brandingState({ settings_json: JSON.stringify(settings) }) });
+  } catch (err) {
+    if (err.status && err.status < 500) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.put('/branding', validate(brandOptionsSchema), async (req, res, next) => {
+  try {
+    const settings = { ...tenantSettings(req.tenant), hide_name: req.body.hide_name };
+    await saveSettings(req.tenant.id, settings);
+    res.json({ message: 'Kaydedildi.', ...brandingState({ settings_json: JSON.stringify(settings) }) });
   } catch (err) { next(err); }
 });
 

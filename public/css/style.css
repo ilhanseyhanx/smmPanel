@@ -5106,6 +5106,23 @@ body.neo-app-active #view-bayilik .bp-features h3 { margin: 12px 0 6px; font-siz
 body.neo-app-active #view-bayilik .bp-steps h3 { margin: 0 0 4px; font-size: 1rem; }
 .bp-steps p { margin: 0; font-size: .92rem; line-height: 1.5; }
 .bp-faq { display: grid; gap: 10px; max-width: 860px; }
+.bp-lead { margin: -6px 0 0; max-width: 70ch; line-height: 1.6; }
+.bp-themes { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 16px; }
+.bp-themes li { display: grid; gap: 6px; align-content: start; padding: 12px; border: 3px solid #090909; background: #fff; box-shadow: 5px 5px 0 #090909; }
+body.neo-app-active #view-bayilik .bp-themes h3 { margin: 4px 0 0; font-size: 1rem; }
+.bp-themes p { margin: 0; font-size: .84rem; line-height: 1.45; color: #444; }
+.bp-themes a { justify-self: start; margin-top: 4px; font: 800 .74rem 'IBM Plex Mono', 'IBM Plex Mono Fallback', monospace; text-transform: uppercase; color: #1769e8; }
+.bp-theme-thumb { position: relative; aspect-ratio: 16 / 10; border: 2px solid #090909; background: var(--t-bg); overflow: hidden; }
+.bp-theme-thumb i, .bp-theme-thumb b, .bp-theme-thumb s, .bp-theme-thumb u { position: absolute; display: block; text-decoration: none; }
+.bp-theme-thumb i { left: 0; right: 0; top: 0; height: 14%; background: color-mix(in srgb, var(--t-bg) 80%, #888); }
+.bp-theme-thumb b { left: 8%; top: 28%; width: 46%; height: 12%; border-radius: 3px; background: var(--t-accent); }
+.bp-theme-thumb s { left: 8%; top: 48%; width: 38%; height: 7%; border-radius: 3px; background: color-mix(in srgb, var(--t-bg) 55%, #888); }
+.bp-theme-thumb u { right: 8%; top: 26%; width: 30%; height: 56%; border-radius: 4px; background: color-mix(in srgb, var(--t-bg) 70%, #fff); border: 1px solid color-mix(in srgb, var(--t-bg) 60%, #888); }
+.bp-theme-thumb[data-layout="tablo"] i { right: auto; width: 22%; height: 100%; }
+.bp-theme-thumb[data-layout="tablo"] b, .bp-theme-thumb[data-layout="tablo"] s { left: 30%; }
+.bp-theme-thumb[data-layout="vitrin"] b { left: 18%; width: 64%; top: 22%; height: 16%; }
+.bp-theme-thumb[data-layout="vitrin"] s { left: 28%; width: 44%; top: 44%; }
+.bp-theme-thumb[data-layout="vitrin"] u { left: 33%; right: auto; width: 34%; top: 60%; height: 30%; }
 .bp-faq details { border: 2px solid #090909; background: #fff; }
 .bp-faq summary { cursor: pointer; padding: 14px 16px; font-weight: 800; }
 .bp-faq p { margin: 0; padding: 0 16px 16px; line-height: 1.6; }

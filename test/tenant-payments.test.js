@@ -359,6 +359,38 @@ test('bayi yasal sayfayı düzenler ve şablona geri döndürebilir', async () =
   assert.match(sablon.body.body, /Bakiyeye otomatik iade/);
 });
 
+test('bayi müşterisi şifresini e-postadaki bağlantıyla sıfırlar; eski oturum kapanır', async () => {
+  const mailer = require('../services/mailer');
+  const gercek = mailer.sendMail;
+  const giden = [];
+  mailer.sendMail = async mail => { giden.push(mail); return true; };
+  try {
+    const kimse = await site().post('/api/auth/forgot').send({ email: 'yok@musteri.com' });
+    assert.equal(kimse.status, 200);
+    assert.equal(giden.length, 0, 'kayıtsız adrese e-posta gitmez');
+    const istek = await site().post('/api/auth/forgot').send({ email: 'odeyen_musteri@musteri.com' });
+    assert.equal(istek.status, 200);
+    assert.equal(istek.body.message, kimse.body.message, 'yanıt kayıtlı olup olmadığını sızdırmaz');
+    assert.equal(giden.length, 1);
+    assert.equal(giden[0].fromName, 'Ödeme SMM');
+    assert.equal(giden[0].replyTo, 'destek@odeme.com');
+    assert.doesNotMatch(giden[0].text + giden[0].subject, /jet/i, 'e-posta metninde Jet geçmez');
+    const token = giden[0].text.match(/token=([a-f0-9]+)/)[1];
+
+    const kisa = await site().post('/api/auth/reset').send({ token, password: 'kisa' });
+    assert.equal(kisa.status, 400);
+    const ok = await site().post('/api/auth/reset').send({ token, password: 'YeniSifre_2026_Bayi' });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal((await musteri.get('/api/auth/me')).status, 401, 'eski oturum kapanır');
+    assert.equal((await site().post('/api/auth/reset').send({ token, password: 'BaskaSifre_2026_Bayi' })).status, 400, 'jeton bir kez kullanılır');
+    const giris = site();
+    assert.equal((await giris.post('/api/auth/login').send({ username: 'odeyen_musteri', password: 'YeniSifre_2026_Bayi' })).status, 200);
+    musteri = { ...giris, id: musteri.id };
+  } finally {
+    mailer.sendMail = gercek;
+  }
+});
+
 test('bayi silinince ödeme kayıtları ve ayarları da silinir', async () => {
   const say = async table => (await dbAsync.get(`SELECT COUNT(*) AS n FROM ${table} WHERE tenant_id = ?`, [tenantId])).n;
   assert.ok(await say('tenant_payments') > 0);

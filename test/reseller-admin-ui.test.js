@@ -22,8 +22,8 @@ test('Bayiler sekmesi menüde, mobil menüde ve panelde var', () => {
 });
 
 test('ayar formu ve liste alanları HTML\'de, app.js bunları kullanıyor', () => {
-  for (const id of ['reseller-setting-public', 'reseller-public-state', 'reseller-setting-discount', 'reseller-setting-min-deposit', 'reseller-setting-markup', 'reseller-setting-open',
-    'reseller-settings-save', 'reseller-create-owner', 'reseller-create-name', 'reseller-create-slug',
+  for (const id of ['reseller-setting-public', 'reseller-public-state', 'reseller-setting-discount', 'reseller-setting-fee', 'reseller-setting-trial', 'reseller-setting-grace', 'reseller-setting-delete', 'reseller-setting-markup', 'reseller-setting-open',
+    'reseller-settings-save', 'reseller-create-owner', 'reseller-create-name', 'reseller-create-slug', 'reseller-create-plan',
     'admin-resellers-search', 'admin-resellers-tbody', 'admin-resellers-summary',
     'admin-resellers-list-view', 'admin-reseller-detail-view', 'admin-reseller-detail-content']) {
     assert.ok(html.includes(`id="${id}"`), `${id} alanı HTML'de yok`);

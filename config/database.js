@@ -733,6 +733,9 @@ async function runMigrations() {
   // Bayi Paneli aboneligi (F3). plan_status: trial | active | past_due |
   // expired | comp (Jet'in ucretsiz verdigi). Eski satirlar 'comp' sayilir.
   await addColumnIfMissing('tenants', 'plan_status', "TEXT NOT NULL DEFAULT 'comp'");
+  // Bayi musterisinin sifre sifirlamasi: yalnizca jetonun ozeti saklanir.
+  await addColumnIfMissing('tenant_customers', 'reset_token_hash', 'TEXT');
+  await addColumnIfMissing('tenant_customers', 'reset_expires_at', 'DATETIME');
   await addColumnIfMissing('tenants', 'trial_ends_at', 'DATETIME');
   await addColumnIfMissing('tenants', 'paid_until', 'DATETIME');
   await addColumnIfMissing('tenants', 'auto_renew', 'INTEGER NOT NULL DEFAULT 0');

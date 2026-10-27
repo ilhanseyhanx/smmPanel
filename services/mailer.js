@@ -35,7 +35,15 @@ async function isConfigured() {
   return Boolean(config.host && config.user && config.pass && config.from);
 }
 
-async function sendMail({ to, subject, text, html }) {
+// fromName: gonderen adi (bayi sitesi kendi adini verir); adres SMTP'nin
+// adresidir. replyTo: yanitlarin gidecegi adres (bayinin destek e-postasi).
+function withName(from, name) {
+  if (!name) return from;
+  const address = (String(from).match(/<([^>]+)>/) || [null, String(from)])[1].trim();
+  return `"${String(name).replace(/["\r\n<>]/g, '').slice(0, 80)}" <${address}>`;
+}
+
+async function sendMail({ to, subject, text, html, fromName, replyTo }) {
   const config = await getConfig();
   if (!config.host || !config.user || !config.pass || !config.from) {
     if (process.env.NODE_ENV === 'production') throw new Error('E-posta servisi yapılandırılmamış. Admin panelinden SMTP ayarlarını girin.');
@@ -47,8 +55,8 @@ async function sendMail({ to, subject, text, html }) {
     secure: config.secure,
     auth: { user: config.user, pass: config.pass }
   });
-  await transporter.sendMail({ from: config.from, to, subject, text, html });
+  await transporter.sendMail({ from: withName(config.from, fromName), to, subject, text, html, ...(replyTo ? { replyTo } : {}) });
   return true;
 }
 
-module.exports = { sendMail, isConfigured, getConfig };
+module.exports = { sendMail, isConfigured, getConfig, withName };

@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="/assets/storefront.css?v=20261027b">
+  <link rel="stylesheet" href="/assets/storefront.css?v=20261027c">
   <style>:root { --primary: %%PRIMARY%%; }</style>
 </head>
 <body>
@@ -64,6 +64,15 @@
             <label>Şifre<input name="password" type="password" autocomplete="current-password" required></label>
             <p class="sf-form-error" role="alert"></p>
             <button type="submit" class="sf-btn sf-btn-primary sf-btn-block">Giriş Yap</button>
+            <button type="button" class="sf-link-btn" data-auth-tab="forgot">Şifremi unuttum</button>
+          </form>
+          <form id="sf-forgot-form" class="sf-form" data-auth-form="forgot" hidden novalidate>
+            <p class="sf-muted" style="margin:0;">Kayıtlı e-posta adresini yaz; şifre sıfırlama bağlantısı gönderelim.</p>
+            <label>E-posta<input name="email" type="email" autocomplete="email" required></label>
+            <p class="sf-form-error" role="alert"></p>
+            <p class="sf-form-ok" role="status"></p>
+            <button type="submit" class="sf-btn sf-btn-primary sf-btn-block">Bağlantı Gönder</button>
+            <button type="button" class="sf-link-btn" data-auth-tab="login">Girişe dön</button>
           </form>
           <form id="sf-register-form" class="sf-form" data-auth-form="register" hidden novalidate>
             <label>Kullanıcı adı<input name="username" autocomplete="username" required></label>
@@ -129,6 +138,16 @@
       </div>
     </section>
 
+    <!-- SIFRE SIFIRLAMA (e-postadaki baglanti) -->
+    <section class="sf-view" data-view="reset" hidden>
+      <form id="sf-reset-form" class="sf-card sf-form sf-narrow" novalidate>
+        <h1 class="sf-card-title" style="font-size:1.4rem;">Yeni şifre belirle</h1>
+        <label>Yeni şifre <small>(en az 10 karakter)</small><input name="password" type="password" autocomplete="new-password" required></label>
+        <p class="sf-form-error" role="alert"></p>
+        <button type="submit" class="sf-btn sf-btn-primary sf-btn-block">Şifreyi Kaydet</button>
+      </form>
+    </section>
+
     <!-- BAKIYE YUKLE -->
     <section class="sf-view" data-view="funds" hidden>
       <div class="sf-page-head"><h1>Bakiye Yükle</h1></div>
@@ -178,6 +197,6 @@
   </footer>
 
   <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
-  <script src="/assets/storefront.js?v=20261027b" defer></script>
+  <script src="/assets/storefront.js?v=20261027c" defer></script>
 </body>
 </html>

@@ -82,6 +82,8 @@ function buildTenantApp() {
   const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, handler: rateLimitHandler });
   app.use('/api/auth/login', authLimiter);
   app.use('/api/auth/register', authLimiter);
+  app.use('/api/auth/forgot', authLimiter);
+  app.use('/api/auth/reset', authLimiter);
   // Panel girisi ayri sayacla sinirlanir: musteri kayitlari sahibin giris
   // hakkini tuketmesin.
   app.use('/api/panel/login', rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, handler: rateLimitHandler }));

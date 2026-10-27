@@ -35,7 +35,10 @@ Object.assign(SmmApp.prototype, {
     if (!settings) return;
     const set = (id, value) => { const el = document.getElementById(id); if (el) el.value = value; };
     set('reseller-setting-discount', settings.discount_percent);
-    set('reseller-setting-min-deposit', settings.min_deposit_tl);
+    set('reseller-setting-fee', settings.monthly_fee_tl);
+    set('reseller-setting-trial', settings.trial_days);
+    set('reseller-setting-grace', settings.grace_days);
+    set('reseller-setting-delete', settings.delete_after_days);
     set('reseller-setting-markup', settings.default_markup_percent);
     const open = document.getElementById('reseller-setting-open');
     if (open) open.checked = Boolean(settings.applications_open);
@@ -76,7 +79,8 @@ Object.assign(SmmApp.prototype, {
       this.resellerKpi('fa-boxes-stacked', '', String(s.orders_30d || 0), 'Sipariş', 'son 30 gün'),
       this.resellerKpi('fa-sack-dollar', 'green', this.fmtTl(s.jet_revenue_30d), 'Bayilerden Size Gelen', 'son 30 gün'),
       this.resellerKpi('fa-chart-line', 'cyan', this.fmtTl(s.reseller_profit_30d), 'Bayilerin Kârı', 'son 30 gün'),
-      this.resellerKpi('fa-percent', '', `%${settings.discount_percent ?? 0}`, 'Bayi İndirimi', `açılış ₺${settings.min_deposit_tl ?? 0}`),
+      this.resellerKpi('fa-percent', '', `%${settings.discount_percent ?? 0}`, 'Bayi İndirimi', `aylık ₺${settings.monthly_fee_tl ?? 0} · ${settings.trial_days ?? 0} gün deneme`),
+      this.resellerKpi('fa-calendar-check', 'green', this.fmtTl(s.fee_income_30d || 0), 'Aylık Ücret Geliri', `son 30 gün · ${(s.plans || {}).trial || 0} denemede`),
       this.resellerKpi('fa-store', settings.public_page_enabled ? 'green' : '', settings.public_page_enabled ? 'Yayında' : 'Kapalı', 'Sitede Bayilik Sayfası')
     ].join('');
   },
@@ -87,6 +91,19 @@ Object.assign(SmmApp.prototype, {
       suspended: { label: 'Askıda', badge: 'badge-canceled', icon: 'fa-ban' },
       sleeping: { label: 'Uykuda', badge: 'badge-pending', icon: 'fa-moon' }
     }[status] || { label: status, badge: 'badge-pending', icon: 'fa-circle' };
+  },
+
+  // Abonelik rozeti + kisa aciklama (liste ve detayda ortak).
+  resellerPlanInfo(sub) {
+    const day = v => (v ? this.fmtDbDateTime(v).split(' ').slice(0, 3).join(' ') : '');
+    const map = {
+      trial: { label: 'Deneme', badge: 'badge-processing', note: sub?.trial_ends_at ? `${sub.days_left} gün kaldı${sub.auto_renew ? ' · devam dedi' : ''}` : '' },
+      active: { label: 'Ödendi', badge: 'badge-completed', note: sub?.paid_until ? `${day(sub.paid_until)}'e kadar${sub.auto_renew ? '' : ' · yenileme kapalı'}` : '' },
+      past_due: { label: 'Ödeme bekliyor', badge: 'badge-pending', note: sub?.grace_ends_at ? `son gün ${day(sub.grace_ends_at)}` : '' },
+      expired: { label: 'Askıda (ödenmedi)', badge: 'badge-canceled', note: sub?.delete_at ? `${day(sub.delete_at)} silinecek` : '' },
+      comp: { label: 'Ücretsiz', badge: 'badge-completed', note: '' }
+    };
+    return map[sub?.plan_status] || map.comp;
   },
 
   resellerAddressesHtml(t) {
@@ -109,7 +126,7 @@ Object.assign(SmmApp.prototype, {
       t.name, t.slug, t.subdomain, t.owner?.username, t.owner?.email, ...(t.domains || []).map(d => d.domain)
     ].some(v => String(v || '').toLocaleLowerCase('tr-TR').includes(q)));
     if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="10" class="text-center" style="color:var(--text-dim);">${q ? 'Aramaya uyan bayi yok.' : 'Henüz bayi yok. Bayilik başvurusu gelince ya da elle açınca burada görünür.'}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="11" class="text-center" style="color:var(--text-dim);">${q ? 'Aramaya uyan bayi yok.' : 'Henüz bayi yok. Bayilik başvurusu gelince ya da elle açınca burada görünür.'}</td></tr>`;
       return;
     }
     tbody.innerHTML = rows.map(t => {
@@ -120,6 +137,7 @@ Object.assign(SmmApp.prototype, {
         <td>${t.owner ? `<a href="#" onclick="app.openUserFromReseller(${t.owner.id}); return false;">${esc(t.owner.username)}</a>${t.owner.banned ? ' <span class="badge badge-canceled">Banlı</span>' : ''}` : '—'}</td>
         <td style="font-size:.85rem;">${this.resellerAddressesHtml(t)}</td>
         <td><span class="badge ${st.badge}"><i class="fa-solid ${st.icon}"></i> ${st.label}</span></td>
+        <td>${(p => `<span class="badge ${p.badge}">${p.label}</span>${p.note ? `<small style="display:block;color:var(--text-dim);">${esc(p.note)}</small>` : ''}`)(this.resellerPlanInfo(t.subscription))}</td>
         <td>${t.stats.customers_total}${t.stats.customers_30d ? `<small style="display:block;color:var(--text-dim);">+${t.stats.customers_30d} yeni</small>` : ''}</td>
         <td>${t.stats.orders_30d}${t.stats.orders_active ? `<small style="display:block;color:var(--text-dim);">${t.stats.orders_active} aktif</small>` : ''}</td>
         <td>${this.fmtTl(t.stats.cost_30d)}</td>
@@ -140,14 +158,19 @@ Object.assign(SmmApp.prototype, {
     const payload = {
       public_page_enabled: Boolean(document.getElementById('reseller-setting-public')?.checked),
       discount_percent: num('reseller-setting-discount'),
-      min_deposit_tl: num('reseller-setting-min-deposit'),
+      monthly_fee_tl: num('reseller-setting-fee'),
+      trial_days: num('reseller-setting-trial'),
+      grace_days: num('reseller-setting-grace'),
+      delete_after_days: num('reseller-setting-delete'),
       default_markup_percent: num('reseller-setting-markup'),
       applications_open: Boolean(document.getElementById('reseller-setting-open')?.checked)
     };
     if (!Number.isFinite(payload.discount_percent) || payload.discount_percent < 0 || payload.discount_percent > 90) {
       showToast('Bayi indirimi 0 ile 90 arasında olmalı.', 'warning'); return;
     }
-    if (!Number.isFinite(payload.min_deposit_tl) || payload.min_deposit_tl < 0) { showToast('Açılış şartı geçerli bir tutar olmalı.', 'warning'); return; }
+    if (!Number.isFinite(payload.monthly_fee_tl) || payload.monthly_fee_tl < 0) { showToast('Aylık ücret geçerli bir tutar olmalı.', 'warning'); return; }
+    if (![payload.trial_days, payload.grace_days].every(v => Number.isInteger(v) && v >= 0 && v <= 60)) { showToast('Deneme ve gecikme 0-60 gün arasında olmalı.', 'warning'); return; }
+    if (!Number.isInteger(payload.delete_after_days) || payload.delete_after_days < 7 || payload.delete_after_days > 365) { showToast('Silme süresi 7-365 gün arasında olmalı.', 'warning'); return; }
     if (!Number.isFinite(payload.default_markup_percent) || payload.default_markup_percent < 0) { showToast('Varsayılan kâr geçerli bir oran olmalı.', 'warning'); return; }
     const before = this.adminResellersData?.settings;
     if (before && before.public_page_enabled !== payload.public_page_enabled) {
@@ -181,7 +204,7 @@ Object.assign(SmmApp.prototype, {
 
   async createResellerManually() {
     const val = id => String(document.getElementById(id)?.value || '').trim();
-    const payload = { owner: val('reseller-create-owner'), name: val('reseller-create-name'), slug: val('reseller-create-slug').toLowerCase() };
+    const payload = { owner: val('reseller-create-owner'), name: val('reseller-create-name'), slug: val('reseller-create-slug').toLowerCase(), plan: val('reseller-create-plan') || 'trial' };
     if (!payload.owner || !payload.name || !payload.slug) { showToast('Sahip, site adı ve adres gerekli.', 'warning'); return; }
     try {
       const res = await API.createAdminReseller(payload);
@@ -237,8 +260,10 @@ Object.assign(SmmApp.prototype, {
     const status = this.resellerStatusInfo(t.status);
     const ownDiscount = t.discount_percent !== null && t.discount_percent !== undefined;
     const badge = (label, cls, icon) => `<span class="badge ${cls}">${icon ? `<i class="fa-solid ${icon}"></i> ` : ''}${label}</span>`;
+    const plan = this.resellerPlanInfo(data.subscription);
     const badges = [
       badge(status.label, status.badge, status.icon),
+      badge(`${plan.label}${plan.note ? ` · ${esc(plan.note)}` : ''}`, plan.badge, 'fa-calendar-check'),
       badge(`İndirim %${t.effective_discount_percent}${ownDiscount ? ' (özel)' : ' (genel)'}`, ownDiscount ? 'badge-processing' : 'badge-completed', 'fa-percent'),
       badge(`Kâr %${t.default_markup_percent}`, 'badge-completed', 'fa-arrow-trend-up'),
       badge(`Tema: ${esc(t.theme)}`, 'badge-pending', 'fa-palette'),
@@ -254,6 +279,7 @@ Object.assign(SmmApp.prototype, {
       <button class="btn btn-outline btn-sm" onclick="app.editResellerField('discount_percent')"><i class="fa-solid fa-percent"></i> İndirim</button>
       <button class="btn btn-outline btn-sm" onclick="app.editResellerField('default_markup_percent')"><i class="fa-solid fa-arrow-trend-up"></i> Kâr</button>
       <button class="btn btn-outline btn-sm" onclick="app.addResellerDomain()"><i class="fa-solid fa-globe"></i> Alan Adı Ekle</button>
+      <button class="btn btn-outline btn-sm" onclick="app.changeResellerSubscription()"><i class="fa-solid fa-calendar-plus"></i> Abonelik</button>
       <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="app.deleteReseller()"><i class="fa-solid fa-trash"></i> Sil</button>`;
 
     const info = (label, value) => `
@@ -353,7 +379,7 @@ Object.assign(SmmApp.prototype, {
         return `${esc(this.resellerStatusInfo(d.from).label)} → ${esc(this.resellerStatusInfo(d.to).label)}${d.reason ? ` · ${esc(d.reason)}` : ''}`;
       case 'global_settings_changed':
         return (d.before?.public_page_enabled !== d.after?.public_page_enabled
-          ? `Bayilik sayfası ${d.after?.public_page_enabled ? 'yayına alındı' : 'kapatıldı'} · ` : '') + `İndirim %${esc(d.before?.discount_percent)} → %${esc(d.after?.discount_percent)} · Açılış ₺${esc(d.before?.min_deposit_tl)} → ₺${esc(d.after?.min_deposit_tl)} · Kâr %${esc(d.before?.default_markup_percent)} → %${esc(d.after?.default_markup_percent)}`;
+          ? `Bayilik sayfası ${d.after?.public_page_enabled ? 'yayına alındı' : 'kapatıldı'} · ` : '') + `İndirim %${esc(d.before?.discount_percent)} → %${esc(d.after?.discount_percent)} · Aylık ₺${esc(d.before?.monthly_fee_tl ?? '—')} → ₺${esc(d.after?.monthly_fee_tl ?? '—')} · Kâr %${esc(d.before?.default_markup_percent)} → %${esc(d.after?.default_markup_percent)}`;
       case 'customer_balance_changed':
         return `${esc(d.customer)}: ${Number(d.amount) > 0 ? '+' : ''}${this.fmtTl(d.amount)} → ${this.fmtTl(d.balance_after)}${d.note ? ` · ${esc(d.note)}` : ''}`;
       case 'owner_balance_low':
@@ -550,6 +576,30 @@ Object.assign(SmmApp.prototype, {
       const res = await API.updateAdminReseller(id, { [field]: payloadValue });
       showToast(res.message, 'success');
       await this.refreshAdminResellerDetail();
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
+    }
+  },
+
+  // Abonelige elle mudahale: sure uzat, yeniden deneme ver ya da ucretsiz yap.
+  async changeResellerSubscription() {
+    const id = this.adminResellerDetailId;
+    if (!id) return;
+    const sub = this.adminResellerDetailData?.subscription || {};
+    const answer = await promptDialog(
+      'İşlem: "uzat 30" (deneme ya da ödenmiş dönemi 30 gün uzatır), "deneme 7" (bugünden 7 gün deneme) veya "ücretsiz" (abonelik kalkar). Askıdaysa site yeniden açılır.',
+      { title: `Abonelik · ${this.resellerPlanInfo(sub).label}`, icon: 'fa-calendar-plus', placeholder: 'uzat 30', confirmText: 'Uygula' }
+    );
+    if (!answer) return;
+    const text = String(answer).trim().toLocaleLowerCase('tr-TR');
+    const days = Number((text.match(/\d+/) || [30])[0]);
+    const action = text.startsWith('ücretsiz') || text.startsWith('ucretsiz') ? 'comp' : text.startsWith('deneme') ? 'trial' : text.startsWith('uzat') ? 'extend' : null;
+    if (!action) { showToast('Anlaşılmadı: "uzat 30", "deneme 7" veya "ücretsiz" yazın.', 'warning'); return; }
+    try {
+      const res = await API.setAdminResellerSubscription(id, action, days);
+      showToast(res.message, 'success');
+      await this.refreshAdminResellerDetail();
+      await this.loadAdminResellers();
     } catch (err) {
       showToast(`Hata: ${err.message}`, 'error');
     }

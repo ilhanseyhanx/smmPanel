@@ -3,8 +3,10 @@
 // Bayi sitesinin (vitrin) API'si. Her istekte req.tenant hazirdir (dispatcher).
 // Bayinin musterisi Jet kullanicisi degildir; bu uclar yalnizca kendi
 // tenant_customers kaydina ve kendi siparislerine erisir.
+const crypto = require('crypto');
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const mailer = require('../services/mailer');
 const { z } = require('zod');
 const { dbAsync } = require('../config/database');
 const { validate, bilingual } = require('../middleware/validate');
@@ -148,6 +150,65 @@ router.post('/auth/login', requireActiveTenant, validate(loginSchema), async (re
     });
     setCustomerCookie(res, signCustomerSession(req.tenant, customer));
     res.json({ customer: publicCustomer(customer) });
+  } catch (err) { next(err); }
+});
+
+// Sifre sifirlama: yanit her zaman aynidir (hangi e-postanin kayitli oldugu
+// disari sizmaz). Jeton 1 saat gecerli; veritabaninda yalnizca ozeti durur.
+const forgotSchema = z.object({ email: z.email().max(254).transform(value => value.toLowerCase()) });
+const resetSchema = z.object({ token: z.string().trim().min(20).max(200), password: passwordSchema });
+const hashToken = token => crypto.createHash('sha256').update(String(token)).digest('hex');
+
+router.post('/auth/forgot', requireActiveTenant, validate(forgotSchema), async (req, res, next) => {
+  try {
+    const generic = { message: 'Bu e-posta kayıtlıysa şifre sıfırlama bağlantısı gönderildi.', message_en: 'If this email is registered, a reset link has been sent.' };
+    const customer = await dbAsync.get('SELECT * FROM tenant_customers WHERE tenant_id = ? AND email = ?', [req.tenant.id, req.body.email]);
+    if (!customer || customer.banned) return res.json(generic);
+    const token = crypto.randomBytes(32).toString('hex');
+    await dbAsync.run(
+      "UPDATE tenant_customers SET reset_token_hash = ?, reset_expires_at = datetime('now', '+1 hour') WHERE id = ?",
+      [hashToken(token), customer.id]
+    );
+    const settings = tenantSettings(req.tenant);
+    const link = `${req.protocol}://${req.get('host')}/sifre-sifirla?token=${token}`;
+    try {
+      await mailer.sendMail({
+        to: customer.email,
+        subject: `${req.tenant.name} şifre sıfırlama`,
+        fromName: req.tenant.name,
+        replyTo: settings.support_email || undefined,
+        text: `Merhaba ${customer.username},\n\n${req.tenant.name} hesabının şifresini sıfırlamak için bu bağlantıyı aç (1 saat geçerli):\n${link}\n\nBu isteği sen yapmadıysan bu e-postayı yok sayabilirsin; şifren değişmez.`
+      });
+    } catch (err) {
+      console.error('Bayi sifre sifirlama e-postasi:', err.message);
+    }
+    await logTenantActivity(dbAsync, {
+      tenantId: req.tenant.id, actorType: 'customer', actorId: customer.id, action: 'password_reset_requested', ip: clientIp(req)
+    });
+    res.json(generic);
+  } catch (err) { next(err); }
+});
+
+router.post('/auth/reset', requireActiveTenant, validate(resetSchema), async (req, res, next) => {
+  try {
+    const customer = await dbAsync.get(
+      "SELECT id, banned FROM tenant_customers WHERE tenant_id = ? AND reset_token_hash = ? AND reset_expires_at > datetime('now')",
+      [req.tenant.id, hashToken(req.body.token)]
+    );
+    if (!customer || customer.banned) {
+      return res.status(400).json({ error: 'Bağlantının süresi dolmuş ya da geçersiz. Yeniden şifre sıfırlama iste.', error_en: 'This link is invalid or has expired. Request a new one.' });
+    }
+    const hash = await bcrypt.hash(req.body.password, 12);
+    // token_version artar: eski oturumlar kapanir.
+    await dbAsync.run(
+      'UPDATE tenant_customers SET password = ?, reset_token_hash = NULL, reset_expires_at = NULL, token_version = token_version + 1 WHERE id = ?',
+      [hash, customer.id]
+    );
+    await logTenantActivity(dbAsync, {
+      tenantId: req.tenant.id, actorType: 'customer', actorId: customer.id, action: 'password_reset_done', ip: clientIp(req)
+    });
+    clearCustomerCookie(res);
+    res.json({ message: 'Şifren değişti. Yeni şifrenle giriş yapabilirsin.', message_en: 'Your password has been changed. You can sign in now.' });
   } catch (err) { next(err); }
 });
 

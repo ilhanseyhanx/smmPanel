@@ -5,7 +5,7 @@
 
   const state = { site: null, customer: null, categories: [], services: [], servicesLoaded: false, methods: [], method: null, payTimer: null };
   const USER_VIEWS = new Set(['order', 'orders', 'account', 'funds']);
-  const ROUTES = { '/': 'home', '/services': 'services', '/order': 'order', '/orders': 'orders', '/account': 'account', '/bakiye': 'funds' };
+  const ROUTES = { '/': 'home', '/services': 'services', '/order': 'order', '/orders': 'orders', '/account': 'account', '/bakiye': 'funds', '/sifre-sifirla': 'reset' };
 
   // Yasal sayfalar /sayfa/<slug> adresinde acilir.
   function routeOf(path) {
@@ -71,7 +71,7 @@
   }
 
   function showAuthTab(tab) {
-    $$('[data-auth-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.authTab === tab));
+    $$('.sf-tabs [data-auth-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.authTab === tab));
     $$('[data-auth-form]').forEach(form => { form.hidden = form.dataset.authForm !== tab; });
   }
 
@@ -89,6 +89,47 @@
       form.reset();
       toast(kind === 'register' ? 'Hesabın oluşturuldu, hoş geldin!' : 'Giriş yapıldı.');
       navigate('/order');
+    } catch (err) {
+      errorEl.textContent = err.message;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function submitForgot(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const errorEl = $('.sf-form-error', form);
+    const okEl = $('.sf-form-ok', form);
+    const button = $('button[type=submit]', form);
+    errorEl.textContent = '';
+    okEl.textContent = '';
+    button.disabled = true;
+    try {
+      const data = await api('/auth/forgot', { method: 'POST', body: JSON.stringify({ email: form.email.value.trim() }) });
+      okEl.textContent = data.message;
+    } catch (err) {
+      errorEl.textContent = err.message;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function submitReset(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const errorEl = $('.sf-form-error', form);
+    const button = $('button[type=submit]', form);
+    const token = new URLSearchParams(location.search).get('token') || '';
+    errorEl.textContent = '';
+    button.disabled = true;
+    try {
+      const data = await api('/auth/reset', { method: 'POST', body: JSON.stringify({ token, password: form.password.value }) });
+      form.reset();
+      toast(data.message);
+      setCustomer(null);
+      navigate('/');
+      showAuthTab('login');
     } catch (err) {
       errorEl.textContent = err.message;
     } finally {
@@ -602,6 +643,8 @@
     });
     $('#sf-login-form').addEventListener('submit', event => submitAuth(event, 'login'));
     $('#sf-register-form').addEventListener('submit', event => submitAuth(event, 'register'));
+    $('#sf-forgot-form').addEventListener('submit', submitForgot);
+    $('#sf-reset-form').addEventListener('submit', submitReset);
     $('#sf-logout').addEventListener('click', logout);
     $('#sf-service-search').addEventListener('input', renderServices);
     $('#sf-order-category').addEventListener('change', () => fillServiceSelect(null));

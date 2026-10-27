@@ -13,6 +13,7 @@
     site: { path: '/admin/site', title: 'Site Ayarları' },
     pages: { path: '/admin/pages', title: 'Yasal Sayfalar' },
     subscription: { path: '/admin/subscription', title: 'Abonelik' },
+    appearance: { path: '/admin/appearance', title: 'Görünüm' },
     logs: { path: '/admin/logs', title: 'Kayıtlar' }
   };
   const STATUS = {
@@ -284,6 +285,33 @@
     $('#pn-invoices').innerHTML = d.invoices.length
       ? d.invoices.map(i => `<tr><td>${formatDate(i.created_at)}</td><td class="pn-num">${money(i.amount)}</td><td>${day(i.period_start)} – ${day(i.period_end)}</td></tr>`).join('')
       : '<tr><td colspan="3" class="sf-muted">Henüz ödeme yok.</td></tr>';
+  }
+
+  // ------------------------------------------------------------- gorunum
+  async function loadThemes() {
+    const d = await api('/theme');
+    $('#pn-themes').innerHTML = d.themes.map(t => {
+      const current = t.key === d.current;
+      return `<article class="sf-card pn-theme${current ? ' is-current' : ''}">
+        <div class="pn-theme-thumb" data-layout="${escapeHtml(t.layout)}" style="--t-bg:${escapeHtml(t.bg)};--t-accent:${escapeHtml(t.accent)}" aria-hidden="true"><i></i><b></b><s></s><u></u></div>
+        <div class="pn-pay-head"><h3>${escapeHtml(t.name)}</h3><span class="sf-badge sf-badge-${current ? 'completed' : 'processing'}">${current ? 'Kullanılıyor' : escapeHtml(t.layout_name)}</span></div>
+        <p class="sf-muted">${escapeHtml(t.note)} · ${escapeHtml(t.layout_name)} yerleşim</p>
+        <div class="pn-row-actions pn-theme-actions">
+          <a class="sf-btn sf-btn-ghost sf-btn-sm" href="/?tema=${encodeURIComponent(t.key)}" target="_blank" rel="noopener">Önizle</a>
+          ${current ? '' : `<button type="button" class="sf-btn sf-btn-primary sf-btn-sm" data-theme-use="${escapeHtml(t.key)}">Kullan</button>`}
+        </div>
+      </article>`;
+    }).join('');
+  }
+
+  async function useTheme(key) {
+    try {
+      const res = await api('/theme', { method: 'PUT', body: JSON.stringify({ theme: key }) });
+      toast(res.message);
+      await loadThemes();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   async function subscriptionAction(kind) {
@@ -880,6 +908,7 @@
     subscription_past_due: 'Ücret alınamadı (bakiye yetersiz)',
     subscription_expired: 'Abonelik bitti, site askıya alındı',
     subscription_admin: 'Yönetim aboneliği güncelledi',
+    theme_changed: 'Tema değişti',
     page_reset: 'Yasal sayfa otomatiğe döndü'
   };
   const ACTORS = { owner: 'Siz', customer: 'Müşteri', jet_admin: 'Yönetim', system: 'Sistem' };
@@ -948,6 +977,7 @@
       if (view === 'paysettings') await loadPaySettings();
       if (view === 'pages') await loadPagesView();
       if (view === 'subscription') await loadSubscription();
+      if (view === 'appearance') await loadThemes();
       if (view === 'site') await loadSite();
       if (view === 'logs') await loadLogs(true);
     } catch (err) {
@@ -1034,6 +1064,8 @@
       const reject = t.closest('[data-pay-reject]');
       if (reject) { rejectPayment(Number(reject.dataset.payReject)); return; }
       if (t.closest('[data-sub-continue]')) { subscriptionAction('continue'); return; }
+      const themeUse = t.closest('[data-theme-use]');
+      if (themeUse) { useTheme(themeUse.dataset.themeUse); return; }
       if (t.closest('[data-sub-cancel]')) { subscriptionAction('cancel'); return; }
       const pageEdit = t.closest('[data-page-edit]');
       if (pageEdit) { editPage(pageEdit.dataset.pageEdit); return; }

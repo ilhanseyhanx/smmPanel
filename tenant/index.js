@@ -16,7 +16,7 @@ const { tenantForHost, tenantSettings, baseDomain, normalizeHost, isMainHost } =
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const TEMPLATE_PATH = path.join(PUBLIC_DIR, 'index.html');
 const PANEL_TEMPLATE_PATH = path.join(PUBLIC_DIR, 'panel.html');
-const THEMES = new Set(['classic']);
+const { themeOf, fontHref, THEME_KEYS } = require('./themes');
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -46,13 +46,31 @@ function renderPanel(tenant) {
     .replaceAll('%%PRIMARY%%', safeColor(settings.primary_color, '#6366f1'));
 }
 
-function renderStorefront(tenant) {
+// Vurgu renginin ustundeki yazi rengi: acik renkte koyu, koyu renkte beyaz.
+function onColor(hex) {
+  let h = String(hex).replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255)
+    .map(c => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? '#0b0b0f' : '#ffffff';
+}
+
+// previewTheme: ?tema= ile gosterilen tema (kaydedilmez, dizine eklenmez).
+function renderStorefront(tenant, { previewTheme = null } = {}) {
   const settings = tenantSettings(tenant);
-  const theme = THEMES.has(tenant.theme) ? tenant.theme : 'classic';
+  const theme = themeOf(previewTheme || tenant.theme);
+  const primary = safeColor(settings.primary_color, theme.accent);
+  const font = `'${theme.font}', system-ui, -apple-system, 'Segoe UI', sans-serif`;
   return template()
     .replaceAll('%%SITE_NAME%%', escapeHtml(tenant.name))
-    .replaceAll('%%THEME%%', theme)
-    .replaceAll('%%PRIMARY%%', safeColor(settings.primary_color, '#6366f1'))
+    .replaceAll('%%THEME%%', theme.key)
+    .replaceAll('%%LAYOUT%%', theme.layout)
+    .replaceAll('%%FONT_HREF%%', escapeHtml(fontHref(theme)))
+    .replaceAll('%%FONT_DISPLAY%%', theme.display ? `'${theme.display}', ${font}` : font)
+    .replaceAll('%%FONT%%', font)
+    .replaceAll('%%ROBOTS%%', previewTheme ? '\n  <meta name="robots" content="noindex">' : '')
+    .replace('--primary: %%PRIMARY%%;', `--primary: ${primary}; --on-primary: ${onColor(primary)};`)
+    .replaceAll('%%PRIMARY%%', primary)
     .replaceAll('%%DESCRIPTION%%', escapeHtml(settings.description || `${tenant.name} — sosyal medya hizmetleri paneli`));
 }
 
@@ -118,7 +136,8 @@ function buildTenantApp() {
     if (req.tenant.status !== 'active') {
       return res.status(503).type('html').send(unavailablePage(req.tenant));
     }
-    res.type('html').send(renderStorefront(req.tenant));
+    const tema = String(req.query.tema || '');
+    res.type('html').send(renderStorefront(req.tenant, { previewTheme: THEME_KEYS.includes(tema) ? tema : null }));
   });
 
   app.use(errorHandler);
@@ -158,4 +177,4 @@ function tenantDispatcher(req, res, next) {
   }).catch(next);
 }
 
-module.exports = { tenantDispatcher, renderStorefront, renderPanel, escapeHtml };
+module.exports = { tenantDispatcher, renderStorefront, renderPanel, escapeHtml, onColor };

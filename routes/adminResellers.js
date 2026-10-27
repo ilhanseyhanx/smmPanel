@@ -16,6 +16,7 @@ const {
   logTenantActivity, changeCustomerBalance, validateSlug, deleteTenantData
 } = require('../services/resellers');
 const billing = require('../services/resellerBilling');
+const { THEME_KEYS } = require('../tenant/themes');
 const { baseDomain, normalizeHost, invalidateTenantCache, tenantSettings } = require('../tenant/resolve');
 
 const router = express.Router();
@@ -47,7 +48,7 @@ const subscriptionSchema = z.object({
 });
 const updateSchema = z.object({
   name: z.string().trim().min(2).max(60).optional(),
-  theme: z.enum(['classic']).optional(),
+  theme: z.enum(THEME_KEYS).optional(),
   discount_percent: percent(90).nullable().optional(),
   default_markup_percent: percent(1000).optional()
 });

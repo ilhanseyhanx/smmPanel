@@ -1,0 +1,124 @@
+/* Bayi vitrini temalari (F4). storefront.css "classic" temanin ve "klasik"
+   iskeletin tabanidir; burada temalar yalnizca degiskenleri, iskeletler
+   yalnizca yerlesimi degistirir. --primary, --on-primary, --font ve
+   --font-display sunucuda sayfaya yazilir (tenant/index.js). */
+:root { --header-bg: var(--surface); --header-text: var(--text); --hero-bg: transparent; --hero-text: var(--text); --hero-muted: var(--muted); }
+body { font-family: var(--font, 'Plus Jakarta Sans'), system-ui, sans-serif; }
+h1, h2, .sf-brand-name { font-family: var(--font-display, var(--font)), system-ui, sans-serif; }
+.sf-btn-primary, .sf-brand-mark { color: var(--on-primary, #fff); }
+.sf-header { background: var(--header-bg); color: var(--header-text); }
+.sf-brand { color: var(--header-text); }
+/* Ust bardaki menu ve hayalet dugmeler barin yazi rengini kullanir (koyu barli temalarda okunur). */
+.sf-header .sf-nav a { color: color-mix(in srgb, var(--header-text) 70%, transparent); }
+.sf-header .sf-nav a:hover, .sf-header .sf-nav a.active { color: var(--header-text); background: color-mix(in srgb, var(--header-text) 10%, transparent); }
+.sf-header .sf-btn-ghost { color: var(--header-text); border-color: color-mix(in srgb, var(--header-text) 25%, transparent); }
+.sf-header .sf-balance { color: var(--header-text); background: color-mix(in srgb, var(--header-text) 10%, transparent); }
+
+/* ------------------------------------------------------------ renkler */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b1020; --surface: #121a2e; --surface-2: #1a2440; --text: #e8ecf5; --muted: #94a3b8; --border: #26314d;
+  --shadow: 0 12px 32px rgba(0, 0, 0, .4); --radius: 14px;
+}
+:root[data-theme="pastel"] {
+  color-scheme: light;
+  --bg: #fdf6f9; --surface: #ffffff; --surface-2: #fbeef4; --text: #3b2a35; --muted: #8a6f7f; --border: #f1d9e5;
+  --shadow: 0 14px 34px rgba(190, 120, 160, .14); --radius: 22px;
+}
+:root[data-theme="retro"] {
+  color-scheme: light;
+  --bg: #f3ead7; --surface: #fffaf0; --surface-2: #f6ecd6; --text: #1c1917; --muted: #5f5547; --border: #1c1917;
+  --shadow: 5px 5px 0 #1c1917; --radius: 6px;
+}
+:root[data-theme="minimal"] {
+  color-scheme: light;
+  --bg: #fafafa; --surface: #ffffff; --surface-2: #f4f4f5; --text: #18181b; --muted: #71717a; --border: #e4e4e7;
+  --shadow: none; --radius: 8px;
+}
+:root[data-theme="corporate"] {
+  color-scheme: light;
+  --bg: #f3f6fb; --surface: #ffffff; --surface-2: #eef2f8; --text: #0f1b33; --muted: #5b6b86; --border: #dbe3ef;
+  --shadow: 0 6px 18px rgba(15, 42, 90, .08); --radius: 6px;
+  --header-bg: #0f2a5a; --header-text: #ffffff;
+}
+:root[data-theme="neon"] {
+  color-scheme: dark;
+  --bg: #07070c; --surface: #11111a; --surface-2: #1a1a26; --text: #e7e7f0; --muted: #9090a8; --border: #26263a;
+  --shadow: 0 0 0 1px rgba(163, 230, 53, .12), 0 16px 40px rgba(0, 0, 0, .5); --radius: 12px;
+  --header-bg: #0c0c14;
+}
+:root[data-theme="gradient"] {
+  color-scheme: light;
+  --bg: #f7f5ff; --surface: #ffffff; --surface-2: #f1edff; --text: #1e1638; --muted: #6b6488; --border: #e6e0fb;
+  --shadow: 0 18px 40px rgba(76, 29, 149, .12); --radius: 18px;
+  --hero-bg: linear-gradient(135deg, var(--primary) 0%, #db2777 100%); --hero-text: #ffffff; --hero-muted: rgba(255, 255, 255, .86);
+}
+:root[data-theme="glass"] {
+  color-scheme: dark;
+  --bg: #0a1224; --surface: rgba(255, 255, 255, .06); --surface-2: rgba(255, 255, 255, .09); --text: #eaf2ff; --muted: #9fb0cc; --border: rgba(255, 255, 255, .13);
+  --shadow: 0 18px 44px rgba(0, 0, 0, .35); --radius: 18px;
+  --header-bg: rgba(10, 18, 36, .72);
+  --hero-bg: radial-gradient(120% 140% at 10% 0%, color-mix(in srgb, var(--primary) 34%, transparent) 0%, transparent 60%), rgba(255, 255, 255, .04);
+}
+:root[data-theme="bold"] {
+  color-scheme: light;
+  --bg: #ffffff; --surface: #ffffff; --surface-2: #f4f4f4; --text: #0a0a0a; --muted: #4b4b4b; --border: #0a0a0a;
+  --shadow: none; --radius: 0;
+  --hero-bg: var(--primary); --hero-text: var(--on-primary, #fff); --hero-muted: color-mix(in srgb, var(--on-primary, #fff) 85%, transparent);
+}
+
+/* Tema ayrintilari */
+:root[data-theme="glass"] body { background: radial-gradient(90% 60% at 100% 0%, color-mix(in srgb, var(--primary) 22%, transparent), transparent 70%), var(--bg); background-attachment: fixed; }
+:root[data-theme="glass"] .sf-card, :root[data-theme="glass"] .sf-feature, :root[data-theme="glass"] .sf-category,
+:root[data-theme="glass"] .sf-header { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+:root[data-theme="retro"] .sf-card, :root[data-theme="retro"] .sf-feature, :root[data-theme="retro"] .sf-category { border-width: 2px; }
+:root[data-theme="retro"] .sf-btn { border: 2px solid var(--text); box-shadow: 3px 3px 0 var(--text); }
+:root[data-theme="retro"] .sf-header { border-bottom: 2px solid var(--text); }
+:root[data-theme="neon"] .sf-btn-primary { box-shadow: 0 0 24px color-mix(in srgb, var(--primary) 45%, transparent); }
+:root[data-theme="neon"] .sf-hero h1 span, :root[data-theme="neon"] .sf-price { text-shadow: 0 0 18px color-mix(in srgb, var(--primary) 50%, transparent); }
+:root[data-theme="bold"] .sf-card, :root[data-theme="bold"] .sf-feature, :root[data-theme="bold"] .sf-category { border-width: 2px; }
+:root[data-theme="bold"] .sf-btn { border-radius: 0; text-transform: uppercase; letter-spacing: .03em; }
+:root[data-theme="bold"] .sf-hero h1 { text-transform: uppercase; letter-spacing: -.01em; }
+:root[data-theme="minimal"] .sf-btn { border-radius: 6px; }
+:root[data-theme="pastel"] .sf-btn { border-radius: 999px; }
+
+/* ------------------------------------------------- iskelet: TABLO
+   Genis ekranda menu solda sabit bir sutun; icerik yogun. */
+@media (min-width: 961px) {
+  [data-layout="tablo"] body { display: grid; grid-template-columns: 248px minmax(0, 1fr); grid-template-rows: auto 1fr auto; }
+  [data-layout="tablo"] .sf-header { grid-column: 1; grid-row: 1 / -1; position: sticky; top: 0; height: 100vh; border-bottom: 0; border-right: 1px solid var(--border); }
+  [data-layout="tablo"] .sf-header .sf-container { max-width: none; height: 100%; }
+  [data-layout="tablo"] .sf-header-inner { flex-direction: column; align-items: stretch; flex-wrap: nowrap; height: 100%; gap: 22px; padding: 22px 6px; }
+  [data-layout="tablo"] .sf-nav { flex-direction: column; flex: 0 0 auto; gap: 2px; }
+  [data-layout="tablo"] .sf-nav a { padding: 10px 12px; color: color-mix(in srgb, var(--header-text) 72%, transparent); }
+  [data-layout="tablo"] .sf-nav a:hover, [data-layout="tablo"] .sf-nav a.active { color: var(--header-text); background: color-mix(in srgb, var(--header-text) 10%, transparent); }
+  [data-layout="tablo"] .sf-header-actions { margin-top: auto; flex-direction: column; align-items: stretch; }
+  [data-layout="tablo"] .sf-header-actions .sf-btn-ghost { color: var(--header-text); border-color: color-mix(in srgb, var(--header-text) 25%, transparent); }
+  [data-layout="tablo"] .sf-balance { text-align: center; background: color-mix(in srgb, var(--header-text) 10%, transparent); color: var(--header-text); }
+  [data-layout="tablo"] .sf-announcement, [data-layout="tablo"] .sf-main, [data-layout="tablo"] .sf-footer { grid-column: 2; }
+  [data-layout="tablo"] .sf-main { padding-top: 32px; }
+  [data-layout="tablo"] .sf-hero { grid-template-columns: minmax(0, 1fr) 380px; padding-top: 4px; }
+  [data-layout="tablo"] .sf-hero h1 { font-size: clamp(1.7rem, 3vw, 2.3rem); }
+}
+[data-layout="tablo"] .sf-table th, [data-layout="tablo"] .sf-table td { padding: 8px 12px; }
+[data-layout="tablo"] .sf-features { gap: 12px; }
+[data-layout="tablo"] .sf-feature { padding: 16px; }
+
+/* ------------------------------------------------- iskelet: VITRIN
+   Ortalanmis buyuk giris bandi; giris karti bandin altinda. */
+[data-layout="vitrin"] .sf-hero { grid-template-columns: minmax(0, 1fr); justify-items: center; text-align: center; gap: 28px; margin-bottom: 28px; padding: clamp(36px, 7vw, 76px) clamp(18px, 4vw, 48px); border-radius: var(--radius); background: var(--hero-bg); color: var(--hero-text); }
+[data-layout="vitrin"] .sf-hero h1 { font-size: clamp(2.2rem, 6vw, 3.8rem); max-width: 16ch; margin-inline: auto; text-wrap: balance; }
+[data-layout="vitrin"] .sf-hero h1 span { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: .12em; }
+:root:not([data-theme="gradient"]):not([data-theme="bold"])[data-layout="vitrin"] .sf-hero h1 span { color: var(--primary); text-decoration: none; }
+[data-layout="vitrin"] .sf-hero p { color: var(--hero-muted); margin-inline: auto; }
+[data-layout="vitrin"] .sf-hero-actions { justify-content: center; }
+[data-layout="vitrin"] .sf-hero .sf-btn-ghost { color: var(--hero-text); border-color: color-mix(in srgb, var(--hero-text) 40%, transparent); }
+[data-layout="vitrin"] .sf-auth-card { width: min(440px, 100%); text-align: left; color: var(--text); }
+:root[data-theme="gradient"][data-layout="vitrin"] .sf-hero-actions .sf-btn-primary,
+:root[data-theme="bold"][data-layout="vitrin"] .sf-hero-actions .sf-btn-primary { background: var(--surface); color: var(--text); }
+[data-layout="vitrin"] .sf-features { gap: 20px; }
+[data-layout="vitrin"] .sf-feature { padding: 28px 24px; text-align: center; }
+[data-layout="vitrin"] .sf-feature i { display: inline-grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: color-mix(in srgb, var(--primary) 14%, transparent); font-size: 1.35rem; }
+[data-layout="vitrin"] .sf-feature h3 { font-size: 1.1rem; }
+[data-layout="vitrin"] .sf-category h2 { padding: 18px 22px; font-size: 1.1rem; }
+[data-layout="vitrin"] .sf-page-head h1 { font-size: 2rem; }

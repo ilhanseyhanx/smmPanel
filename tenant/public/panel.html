@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="/assets/storefront.css?v=20261027c">
-  <link rel="stylesheet" href="/assets/panel.css?v=20261027c">
+  <link rel="stylesheet" href="/assets/panel.css?v=20261027d">
   <style>:root { --primary: %%PRIMARY%%; }</style>
 </head>
 <body class="pn-body">
@@ -45,6 +45,7 @@
         <a href="/admin/orders" data-go="orders"><i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i><span>Siparişler</span></a>
         <a href="/admin/payments" data-go="payments"><i class="fa-solid fa-money-bill-transfer" aria-hidden="true"></i><span>Ödemeler</span><b class="pn-nav-count" id="pn-pay-count" hidden></b></a>
         <a href="/admin/payment-settings" data-go="paysettings"><i class="fa-solid fa-credit-card" aria-hidden="true"></i><span>Ödeme Ayarları</span></a>
+        <a href="/admin/appearance" data-go="appearance"><i class="fa-solid fa-palette" aria-hidden="true"></i><span>Görünüm</span></a>
         <a href="/admin/site" data-go="site"><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Site Ayarları</span></a>
         <a href="/admin/pages" data-go="pages"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i><span>Yasal Sayfalar</span></a>
         <a href="/admin/subscription" data-go="subscription"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i><span>Abonelik</span></a>
@@ -154,6 +155,12 @@
         <div class="pn-pager" id="pn-ord-pager"></div>
       </section>
 
+      <!-- GORUNUM (TEMA) -->
+      <section class="pn-view" data-view="appearance" hidden>
+        <p class="sf-muted pn-help">Temayı seçmeden önce "Önizle" ile sitende nasıl duracağını yeni sekmede gör. Tema değişince ana renk temanın rengine döner; Site Ayarları'ndan yeniden değiştirebilirsin.</p>
+        <div class="pn-theme-grid" id="pn-themes"><p class="sf-muted">Yükleniyor…</p></div>
+      </section>
+
       <!-- ABONELIK -->
       <section class="pn-view" data-view="subscription" hidden>
         <div class="pn-sub-grid">
@@ -257,6 +264,6 @@
   </div>
 
   <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
-  <script src="/assets/panel.js?v=20261027c" defer></script>
+  <script src="/assets/panel.js?v=20261027d" defer></script>
 </body>
 </html>

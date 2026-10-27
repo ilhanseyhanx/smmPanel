@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="tr" data-theme="%%THEME%%">
+<html lang="tr" data-theme="%%THEME%%" data-layout="%%LAYOUT%%">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,14 +7,15 @@
   <meta name="description" content="%%DESCRIPTION%%">
   <meta property="og:title" content="%%SITE_NAME%%">
   <meta property="og:description" content="%%DESCRIPTION%%">
-  <meta name="theme-color" content="%%PRIMARY%%">
+  <meta name="theme-color" content="%%PRIMARY%%">%%ROBOTS%%
   <link rel="icon" href="data:,">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="%%FONT_HREF%%" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="/assets/storefront.css?v=20261027c">
-  <style>:root { --primary: %%PRIMARY%%; }</style>
+  <link rel="stylesheet" href="/assets/storefront.css?v=20261027d">
+  <link rel="stylesheet" href="/assets/themes.css?v=20261027d">
+  <style>:root { --primary: %%PRIMARY%%; --font: %%FONT%%; --font-display: %%FONT_DISPLAY%%; }</style>
 </head>
 <body>
   <header class="sf-header">
@@ -197,6 +198,6 @@
   </footer>
 
   <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
-  <script src="/assets/storefront.js?v=20261027c" defer></script>
+  <script src="/assets/storefront.js?v=20261027d" defer></script>
 </body>
 </html>

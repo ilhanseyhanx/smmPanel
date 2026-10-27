@@ -23,6 +23,7 @@ const { invalidateTenantCache, tenantSettings, baseDomain } = require('./resolve
 const { PAGE_MAP: LEGAL_PAGES, listPages } = require('./legalPages');
 const Shopier = require('../services/shopier');
 const billing = require('../services/resellerBilling');
+const { THEME_KEYS, themeOf, publicThemes } = require('./themes');
 const { signOwnerSession, setOwnerCookie, clearOwnerCookie, requireOwner } = require('./panelSession');
 
 const router = express.Router();
@@ -518,7 +519,7 @@ router.get('/site', (req, res) => {
   const settings = tenantSettings(req.tenant);
   res.json({
     name: req.tenant.name,
-    primary_color: settings.primary_color || '#6366f1',
+    primary_color: settings.primary_color || themeOf(req.tenant.theme).accent,
     description: settings.description || '',
     announcement: settings.announcement || '',
     support_email: settings.support_email || '',
@@ -591,6 +592,32 @@ router.get('/logs', async (req, res, next) => {
         type: l.type, order_id: l.order_id, note: l.note, created_at: l.created_at
       }))
     });
+  } catch (err) { next(err); }
+});
+
+// ------------------------------------------------------------------- tema
+// Tema degisince ana renk temanin rengine doner (bayi sonra degistirebilir).
+const themeSchema = z.object({ theme: z.enum(THEME_KEYS), keep_color: z.boolean().optional().default(false) });
+
+router.get('/theme', (req, res) => {
+  const settings = tenantSettings(req.tenant);
+  res.json({
+    current: themeOf(req.tenant.theme).key,
+    primary_color: settings.primary_color || null,
+    themes: publicThemes()
+  });
+});
+
+router.put('/theme', validate(themeSchema), async (req, res, next) => {
+  try {
+    const before = themeOf(req.tenant.theme).key;
+    const settings = { ...tenantSettings(req.tenant) };
+    if (!req.body.keep_color) delete settings.primary_color;
+    await dbAsync.run('UPDATE tenants SET theme = ?, settings_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [req.body.theme, JSON.stringify(settings), req.tenant.id]);
+    await ownerActivity(req, 'theme_changed', { from: before, to: req.body.theme });
+    invalidateTenantCache();
+    res.json({ message: `"${themeOf(req.body.theme).name}" teması uygulandı.` });
   } catch (err) { next(err); }
 });
 

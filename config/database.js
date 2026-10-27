@@ -730,6 +730,31 @@ async function runMigrations() {
     CREATE INDEX IF NOT EXISTS idx_tenant_payments_tenant ON tenant_payments(tenant_id, status, id DESC);
     CREATE INDEX IF NOT EXISTS idx_tenant_payments_customer ON tenant_payments(customer_id, id DESC);
   `);
+  // Bayi Paneli aboneligi (F3). plan_status: trial | active | past_due |
+  // expired | comp (Jet'in ucretsiz verdigi). Eski satirlar 'comp' sayilir.
+  await addColumnIfMissing('tenants', 'plan_status', "TEXT NOT NULL DEFAULT 'comp'");
+  await addColumnIfMissing('tenants', 'trial_ends_at', 'DATETIME');
+  await addColumnIfMissing('tenants', 'paid_until', 'DATETIME');
+  await addColumnIfMissing('tenants', 'auto_renew', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumnIfMissing('tenants', 'past_due_since', 'DATETIME');
+  await addColumnIfMissing('tenants', 'billing_suspended_at', 'DATETIME');
+  await addColumnIfMissing('tenants', 'billing_notice', 'TEXT');
+  // Fatura kaydi bayi silinse de kalir (Jet'in gelir kaydi): yabanci anahtar yok.
+  await dbAsync.exec(`
+    CREATE TABLE IF NOT EXISTS tenant_invoices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER,
+      owner_user_id INTEGER NOT NULL,
+      tenant_name TEXT,
+      amount_kurus INTEGER NOT NULL,
+      period_start DATETIME NOT NULL,
+      period_end DATETIME NOT NULL,
+      note TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_tenant_invoices_tenant ON tenant_invoices(tenant_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_tenant_invoices_created ON tenant_invoices(created_at);
+  `);
   await addColumnIfMissing('orders', 'tenant_id', 'INTEGER');
   await addColumnIfMissing('orders', 'tenant_customer_id', 'INTEGER');
   // Musterinin bayiye odedigi tutar ve bundan iade edilen kisim (kurus).

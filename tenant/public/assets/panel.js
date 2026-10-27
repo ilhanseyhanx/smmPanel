@@ -12,6 +12,7 @@
     paysettings: { path: '/admin/payment-settings', title: 'Ödeme Ayarları' },
     site: { path: '/admin/site', title: 'Site Ayarları' },
     pages: { path: '/admin/pages', title: 'Yasal Sayfalar' },
+    subscription: { path: '/admin/subscription', title: 'Abonelik' },
     logs: { path: '/admin/logs', title: 'Kayıtlar' }
   };
   const STATUS = {
@@ -178,7 +179,8 @@
     const topup = $('#pn-topup');
     if (me.top_up_url) { topup.href = me.top_up_url; topup.hidden = false; }
     const alert = $('#pn-status-alert');
-    if (me.tenant.status !== 'active') {
+    // Abonelik yuzunden askidaysa bunu abonelik seridi anlatir (ikisi ust uste binmesin).
+    if (me.tenant.status !== 'active' && me.subscription?.plan_status !== 'expired') {
       alert.hidden = false;
       alert.textContent = me.tenant.status === 'suspended'
         ? `Siteniz askıya alındı; müşteriler şu an sipariş veremez.${me.tenant.status_reason ? ' Sebep: ' + me.tenant.status_reason : ''}`
@@ -186,7 +188,114 @@
     } else {
       alert.hidden = true;
     }
+    renderBillingBanner(me.subscription);
     return me;
+  }
+
+  // ------------------------------------------------------------- abonelik
+  const PLAN_LABEL = {
+    trial: ['Ücretsiz deneme', 'processing'],
+    active: ['Aktif', 'completed'],
+    past_due: ['Ödeme bekleniyor', 'pending'],
+    expired: ['Askıda', 'canceled'],
+    comp: ['Ücretsiz', 'completed']
+  };
+
+  function day(value) {
+    if (!value) return '';
+    const date = new Date(String(value).replace(' ', 'T') + 'Z');
+    return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+
+  // Her sayfanin ustundeki durum seridi: yalnizca yapilacak bir sey varsa gorunur.
+  function renderBillingBanner(sub) {
+    const box = $('#pn-billing');
+    if (!sub || sub.plan_status === 'comp') { box.hidden = true; return; }
+    const fee = money(sub.fee);
+    const topUp = state.me?.top_up_url ? `<a class="sf-btn sf-btn-ghost sf-btn-sm" href="${escapeHtml(state.me.top_up_url)}" target="_blank" rel="noopener">Jet bakiyesi yükle</a>` : '';
+    const pay = label => `<button type="button" class="sf-btn sf-btn-primary sf-btn-sm" data-sub-continue>${escapeHtml(label)}</button>`;
+    let tone = 'info';
+    let text = '';
+    let actions = '';
+    if (sub.plan_status === 'trial') {
+      if (sub.auto_renew) {
+        text = `Deneme ${day(sub.trial_ends_at)} tarihinde bitiyor; ${fee} Jet bakiyenden alınacak.`;
+        if (!sub.balance_enough) { tone = 'warn'; text += ' Bakiyen şu an yetersiz.'; actions = topUp; }
+      } else {
+        text = `Ücretsiz deneme: ${sub.days_left} gün kaldı (${day(sub.trial_ends_at)}). Devam etmezsen deneme bitince site kapanır.`;
+        actions = pay(`${fee}/ay ile devam et`);
+        tone = sub.days_left <= 2 ? 'warn' : 'info';
+      }
+    } else if (sub.plan_status === 'active') {
+      if (!sub.auto_renew) {
+        tone = 'warn';
+        text = `Yenileme kapalı; site ${day(sub.paid_until)} tarihinde kapanacak.`;
+        actions = pay('Yenilemeyi aç');
+      } else if (sub.days_left <= 3 && !sub.balance_enough) {
+        tone = 'warn';
+        text = `Abonelik ${day(sub.paid_until)} tarihinde yenilenecek; ${fee} için Jet bakiyen yetersiz.`;
+        actions = topUp;
+      }
+    } else if (sub.plan_status === 'past_due') {
+      tone = 'warn';
+      text = `Aylık ücret (${fee}) alınamadı. ${day(sub.grace_ends_at)} tarihine kadar bakiye yüklersen kendiliğinden alınır; yüklemezsen site askıya alınır.`;
+      actions = topUp + pay('Şimdi öde');
+    } else if (sub.plan_status === 'expired') {
+      tone = 'danger';
+      text = `Site askıda. ${day(sub.delete_at)} tarihinde müşterileri ve ayarlarıyla silinecek.`;
+      actions = topUp + pay(`${fee} öde ve aç`);
+    }
+    if (!text) { box.hidden = true; return; }
+    box.hidden = false;
+    box.className = `pn-billing pn-billing-${tone}`;
+    box.innerHTML = `<span>${escapeHtml(text)}</span><span class="pn-billing-actions">${actions}</span>`;
+  }
+
+  async function loadSubscription() {
+    const d = await api('/subscription');
+    const sub = d.subscription;
+    const [label, cls] = PLAN_LABEL[sub.plan_status] || PLAN_LABEL.trial;
+    const rows = [];
+    if (sub.plan_status === 'trial') rows.push(['Deneme bitişi', day(sub.trial_ends_at)], ['Kalan', `${sub.days_left} gün`]);
+    if (sub.plan_status === 'active') rows.push(['Dönem sonu', day(sub.paid_until)], ['Otomatik yenileme', sub.auto_renew ? 'Açık' : 'Kapalı']);
+    if (sub.plan_status === 'past_due') rows.push(['Son ödeme günü', day(sub.grace_ends_at)]);
+    if (sub.plan_status === 'expired') rows.push(['Silinme tarihi', day(sub.delete_at)]);
+    rows.push(['Aylık ücret', sub.plan_status === 'comp' ? 'Ücretsiz' : money(sub.fee)], ['Jet bakiyen', money(sub.owner_balance)]);
+    let actions = '';
+    if (sub.plan_status === 'trial' || sub.plan_status === 'active') {
+      actions = sub.auto_renew
+        ? '<button type="button" class="sf-btn sf-btn-ghost" data-sub-cancel>Yenilemeyi kapat</button>'
+        : `<button type="button" class="sf-btn sf-btn-primary" data-sub-continue>${money(sub.fee)}/ay ile devam et</button>`;
+    } else if (sub.plan_status === 'past_due' || sub.plan_status === 'expired') {
+      actions = `<button type="button" class="sf-btn sf-btn-primary" data-sub-continue>${money(sub.fee)} öde ve ${sub.plan_status === 'expired' ? 'aç' : 'devam et'}</button>`;
+    }
+    if (actions && d.top_up_url) actions += `<a class="sf-btn sf-btn-ghost" href="${escapeHtml(d.top_up_url)}" target="_blank" rel="noopener">Jet bakiyesi yükle</a>`;
+    $('#pn-sub-card').innerHTML = `
+      <div class="pn-pay-head"><h3>Jet Bayi Paneli</h3><span class="sf-badge sf-badge-${cls}">${label}</span></div>
+      <dl class="sf-dl pn-sub-dl">${rows.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join('')}</dl>
+      ${actions ? `<div class="pn-row-actions pn-sub-actions">${actions}</div>` : ''}`;
+    $('#pn-sub-rules').innerHTML = [
+      `Aylık ücret ${money(sub.fee)}; Jet hesabının bakiyesinden alınır.`,
+      `İlk ${d.trial_days} gün ücretsiz. "Devam et" demezsen deneme bitince site kapanır.`,
+      'Sonraki aylar kendiliğinden yenilenir; istediğin zaman yenilemeyi kapatabilirsin.',
+      `Bakiye yetmezse ${d.grace_days} gün içinde yüklemen yeterli; ücret kendiliğinden alınır.`,
+      `Askıya alınan site ${d.delete_after_days} gün sonra müşterileri ve ayarlarıyla silinir.`
+    ].map(item => `<li>${escapeHtml(item)}</li>`).join('');
+    $('#pn-invoices').innerHTML = d.invoices.length
+      ? d.invoices.map(i => `<tr><td>${formatDate(i.created_at)}</td><td class="pn-num">${money(i.amount)}</td><td>${day(i.period_start)} – ${day(i.period_end)}</td></tr>`).join('')
+      : '<tr><td colspan="3" class="sf-muted">Henüz ödeme yok.</td></tr>';
+  }
+
+  async function subscriptionAction(kind) {
+    if (kind === 'cancel' && !await confirmBox('Yenilemeyi kapat', 'Dönem sonunda site kapanır; o zamana kadar her şey çalışmaya devam eder.', 'Yenilemeyi Kapat')) return;
+    try {
+      const res = await api(`/subscription/${kind}`, { method: 'POST' });
+      toast(res.message);
+      await loadMe();
+      if (location.pathname === VIEWS.subscription.path) await loadSubscription();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   // ------------------------------------------------------------- ozet
@@ -765,6 +874,12 @@
     payment_rejected: 'Havale bildirimi reddedildi',
     payment_settings_changed: 'Ödeme ayarı değişti',
     page_saved: 'Yasal sayfa düzenlendi',
+    subscription_charged: 'Aylık ücret alındı',
+    subscription_continue: 'Abonelik devam ettirildi',
+    subscription_cancel: 'Yenileme kapatıldı',
+    subscription_past_due: 'Ücret alınamadı (bakiye yetersiz)',
+    subscription_expired: 'Abonelik bitti, site askıya alındı',
+    subscription_admin: 'Yönetim aboneliği güncelledi',
     page_reset: 'Yasal sayfa otomatiğe döndü'
   };
   const ACTORS = { owner: 'Siz', customer: 'Müşteri', jet_admin: 'Yönetim', system: 'Sistem' };
@@ -832,6 +947,7 @@
       if (view === 'payments') await loadPayments();
       if (view === 'paysettings') await loadPaySettings();
       if (view === 'pages') await loadPagesView();
+      if (view === 'subscription') await loadSubscription();
       if (view === 'site') await loadSite();
       if (view === 'logs') await loadLogs(true);
     } catch (err) {
@@ -917,6 +1033,8 @@
       if (approve) { approvePayment(Number(approve.dataset.payApprove), Number(approve.dataset.amount), approve.dataset.name); return; }
       const reject = t.closest('[data-pay-reject]');
       if (reject) { rejectPayment(Number(reject.dataset.payReject)); return; }
+      if (t.closest('[data-sub-continue]')) { subscriptionAction('continue'); return; }
+      if (t.closest('[data-sub-cancel]')) { subscriptionAction('cancel'); return; }
       const pageEdit = t.closest('[data-page-edit]');
       if (pageEdit) { editPage(pageEdit.dataset.pageEdit); return; }
       const pageReset = t.closest('[data-page-reset]');

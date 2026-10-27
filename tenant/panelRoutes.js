@@ -22,6 +22,7 @@ const {
 const { invalidateTenantCache, tenantSettings, baseDomain } = require('./resolve');
 const { PAGE_MAP: LEGAL_PAGES, listPages } = require('./legalPages');
 const Shopier = require('../services/shopier');
+const billing = require('../services/resellerBilling');
 const { signOwnerSession, setOwnerCookie, clearOwnerCookie, requireOwner } = require('./panelSession');
 
 const router = express.Router();
@@ -137,7 +138,9 @@ router.get('/me', async (req, res, next) => {
     const settings = await getResellerSettings();
     const base = baseDomain();
     const domains = await dbAsync.all("SELECT domain, status FROM tenant_domains WHERE tenant_id = ? ORDER BY id", [req.tenant.id]);
+    const full = await dbAsync.get('SELECT * FROM tenants WHERE id = ?', [req.tenant.id]);
     res.json({
+      subscription: billing.subscriptionInfo(full, settings, req.owner.balance_kurus),
       owner: { username: req.owner.username, balance: fromKurus(req.owner.balance_kurus) },
       tenant: {
         name: req.tenant.name,
@@ -588,6 +591,43 @@ router.get('/logs', async (req, res, next) => {
         type: l.type, order_id: l.order_id, note: l.note, created_at: l.created_at
       }))
     });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------- abonelik
+// Ucret bayinin Jet bakiyesinden alinir (services/resellerBilling.js).
+router.get('/subscription', async (req, res, next) => {
+  try {
+    const [settings, full, invoices] = await Promise.all([
+      getResellerSettings(),
+      dbAsync.get('SELECT * FROM tenants WHERE id = ?', [req.tenant.id]),
+      dbAsync.all('SELECT id, amount_kurus, period_start, period_end, created_at FROM tenant_invoices WHERE tenant_id = ? ORDER BY id DESC LIMIT 24', [req.tenant.id])
+    ]);
+    res.json({
+      subscription: billing.subscriptionInfo(full, settings, req.owner.balance_kurus),
+      trial_days: settings.trial_days,
+      grace_days: settings.grace_days,
+      delete_after_days: settings.delete_after_days,
+      top_up_url: jetTopUpUrl(),
+      invoices: invoices.map(i => ({ id: i.id, amount: fromKurus(i.amount_kurus), period_start: i.period_start, period_end: i.period_end, created_at: i.created_at }))
+    });
+  } catch (err) { next(err); }
+});
+
+router.post('/subscription/continue', async (req, res, next) => {
+  try {
+    const result = await billing.continueSubscription(req.tenant.id, req.owner);
+    if (!result.ok) return res.status(result.status || 400).json({ error: result.error, code: result.code, top_up_url: jetTopUpUrl() });
+    invalidateTenantCache();
+    res.json({ message: result.message });
+  } catch (err) { next(err); }
+});
+
+router.post('/subscription/cancel', async (req, res, next) => {
+  try {
+    const result = await billing.cancelSubscription(req.tenant.id, req.owner);
+    if (!result.ok) return res.status(result.status || 400).json({ error: result.error });
+    res.json({ message: result.message });
   } catch (err) { next(err); }
 });
 

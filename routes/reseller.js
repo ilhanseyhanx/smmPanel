@@ -1,8 +1,9 @@
 'use strict';
 
-// Jet kullanicisinin bayilik durumu ve basvurusu. Bayilik ucretsizdir; acilis
-// sarti gercek para ile toplam yukleme (admin panelinden ayarlanir, varsayilan
-// 500 TL). Sart saglaniyorsa panel hemen acilir; admin istedigi an askiya alir.
+// Jet kullanicisinin bayilik durumu ve basvurusu (27 Eki 2026 modeli):
+// basvuru aninda panel acilir ve ucretsiz deneme baslar (varsayilan 7 gun);
+// sonra aylik ucret (varsayilan 599 TL) Jet bakiyesinden alinir. Ayrintilar
+// services/resellerBilling.js'te.
 const express = require('express');
 const { z } = require('zod');
 const { dbAsync } = require('../config/database');
@@ -11,8 +12,9 @@ const { validate } = require('../middleware/validate');
 const { normalizePlainText } = require('../utils/security');
 const { fromKurus } = require('../utils/money');
 const {
-  getResellerSettings, realDepositKurus, validateSlug, logTenantActivity
+  getResellerSettings, validateSlug, logTenantActivity
 } = require('../services/resellers');
+const billing = require('../services/resellerBilling');
 const { baseDomain, invalidateTenantCache } = require('../tenant/resolve');
 
 const router = express.Router();
@@ -26,7 +28,8 @@ router.get('/program', async (req, res, next) => {
     res.json({
       enabled: true,
       applications_open: settings.applications_open,
-      min_deposit: settings.min_deposit_tl,
+      monthly_fee: settings.monthly_fee_tl,
+      trial_days: settings.trial_days,
       discount_percent: settings.discount_percent
     });
   } catch (err) { next(err); }
@@ -43,9 +46,11 @@ const applySchema = z.object({
   slug: z.string().trim().min(3).max(30)
 });
 
-function tenantSummary(tenant) {
+function tenantSummary(tenant, settings, ownerBalanceKurus) {
   const base = baseDomain();
   return {
+    subscription: settings ? billing.subscriptionInfo(tenant, settings, ownerBalanceKurus) : undefined,
+    panel_url: base ? `https://${tenant.slug}.${base}/admin` : null,
     id: tenant.id,
     name: tenant.name,
     slug: tenant.slug,
@@ -58,21 +63,21 @@ function tenantSummary(tenant) {
 
 router.get('/me', async (req, res, next) => {
   try {
-    const [settings, deposited, tenant] = await Promise.all([
+    const [settings, tenant] = await Promise.all([
       getResellerSettings(),
-      realDepositKurus(req.user.id),
       dbAsync.get('SELECT * FROM tenants WHERE owner_user_id = ?', [req.user.id])
     ]);
-    const requiredKurus = Math.round(settings.min_deposit_tl * 100);
     // Program kapaliyken yalnizca zaten bayisi olan kullanici durumunu gorur.
     if (!settings.public_page_enabled && !tenant) return programClosed(res);
     res.json({
       program_enabled: settings.public_page_enabled,
       applications_open: settings.applications_open,
-      min_deposit: settings.min_deposit_tl,
-      deposited: fromKurus(deposited),
-      eligible: deposited >= requiredKurus,
-      tenant: tenant ? tenantSummary(tenant) : null
+      monthly_fee: settings.monthly_fee_tl,
+      trial_days: settings.trial_days,
+      discount_percent: settings.discount_percent,
+      balance: fromKurus(req.user.balance_kurus || 0),
+      base_domain: baseDomain() || null,
+      tenant: tenant ? tenantSummary(tenant, settings, req.user.balance_kurus) : null
     });
   } catch (err) { next(err); }
 });
@@ -86,15 +91,6 @@ router.post('/apply', validate(applySchema), async (req, res, next) => {
     }
     if (await dbAsync.get('SELECT id FROM tenants WHERE owner_user_id = ?', [req.user.id])) {
       return res.status(409).json({ error: 'Zaten bir bayi paneliniz var.', error_en: 'You already have a reseller panel.' });
-    }
-    const deposited = await realDepositKurus(req.user.id);
-    const requiredKurus = Math.round(settings.min_deposit_tl * 100);
-    if (deposited < requiredKurus) {
-      return res.status(403).json({
-        error: `Bayi paneli açmak için hesabınıza toplam en az ₺${settings.min_deposit_tl.toFixed(2)} bakiye yüklemiş olmanız gerekir. Şu ana kadar yüklenen: ₺${fromKurus(deposited).toFixed(2)}.`,
-        error_en: `You need to have added at least ${settings.min_deposit_tl.toFixed(2)} TRY in total to open a reseller panel. Added so far: ${fromKurus(deposited).toFixed(2)} TRY.`,
-        code: 'MIN_DEPOSIT'
-      });
     }
     const slugCheck = validateSlug(req.body.slug);
     if (!slugCheck.ok) {
@@ -114,17 +110,21 @@ router.post('/apply', validate(applySchema), async (req, res, next) => {
     const name = normalizePlainText(req.body.name, 60);
     if (!name) return res.status(400).json({ error: 'Site adı gerekli.', error_en: 'Site name is required.', field: 'name' });
 
+    const trial = await billing.trialFields();
     const created = await dbAsync.run(
-      'INSERT INTO tenants (owner_user_id, slug, name, default_markup_percent) VALUES (?, ?, ?, ?)',
-      [req.user.id, slugCheck.slug, name, settings.default_markup_percent]
+      'INSERT INTO tenants (owner_user_id, slug, name, default_markup_percent, plan_status, trial_ends_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.id, slugCheck.slug, name, settings.default_markup_percent, trial.plan_status, trial.trial_ends_at]
     );
     await logTenantActivity(dbAsync, {
       tenantId: created.id, actorType: 'owner', actorId: req.user.id, action: 'tenant_created',
-      details: { name, slug: slugCheck.slug, deposited: fromKurus(deposited) }, ip: req.ip
+      details: { name, slug: slugCheck.slug, trial_ends_at: trial.trial_ends_at }, ip: req.ip
     });
     invalidateTenantCache();
     const tenant = await dbAsync.get('SELECT * FROM tenants WHERE id = ?', [created.id]);
-    res.status(201).json({ message: 'Bayi paneliniz oluşturuldu.', tenant: tenantSummary(tenant) });
+    res.status(201).json({
+      message: `Bayi panelin açıldı. ${settings.trial_days} günlük ücretsiz deneme başladı.`,
+      tenant: tenantSummary(tenant, settings, req.user.balance_kurus)
+    });
   } catch (err) { next(err); }
 });
 

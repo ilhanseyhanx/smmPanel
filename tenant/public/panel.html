@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="/assets/storefront.css?v=20261027b">
-  <link rel="stylesheet" href="/assets/panel.css?v=20261027b">
+  <link rel="stylesheet" href="/assets/storefront.css?v=20261027c">
+  <link rel="stylesheet" href="/assets/panel.css?v=20261027c">
   <style>:root { --primary: %%PRIMARY%%; }</style>
 </head>
 <body class="pn-body">
@@ -47,6 +47,7 @@
         <a href="/admin/payment-settings" data-go="paysettings"><i class="fa-solid fa-credit-card" aria-hidden="true"></i><span>Ödeme Ayarları</span></a>
         <a href="/admin/site" data-go="site"><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Site Ayarları</span></a>
         <a href="/admin/pages" data-go="pages"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i><span>Yasal Sayfalar</span></a>
+        <a href="/admin/subscription" data-go="subscription"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i><span>Abonelik</span></a>
         <a href="/admin/logs" data-go="logs"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i><span>Kayıtlar</span></a>
       </nav>
       <div class="pn-sidebar-foot">
@@ -65,6 +66,7 @@
         </div>
       </header>
       <div class="pn-alert" id="pn-status-alert" hidden></div>
+      <div class="pn-billing" id="pn-billing" hidden></div>
 
       <!-- OZET -->
       <section class="pn-view" data-view="dashboard" hidden>
@@ -150,6 +152,23 @@
           </table>
         </div>
         <div class="pn-pager" id="pn-ord-pager"></div>
+      </section>
+
+      <!-- ABONELIK -->
+      <section class="pn-view" data-view="subscription" hidden>
+        <div class="pn-sub-grid">
+          <div class="sf-card pn-sub-card" id="pn-sub-card"><p class="sf-muted">Yükleniyor…</p></div>
+          <div class="sf-card">
+            <h3 class="pn-card-title">Nasıl işler?</h3>
+            <ul class="pn-sub-rules" id="pn-sub-rules"></ul>
+          </div>
+        </div>
+        <div class="sf-card sf-table-wrap" style="margin-top:18px;">
+          <table class="sf-table pn-table">
+            <thead><tr><th>Tarih</th><th>Tutar</th><th>Dönem</th></tr></thead>
+            <tbody id="pn-invoices"></tbody>
+          </table>
+        </div>
       </section>
 
       <!-- ODEMELER -->
@@ -238,6 +257,6 @@
   </div>
 
   <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
-  <script src="/assets/panel.js?v=20261027b" defer></script>
+  <script src="/assets/panel.js?v=20261027c" defer></script>
 </body>
 </html>

@@ -1449,6 +1449,8 @@ async function startServer() {
     // Dijital urunler: hazirlanan siparislerin takibi (dakikada bir) ve
     // stok/maliyet tazeleme (10 dakikada bir).
     require('./services/digitalStore').startDigitalWorker();
+    // Bayi Paneli aboneligi: deneme/donem sonu, aylik ucret, aski ve silme (saatte bir).
+    require('./services/resellerBilling').startBillingWorker();
     // Dijital urunlerin dolar karsiligi ve zarar kontrolu icin canli USD/TRY kuru (6 saatte bir).
     require('./services/fx').startFxWorker();
     // Ayak izi: acilista yonetici izleri temizlenir, 90 gunden eski kayitlar gunluk silinir.

@@ -13,8 +13,9 @@ const { fromKurus, toKurus } = require('../utils/money');
 const { PAYMENT_METHOD_GROUP_SQL, REAL_MONEY_GROUPS } = require('../utils/paymentGroups');
 const {
   getResellerSettings, saveResellerSettings, effectiveDiscountPercent, tenantCatalog,
-  logTenantActivity, changeCustomerBalance, validateSlug
+  logTenantActivity, changeCustomerBalance, validateSlug, deleteTenantData
 } = require('../services/resellers');
+const billing = require('../services/resellerBilling');
 const { baseDomain, normalizeHost, invalidateTenantCache, tenantSettings } = require('../tenant/resolve');
 
 const router = express.Router();
@@ -24,14 +25,25 @@ const settingsSchema = z.object({
   // Gonderilmezse mevcut deger korunur (eski istemciler anahtari ezmesin).
   public_page_enabled: z.boolean().optional(),
   discount_percent: percent(90),
-  min_deposit_tl: z.coerce.number().finite().min(0).max(1_000_000),
+  // Eski acilis sarti (artik uygulanmiyor); eski istemci gonderirse saklanir.
+  min_deposit_tl: z.coerce.number().finite().min(0).max(1_000_000).optional(),
   applications_open: z.boolean(),
-  default_markup_percent: percent(1000)
+  default_markup_percent: percent(1000),
+  monthly_fee_tl: z.coerce.number().finite().min(0).max(100_000).optional(),
+  trial_days: z.coerce.number().int().min(0).max(60).optional(),
+  grace_days: z.coerce.number().int().min(0).max(60).optional(),
+  delete_after_days: z.coerce.number().int().min(7).max(365).optional()
 });
 const createSchema = z.object({
   owner: z.string().trim().min(1).max(254),
   name: z.string().trim().min(2).max(60),
-  slug: z.string().trim().min(3).max(30)
+  slug: z.string().trim().min(3).max(30),
+  // trial: normal deneme ile baslar; comp: Jet'in ucretsiz verdigi panel.
+  plan: z.enum(['trial', 'comp']).optional().default('trial')
+});
+const subscriptionSchema = z.object({
+  action: z.enum(['extend', 'comp', 'trial']),
+  days: z.coerce.number().int().min(1).max(366).optional().default(30)
 });
 const updateSchema = z.object({
   name: z.string().trim().min(2).max(60).optional(),
@@ -186,6 +198,7 @@ router.get('/', async (req, res, next) => {
         banned: Boolean(row.owner_banned)
       },
       ...addressesOf(row, byTenant.get(row.id) || []),
+      subscription: billing.subscriptionInfo(row, settings, row.owner_balance_kurus),
       stats: statsFromRow(row)
     }));
     const summary = tenants.reduce((acc, t) => {
@@ -195,9 +208,14 @@ router.get('/', async (req, res, next) => {
       acc.orders_30d += t.stats.orders_30d;
       acc.jet_revenue_30d += t.stats.cost_30d;
       acc.reseller_profit_30d += t.stats.profit_30d;
+      acc.plans[t.subscription.plan_status] = (acc.plans[t.subscription.plan_status] || 0) + 1;
       return acc;
-    }, { total: 0, active: 0, customers: 0, orders_30d: 0, jet_revenue_30d: 0, reseller_profit_30d: 0 });
+    }, { total: 0, active: 0, customers: 0, orders_30d: 0, jet_revenue_30d: 0, reseller_profit_30d: 0, plans: {} });
     for (const key of ['jet_revenue_30d', 'reseller_profit_30d']) summary[key] = Math.round(summary[key] * 100) / 100;
+    // Aylik ucret geliri (son 30 gun) — silinmis bayilerin faturalari dahil.
+    const fees = await dbAsync.get("SELECT COALESCE(SUM(amount_kurus), 0) AS total, COUNT(*) AS n FROM tenant_invoices WHERE created_at >= datetime('now', '-30 days')");
+    summary.fee_income_30d = fromKurus(fees.total);
+    summary.fee_invoices_30d = fees.n;
     res.json({ settings, base_domain: baseDomain() || null, summary, tenants });
   } catch (err) { next(err); }
 });
@@ -222,11 +240,12 @@ router.post('/', validate(createSchema), async (req, res, next) => {
     }
     const settings = await getResellerSettings();
     const name = normalizePlainText(req.body.name, 60);
+    const plan = req.body.plan === 'comp' ? { plan_status: 'comp', trial_ends_at: null } : await billing.trialFields();
     const created = await dbAsync.run(
-      'INSERT INTO tenants (owner_user_id, slug, name, default_markup_percent) VALUES (?, ?, ?, ?)',
-      [owner.id, slugCheck.slug, name, settings.default_markup_percent]
+      'INSERT INTO tenants (owner_user_id, slug, name, default_markup_percent, plan_status, trial_ends_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [owner.id, slugCheck.slug, name, settings.default_markup_percent, plan.plan_status, plan.trial_ends_at]
     );
-    await adminActivity(req, created.id, 'tenant_created', { name, slug: slugCheck.slug, owner: owner.username, by: 'admin' });
+    await adminActivity(req, created.id, 'tenant_created', { name, slug: slugCheck.slug, owner: owner.username, by: 'admin', plan: plan.plan_status });
     await audit(req, 'tenant_created', created.id, { name, slug: slugCheck.slug, owner: owner.username });
     invalidateTenantCache();
     res.status(201).json({ message: `"${name}" bayi paneli ${owner.username} için oluşturuldu.`, id: created.id });
@@ -315,6 +334,9 @@ router.get('/:id', async (req, res, next) => {
         last_order_at: tenant.last_order_at,
         ...addressesOf(tenant, domains)
       },
+      subscription: billing.subscriptionInfo(tenant, settings, owner?.balance_kurus),
+      invoices: (await dbAsync.all('SELECT id, amount_kurus, period_start, period_end, note, created_at FROM tenant_invoices WHERE tenant_id = ? ORDER BY id DESC LIMIT 24', [id]))
+        .map(i => ({ id: i.id, amount: fromKurus(i.amount_kurus), period_start: i.period_start, period_end: i.period_end, note: i.note, created_at: i.created_at })),
       global_settings: settings,
       owner: owner ? {
         id: owner.id,
@@ -538,6 +560,41 @@ router.post('/:id/customers/:customerId/ban', validate(banSchema), async (req, r
   } catch (err) { next(err); }
 });
 
+// Abonelige elle mudahale: sureyi uzat (deneme veya odenmis donem, askidaysa
+// yeniden acar), ucretsize cevir (comp) ya da yeniden denemeye al.
+router.post('/:id/subscription', validate(subscriptionSchema), async (req, res, next) => {
+  try {
+    const tenant = await loadTenant(req, res);
+    if (!tenant) return;
+    const { action, days } = req.body;
+    if (action === 'comp') {
+      await dbAsync.run(
+        `UPDATE tenants SET plan_status = 'comp', auto_renew = 0, past_due_since = NULL, billing_notice = NULL,
+                status = CASE WHEN billing_suspended_at IS NOT NULL THEN 'active' ELSE status END,
+                status_reason = CASE WHEN billing_suspended_at IS NOT NULL THEN NULL ELSE status_reason END,
+                billing_suspended_at = NULL WHERE id = ?`, [tenant.id]);
+    } else {
+      // extend: denemedeyse denemeyi, degilse odenmis donemi uzatir; trial: bugunden itibaren deneme.
+      const inTrial = action === 'trial' || tenant.plan_status === 'trial';
+      const column = inTrial ? 'trial_ends_at' : 'paid_until';
+      const from = action === 'trial' ? null : (inTrial ? tenant.trial_ends_at : tenant.paid_until);
+      await dbAsync.run(
+        `UPDATE tenants SET plan_status = ?, ${column} = datetime(MAX(COALESCE(?, datetime('now')), datetime('now')), ?),
+                past_due_since = NULL, billing_notice = NULL,
+                status = CASE WHEN billing_suspended_at IS NOT NULL THEN 'active' ELSE status END,
+                status_reason = CASE WHEN billing_suspended_at IS NOT NULL THEN NULL ELSE status_reason END,
+                billing_suspended_at = NULL WHERE id = ?`,
+        [inTrial ? 'trial' : 'active', from, `+${days} days`, tenant.id]);
+    }
+    const details = { action, ...(action === 'comp' ? {} : { days }) };
+    await adminActivity(req, tenant.id, 'subscription_admin', details);
+    await audit(req, 'tenant_subscription', tenant.id, details);
+    invalidateTenantCache();
+    const fresh = await dbAsync.get('SELECT t.*, u.balance_kurus AS owner_balance_kurus FROM tenants t JOIN users u ON u.id = t.owner_user_id WHERE t.id = ?', [tenant.id]);
+    res.json({ message: 'Abonelik güncellendi.', subscription: billing.subscriptionInfo(fresh, await getResellerSettings(), fresh.owner_balance_kurus) });
+  } catch (err) { next(err); }
+});
+
 // Bayiligi tamamen siler: musteriler, bakiyeleri, alan adlari, fiyatlar ve
 // islem kaydi gider. Siparisler Jet tarafinda sahibin siparisi olarak kalir.
 // Yanlislikla silinmesin diye bayinin adresi (slug) yazilarak onaylanir.
@@ -548,17 +605,7 @@ router.delete('/:id', validate(deleteSchema), async (req, res, next) => {
     if (req.body.confirm !== tenant.slug) {
       return res.status(400).json({ error: `Silmeyi onaylamak için bayinin adresini ("${tenant.slug}") yazın.` });
     }
-    await withTransaction(async tx => {
-      await tx.run('DELETE FROM tenant_balance_logs WHERE tenant_id = ?', [tenant.id]);
-      await tx.run('DELETE FROM tenant_activity_logs WHERE tenant_id = ?', [tenant.id]);
-      await tx.run('DELETE FROM tenant_service_prices WHERE tenant_id = ?', [tenant.id]);
-      await tx.run('DELETE FROM tenant_payments WHERE tenant_id = ?', [tenant.id]);
-      await tx.run('DELETE FROM tenant_payment_settings WHERE tenant_id = ?', [tenant.id]);
-      await tx.run('DELETE FROM tenant_pages WHERE tenant_id = ?', [tenant.id]);
-      await tx.run('DELETE FROM tenant_domains WHERE tenant_id = ?', [tenant.id]);
-      await tx.run('DELETE FROM tenant_customers WHERE tenant_id = ?', [tenant.id]);
-      await tx.run('DELETE FROM tenants WHERE id = ?', [tenant.id]);
-    });
+    await deleteTenantData(tenant.id);
     await audit(req, 'tenant_deleted', tenant.id, { name: tenant.name, slug: tenant.slug, owner_user_id: tenant.owner_user_id });
     invalidateTenantCache();
     res.json({ message: `"${tenant.name}" bayiliği silindi.` });

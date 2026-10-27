@@ -8,7 +8,7 @@
 //   bayi maliyeti     --(kar % veya sabit)-->  musterinin gordugu fiyat
 // Maliyet her istekte canli hesaplanir; admin indirim oranini ya da servis
 // fiyatini degistirip kaydettigi an butun bayilere yansir.
-const { dbAsync } = require('../config/database');
+const { dbAsync, withTransaction } = require('../config/database');
 const { toKurus } = require('../utils/money');
 const { PAYMENT_METHOD_GROUP_SQL, REAL_MONEY_GROUPS } = require('../utils/paymentGroups');
 
@@ -17,7 +17,11 @@ const SETTING_KEYS = {
   discount_percent: 'reseller_discount_percent',
   min_deposit_tl: 'reseller_min_deposit_tl',
   applications_open: 'reseller_applications_open',
-  default_markup_percent: 'reseller_default_markup_percent'
+  default_markup_percent: 'reseller_default_markup_percent',
+  monthly_fee_tl: 'reseller_monthly_fee_tl',
+  trial_days: 'reseller_trial_days',
+  grace_days: 'reseller_grace_days',
+  delete_after_days: 'reseller_delete_after_days'
 };
 
 // public_page_enabled varsayilan KAPALI: admin acana kadar Jet sitesinde
@@ -28,8 +32,19 @@ const DEFAULT_SETTINGS = Object.freeze({
   discount_percent: 10,
   min_deposit_tl: 500,
   applications_open: true,
-  default_markup_percent: 30
+  default_markup_percent: 30,
+  // Abonelik (27 Eki 2026 karari): duz 599 TL/ay, 7 gun deneme, 7 gun gecikme
+  // payi, askidan 30 gun sonra silme.
+  monthly_fee_tl: 599,
+  trial_days: 7,
+  grace_days: 7,
+  delete_after_days: 30
 });
+
+function clampInt(value, fallback, min, max) {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+}
 
 const SETTINGS_TTL_MS = 30_000;
 let settingsCache = { at: 0, value: null };
@@ -62,7 +77,11 @@ async function getResellerSettings() {
     applications_open: raw[SETTING_KEYS.applications_open] === undefined
       ? DEFAULT_SETTINGS.applications_open
       : raw[SETTING_KEYS.applications_open] === '1',
-    default_markup_percent: toPercent(raw[SETTING_KEYS.default_markup_percent], DEFAULT_SETTINGS.default_markup_percent)
+    default_markup_percent: toPercent(raw[SETTING_KEYS.default_markup_percent], DEFAULT_SETTINGS.default_markup_percent),
+    monthly_fee_tl: toPercent(raw[SETTING_KEYS.monthly_fee_tl], DEFAULT_SETTINGS.monthly_fee_tl),
+    trial_days: raw[SETTING_KEYS.trial_days] === undefined ? DEFAULT_SETTINGS.trial_days : clampInt(raw[SETTING_KEYS.trial_days], DEFAULT_SETTINGS.trial_days, 0, 60),
+    grace_days: raw[SETTING_KEYS.grace_days] === undefined ? DEFAULT_SETTINGS.grace_days : clampInt(raw[SETTING_KEYS.grace_days], DEFAULT_SETTINGS.grace_days, 0, 60),
+    delete_after_days: raw[SETTING_KEYS.delete_after_days] === undefined ? DEFAULT_SETTINGS.delete_after_days : clampInt(raw[SETTING_KEYS.delete_after_days], DEFAULT_SETTINGS.delete_after_days, 7, 365)
   };
   settingsCache = { at: Date.now(), value };
   return value;
@@ -76,6 +95,11 @@ async function saveResellerSettings(values) {
     [SETTING_KEYS.applications_open]: values.applications_open ? '1' : '0',
     [SETTING_KEYS.default_markup_percent]: String(values.default_markup_percent)
   };
+  // Abonelik alanlari istege bagli: eski admin ekrani gondermese de korunur.
+  for (const key of ['monthly_fee_tl', 'trial_days', 'grace_days', 'delete_after_days']) {
+    if (values[key] !== undefined && values[key] !== null) entries[SETTING_KEYS[key]] = String(values[key]);
+  }
+  if (values.min_deposit_tl === undefined || values.min_deposit_tl === null) delete entries[SETTING_KEYS.min_deposit_tl];
   for (const [key, value] of Object.entries(entries)) {
     await dbAsync.run(
       'INSERT INTO site_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
@@ -230,6 +254,19 @@ async function realDepositKurus(userId) {
   return row?.total || 0;
 }
 
+// Bayiligi tamamen siler: musteriler, bakiyeleri, odemeler, sayfalar, alan
+// adlari, fiyatlar ve islem kaydi gider. Siparisler ve abonelik faturalari
+// Jet tarafinda kalir. Admin silmesi ve abonelik silme isleyicisi kullanir.
+async function deleteTenantData(tenantId) {
+  await withTransaction(async tx => {
+    for (const table of ['tenant_balance_logs', 'tenant_activity_logs', 'tenant_service_prices', 'tenant_payments',
+      'tenant_payment_settings', 'tenant_pages', 'tenant_domains', 'tenant_customers']) {
+      await tx.run(`DELETE FROM ${table} WHERE tenant_id = ?`, [tenantId]);
+    }
+    await tx.run('DELETE FROM tenants WHERE id = ?', [tenantId]);
+  });
+}
+
 // Alt alan adinda kullanilir: kankasmm.<taban-alan-adi>
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,28}[a-z0-9])$/;
 const RESERVED_SLUGS = new Set([
@@ -259,5 +296,6 @@ module.exports = {
   changeCustomerBalance,
   syncTenantRefund,
   realDepositKurus,
+  deleteTenantData,
   validateSlug
 };

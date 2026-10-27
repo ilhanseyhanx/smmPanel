@@ -104,11 +104,12 @@ test.beforeEach(() => { giden.length = 0; saglayiciKabul = true; });
 // Ayarlar ve basvuru
 // ---------------------------------------------------------------------------
 
-test('varsayılan bayilik ayarları: sayfa kapalı, %10 indirim, 500 TL açılış şartı, %30 kâr', async () => {
+test('varsayılan bayilik ayarları: sayfa kapalı, %10 indirim, %30 kâr, 599 TL/ay, 7 gün deneme', async () => {
   const res = await admin.get('/api/admin/resellers/settings');
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.deepEqual(res.body.settings, {
-    public_page_enabled: false, discount_percent: 10, min_deposit_tl: 500, applications_open: true, default_markup_percent: 30
+    public_page_enabled: false, discount_percent: 10, min_deposit_tl: 500, applications_open: true, default_markup_percent: 30,
+    monthly_fee_tl: 599, trial_days: 7, grace_days: 7, delete_after_days: 30
   });
 });
 
@@ -148,32 +149,26 @@ test('ayar kaydında sayfa anahtarı gönderilmezse mevcut değer korunur', asyn
   assert.equal(eski.body.settings.public_page_enabled, true);
   const program = await request(app).get('/api/reseller/program');
   assert.equal(program.body.enabled, true);
-  assert.equal(program.body.min_deposit, 500);
+  assert.equal(program.body.monthly_fee, 599);
+  assert.equal(program.body.trial_days, 7);
 });
 
-test('bayilik başvurusu: 500 TL gerçek yükleme olmadan açılmaz, bonus sayılmaz', async () => {
+test('bayilik başvurusu: yükleme şartı yok, panel açılır ve 7 günlük deneme başlar', async () => {
   const sahip = await jetKullanici('bayi_sahibi');
   sahipId = sahip.id;
   const agent = request.agent(app);
   await agent.post('/api/auth/login').send({ username: 'bayi_sahibi', password: SIFRE });
 
-  const bos = await agent.post('/api/reseller/apply').send({ name: 'Kanka SMM', slug: 'kanka' });
-  assert.equal(bos.status, 403);
-  assert.equal(bos.body.code, 'MIN_DEPOSIT');
-
-  await dbAsync.run(
-    "INSERT INTO payments (user_id, amount, amount_kurus, method, status, transaction_id) VALUES (?, 1000, 100000, 'Bonus (kampanya)', 'completed', 'B1')",
-    [sahipId]
-  );
-  assert.equal((await agent.post('/api/reseller/apply').send({ name: 'Kanka SMM', slug: 'kanka' })).status, 403, 'bonus yükleme şartı karşılamamalı');
-
+  const durum = await agent.get('/api/reseller/me');
+  assert.equal(durum.status, 200);
+  assert.equal(durum.body.tenant, null);
+  assert.equal(durum.body.monthly_fee, 599);
+  assert.equal(durum.body.trial_days, 7);
+  // Yukleme artik sart degil; admin detayinda gercek yukleme olarak gorunur.
   await dbAsync.run(
     "INSERT INTO payments (user_id, amount, amount_kurus, method, status, transaction_id) VALUES (?, 500, 50000, 'Shopier', 'completed', 'S1')",
     [sahipId]
   );
-  const durum = await agent.get('/api/reseller/me');
-  assert.equal(durum.body.eligible, true);
-  assert.equal(durum.body.deposited, 500);
 
   const ayrilmis = await agent.post('/api/reseller/apply').send({ name: 'Kanka SMM', slug: 'admin' });
   assert.equal(ayrilmis.status, 400);
@@ -182,6 +177,9 @@ test('bayilik başvurusu: 500 TL gerçek yükleme olmadan açılmaz, bonus sayı
   const ok = await agent.post('/api/reseller/apply').send({ name: 'Kanka SMM', slug: 'kanka' });
   assert.equal(ok.status, 201, JSON.stringify(ok.body));
   assert.equal(ok.body.tenant.address, 'kanka.bayi.test');
+  assert.equal(ok.body.tenant.subscription.plan_status, 'trial');
+  assert.equal(ok.body.tenant.subscription.auto_renew, false);
+  assert.ok(ok.body.tenant.subscription.days_left >= 6 && ok.body.tenant.subscription.days_left <= 7);
   tenantId = ok.body.tenant.id;
 
   assert.equal((await agent.post('/api/reseller/apply').send({ name: 'İkinci', slug: 'ikinci' })).status, 409);

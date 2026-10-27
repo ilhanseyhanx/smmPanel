@@ -6,7 +6,9 @@ const { safeRequestConfig } = require('../utils/network');
 const API_BASE = 'https://api.nowpayments.io/v1';
 
 // Anahtarlar admin panelinden yonetilir; .env yalnizca yedektir.
-async function getConfig() {
+// override: bayi sitesinin kendi hesabi ({ apiKey, ipnSecret, baseUrl }).
+async function getConfig(override) {
+  if (override) return { ...override };
   const rows = await dbAsync.all(
     `SELECT key, value FROM site_settings WHERE key IN ('nowpayments_api_key', 'nowpayments_ipn_secret')`
   );
@@ -81,8 +83,8 @@ function sortKeysDeep(value) {
   return value;
 }
 
-async function verifyIpnSignature(body, signature) {
-  const config = await getConfig();
+async function verifyIpnSignature(body, signature, override) {
+  const config = await getConfig(override);
   if (!config.ipnSecret || !signature) return false;
   const expected = crypto
     .createHmac('sha512', config.ipnSecret)
@@ -186,8 +188,8 @@ async function getMinTryFor(payCurrency) {
  * Dogrudan odeme olusturur: adres + gonderilecek net miktar doner.
  * QR ve gorunum tamamen bizim sayfamizda cizilir.
  */
-async function createPayment({ amountTry, payCurrency, orderId }) {
-  const config = await getConfig();
+async function createPayment({ amountTry, payCurrency, orderId, config: override, callbackUrl, description }) {
+  const config = await getConfig(override);
   if (!config.apiKey || !config.ipnSecret) {
     const error = new Error('Kripto ödemesi henüz yapılandırılmamış. Admin panelinden NOWPayments anahtarlarını ekleyin.');
     error.status = 503;
@@ -203,8 +205,8 @@ async function createPayment({ amountTry, payCurrency, orderId }) {
     price_currency: 'try',
     pay_currency: payCurrency,
     order_id: orderId,
-    order_description: 'SMM Panel Bakiye Yükleme',
-    ipn_callback_url: `${config.baseUrl.replace(/\/$/, '')}/api/payments/nowpayments/callback`
+    order_description: description || 'SMM Panel Bakiye Yükleme',
+    ipn_callback_url: callbackUrl || `${config.baseUrl.replace(/\/$/, '')}/api/payments/nowpayments/callback`
   }, safeRequestConfig({
     timeout: 20000,
     maxContentLength: 512 * 1024,

@@ -301,3 +301,4 @@ router.post('/orders/:id/refill', requireActiveTenant, requireCustomer, async (r
 });
 
 module.exports = router;
+module.exports.requireActiveTenant = requireActiveTenant;

@@ -16,6 +16,9 @@ const securityMonitor = require('../services/securityMonitor');
 const {
   getResellerSettings, effectiveDiscountPercent, tenantCatalog, logTenantActivity, changeCustomerBalance
 } = require('../services/resellers');
+const {
+  METHODS: PAYMENT_METHODS, loadMethods, saveMethod, completePayment, closePayment, publicPayment
+} = require('../services/tenantPayments');
 const { invalidateTenantCache, tenantSettings, baseDomain } = require('./resolve');
 const { signOwnerSession, setOwnerCookie, clearOwnerCookie, requireOwner } = require('./panelSession');
 
@@ -568,6 +571,155 @@ router.get('/logs', async (req, res, next) => {
         type: l.type, order_id: l.order_id, note: l.note, created_at: l.created_at
       }))
     });
+  } catch (err) { next(err); }
+});
+
+// ------------------------------------------------------- odeme ayarlari
+// Musterinin parasi bayinin kendi hesabina gider. Anahtarlar sifreli saklanir
+// ve geri gonderilmez; panel yalnizca hangi alanin kayitli oldugunu gorur.
+const secretField = z.string().trim().max(200).optional().default('');
+const paymentSettingsSchema = z.object({
+  enabled: z.boolean(),
+  min: z.coerce.number().finite().positive().max(100000).optional(),
+  max: z.coerce.number().finite().positive().max(100000).optional(),
+  accounts: z.string().max(2000).optional(),
+  instructions: z.string().max(1000).optional(),
+  test_mode: z.boolean().optional(),
+  merchant_id: secretField,
+  merchant_key: secretField,
+  merchant_salt: secretField,
+  api_key: secretField,
+  ipn_secret: secretField
+});
+const rejectSchema = z.object({ reason: z.string().trim().max(300).optional().default('') });
+
+function panelMethod(m) {
+  return {
+    method: m.method,
+    label: m.label,
+    enabled: m.enabled,
+    configured: m.configured,
+    min: fromKurus(m.min_kurus),
+    max: fromKurus(m.max_kurus),
+    accounts: m.public.accounts || '',
+    instructions: m.public.instructions || '',
+    test_mode: Boolean(m.public.test_mode),
+    saved: Object.fromEntries(PAYMENT_METHODS[m.method].secrets.map(key => [key, Boolean(m.secrets[key])]))
+  };
+}
+
+router.get('/payment-settings', async (req, res, next) => {
+  try {
+    const methods = await loadMethods(req.tenant.id);
+    const base = `${req.protocol}://${req.get('host')}`;
+    res.json({
+      methods: Object.values(methods).map(panelMethod),
+      callback_urls: {
+        paytr: `${base}/api/payments/paytr/callback`,
+        nowpayments: `${base}/api/payments/nowpayments/callback`
+      }
+    });
+  } catch (err) { next(err); }
+});
+
+router.put('/payment-settings/:method', validate(paymentSettingsSchema), async (req, res, next) => {
+  try {
+    const method = String(req.params.method);
+    if (!PAYMENT_METHODS[method]) return res.status(404).json({ error: 'Bilinmeyen ödeme yöntemi.' });
+    const body = req.body;
+    const publicData = method === 'bank'
+      ? { accounts: normalizePlainText(body.accounts || '', 2000), instructions: normalizePlainText(body.instructions || '', 1000) }
+      : method === 'paytr' ? { test_mode: Boolean(body.test_mode) } : {};
+    const saved = await saveMethod(req.tenant.id, method, {
+      enabled: body.enabled,
+      minKurus: body.min != null ? toKurus(body.min) : undefined,
+      maxKurus: body.max != null ? toKurus(body.max) : undefined,
+      publicData,
+      secrets: body
+    });
+    const changedKeys = PAYMENT_METHODS[method].secrets.filter(key => String(body[key] || '').trim());
+    await ownerActivity(req, 'payment_settings_changed', {
+      method, enabled: saved.enabled, min: fromKurus(saved.min_kurus), max: fromKurus(saved.max_kurus),
+      ...(changedKeys.length ? { keys_updated: changedKeys } : {})
+    });
+    res.json({ message: `${saved.label} ayarları kaydedildi.`, method: panelMethod(saved) });
+  } catch (err) {
+    // Eksik alan / limit hatasi kullanici hatasidir; sunucu hata kaydina dusmez.
+    if (err.status === 400) return res.status(400).json({ error: err.message });
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------- odemeler
+const PAYMENT_STATUSES = new Set(['pending', 'completed', 'failed', 'rejected']);
+
+router.get('/payments', async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number.parseInt(req.query.page || '1', 10) || 1);
+    const limit = 50;
+    const params = [req.tenant.id];
+    let where = 'p.tenant_id = ?';
+    const status = String(req.query.status || '');
+    if (PAYMENT_STATUSES.has(status)) { where += ' AND p.status = ?'; params.push(status); }
+    const method = String(req.query.method || '');
+    if (PAYMENT_METHODS[method]) { where += ' AND p.method = ?'; params.push(method); }
+    const [total, rows, pending] = await Promise.all([
+      dbAsync.get(`SELECT COUNT(*) AS n FROM tenant_payments p WHERE ${where}`, params),
+      dbAsync.all(
+        `SELECT p.*, c.username AS customer FROM tenant_payments p
+           LEFT JOIN tenant_customers c ON c.id = p.customer_id
+          WHERE ${where} ORDER BY p.id DESC LIMIT ? OFFSET ?`,
+        [...params, limit, (page - 1) * limit]),
+      dbAsync.get("SELECT COUNT(*) AS n FROM tenant_payments WHERE tenant_id = ? AND method = 'bank' AND status = 'pending'", [req.tenant.id])
+    ]);
+    res.json({
+      page,
+      pages: Math.max(1, Math.ceil(total.n / limit)),
+      total: total.n,
+      pending_bank: pending.n,
+      payments: rows.map(p => ({
+        ...publicPayment(p),
+        customer: p.customer,
+        customer_id: p.customer_id,
+        bank_name: p.bank_name,
+        sender_name: p.sender_name,
+        note: p.note,
+        reviewed_by: p.reviewed_by
+      }))
+    });
+  } catch (err) { next(err); }
+});
+
+async function loadBankNotice(req, res) {
+  const id = idParam(req.params.id);
+  const payment = id && await dbAsync.get('SELECT * FROM tenant_payments WHERE id = ? AND tenant_id = ?', [id, req.tenant.id]);
+  if (!payment) { res.status(404).json({ error: 'Ödeme kaydı bulunamadı.' }); return null; }
+  if (payment.method !== 'bank') { res.status(400).json({ error: 'Yalnızca havale bildirimleri elle onaylanır.' }); return null; }
+  if (payment.status !== 'pending') { res.status(409).json({ error: 'Bu bildirim zaten sonuçlanmış.' }); return null; }
+  return payment;
+}
+
+router.post('/payments/:id/approve', async (req, res, next) => {
+  try {
+    const payment = await loadBankNotice(req, res);
+    if (!payment) return;
+    const result = await withTransaction(tx => completePayment(tx, payment.id, {
+      actor: `owner:${req.owner.username}`, actorType: 'owner', actorId: req.owner.id
+    }));
+    if (!result) return res.status(409).json({ error: 'Bu bildirim zaten sonuçlanmış.' });
+    res.json({ message: `₺${fromKurus(payment.amount_kurus).toFixed(2)} müşterinin bakiyesine eklendi.`, balance: fromKurus(result.balanceKurus) });
+  } catch (err) { next(err); }
+});
+
+router.post('/payments/:id/reject', validate(rejectSchema), async (req, res, next) => {
+  try {
+    const payment = await loadBankNotice(req, res);
+    if (!payment) return;
+    const reason = normalizePlainText(req.body.reason, 300) || 'Ödeme hesaba ulaşmadı.';
+    const closed = await closePayment(dbAsync, payment.id, reason, { status: 'rejected', actor: `owner:${req.owner.username}` });
+    if (!closed) return res.status(409).json({ error: 'Bu bildirim zaten sonuçlanmış.' });
+    await ownerActivity(req, 'payment_rejected', { payment_id: payment.id, amount: fromKurus(payment.amount_kurus), reason });
+    res.json({ message: 'Bildirim reddedildi.' });
   } catch (err) { next(err); }
 });
 

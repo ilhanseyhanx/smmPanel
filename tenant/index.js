@@ -84,6 +84,7 @@ function buildTenantApp() {
   app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
   app.use('/api/panel', require('./panelRoutes'));
+  app.use('/api/payments', require('./paymentRoutes'));
   app.use('/api', require('./routes'));
   app.use(notFoundApi);
 

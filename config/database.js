@@ -686,6 +686,50 @@ async function runMigrations() {
     CREATE INDEX IF NOT EXISTS idx_tenant_balance_logs_customer ON tenant_balance_logs(customer_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_tenant_activity_logs ON tenant_activity_logs(tenant_id, id DESC);
   `);
+  // Bayi musterisinin bakiye yuklemesi (F1). Para BAYININ hesabina gider;
+  // anahtarlar secrets_encrypted'ta sifreli JSON olarak durur.
+  // Yasal sayfalar: bayi duzenlemediyse vitrin sablonu kendisi doldurur.
+  await dbAsync.exec(`
+    CREATE TABLE IF NOT EXISTS tenant_payment_settings (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      method TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      min_kurus INTEGER NOT NULL,
+      max_kurus INTEGER NOT NULL,
+      public_json TEXT NOT NULL DEFAULT '{}',
+      secrets_encrypted TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (tenant_id, method)
+    );
+    CREATE TABLE IF NOT EXISTS tenant_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      customer_id INTEGER NOT NULL REFERENCES tenant_customers(id) ON DELETE CASCADE,
+      method TEXT NOT NULL,
+      amount_kurus INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'completed', 'failed', 'rejected')),
+      merchant_oid TEXT NOT NULL UNIQUE,
+      provider_ref TEXT,
+      bank_name TEXT,
+      sender_name TEXT,
+      note TEXT,
+      failure_reason TEXT,
+      balance_log_id INTEGER,
+      reviewed_by TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      completed_at DATETIME
+    );
+    CREATE TABLE IF NOT EXISTS tenant_pages (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      slug TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (tenant_id, slug)
+    );
+    CREATE INDEX IF NOT EXISTS idx_tenant_payments_tenant ON tenant_payments(tenant_id, status, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_tenant_payments_customer ON tenant_payments(customer_id, id DESC);
+  `);
   await addColumnIfMissing('orders', 'tenant_id', 'INTEGER');
   await addColumnIfMissing('orders', 'tenant_customer_id', 'INTEGER');
   // Musterinin bayiye odedigi tutar ve bundan iade edilen kisim (kurus).

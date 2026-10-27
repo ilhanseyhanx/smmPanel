@@ -15,6 +15,8 @@ const { normalizePlainText } = require('../utils/security');
 const { toKurus, fromKurus } = require('../utils/money');
 const PayTR = require('../services/paytr');
 const NowPayments = require('../services/nowpayments');
+const Shopier = require('../services/shopier');
+const { shopierLineAmountKurus } = require('../routes/payments');
 const { loadMethods, amountError, completePayment, closePayment, publicPayment } = require('../services/tenantPayments');
 const { logTenantActivity } = require('../services/resellers');
 const securityMonitor = require('../services/securityMonitor');
@@ -124,8 +126,18 @@ router.get('/status/:oid', requireCustomer, async (req, res, next) => {
       [req.tenant.id, req.customer.id, String(req.params.oid || '').slice(0, 64)]
     );
     if (!row) return res.status(404).json({ error: 'Ödeme kaydı bulunamadı.', error_en: 'Payment not found.' });
+    let payment = row;
+    // Shopier bildirimi gelmediyse siparis bayinin hesabindan sorulur.
+    if (row.method === 'shopier' && row.status === 'pending' && row.provider_ref) {
+      const method = (await loadMethods(req.tenant.id)).shopier;
+      if (method.secrets.pat) {
+        const order = await Shopier.findPaidOrderByProductId(row.provider_ref, method.secrets.pat).catch(() => null);
+        if (order) await settleShopierOrder(req, method, order);
+        payment = await dbAsync.get('SELECT * FROM tenant_payments WHERE id = ?', [row.id]);
+      }
+    }
     const fresh = await dbAsync.get('SELECT balance_kurus FROM tenant_customers WHERE id = ?', [req.customer.id]);
-    res.json({ payment: publicPayment(row), balance: fromKurus(fresh.balance_kurus) });
+    res.json({ payment: publicPayment(payment), balance: fromKurus(fresh.balance_kurus) });
   } catch (err) { next(err); }
 });
 
@@ -223,6 +235,93 @@ router.post('/paytr/callback', async (req, res) => {
     return res.type('text').send('OK');
   } catch (err) {
     console.error('Bayi PayTR bildirimi:', err.message);
+    return res.status(500).type('text').send('ERROR');
+  }
+});
+
+// ----------------------------------------------------------------- Shopier
+// Bayinin Shopier hesabinda gecici "Bakiye Yukleme" urunu acilir, musteri
+// orada oder; order.created bildirimi (veya durum sorgusundaki mutabakat)
+// urun kimligiyle odemeyi bulur. Ayni kural Jet'in kendi akisindaki gibi.
+function shopierCreds(req, method) {
+  return {
+    pat: method.secrets.pat,
+    webhookToken: method.secrets.webhook_token,
+    siteName: req.tenant.name,
+    imageUrl: method.public.image_url || ''
+  };
+}
+
+async function settleShopierOrder(req, method, order) {
+  if (!order?.id || String(order.paymentStatus || '').toLowerCase() !== 'paid') return 0;
+  const lines = Array.isArray(order.lineItems) ? order.lineItems : [];
+  let settled = 0;
+  for (const line of lines) {
+    const productId = String(line?.productId || '');
+    if (!productId) continue;
+    const payment = await dbAsync.get(
+      "SELECT * FROM tenant_payments WHERE tenant_id = ? AND method = 'shopier' AND provider_ref = ?",
+      [req.tenant.id, productId]
+    );
+    if (payment?.status !== 'pending') continue;
+    const paidKurus = shopierLineAmountKurus(line);
+    if (paidKurus !== payment.amount_kurus) {
+      await closePayment(dbAsync, payment.id, `Ödenen tutar eşleşmedi (₺${fromKurus(paidKurus || 0).toFixed(2)}); elle kontrol edin.`);
+      continue;
+    }
+    const done = await withTransaction(tx => completePayment(tx, payment.id, { providerRef: productId }));
+    if (done) {
+      settled += 1;
+      Shopier.deleteProduct(productId, method.secrets.pat).catch(() => {});
+    }
+  }
+  return settled;
+}
+
+// Odenmeden birakilan (1 gunden eski) urunler bayinin magazasindan silinir.
+async function sweepShopier(req, method) {
+  const stale = await dbAsync.all(
+    `SELECT id, provider_ref FROM tenant_payments
+      WHERE tenant_id = ? AND method = 'shopier' AND status = 'pending' AND created_at < datetime('now', '-1 day')
+      ORDER BY id LIMIT 10`,
+    [req.tenant.id]
+  );
+  for (const row of stale) {
+    if (row.provider_ref) await Shopier.deleteProduct(row.provider_ref, method.secrets.pat);
+    await closePayment(dbAsync, row.id, 'Ödeme tamamlanmadı (süresi doldu).');
+  }
+}
+
+router.post('/shopier/create', requireActiveTenant, requireCustomer, startLimiter, validate(cardSchema), async (req, res, next) => {
+  try {
+    const method = await enabledMethod(req, res, 'shopier');
+    if (!method) return;
+    const amountKurus = toKurus(req.body.amount);
+    if (!checkAmount(res, method, amountKurus)) return;
+    const oid = newOid('BS');
+    const id = await insertPayment({ tenantId: req.tenant.id, customerId: req.customer.id, method: 'shopier', amountKurus, oid });
+    try {
+      const product = await Shopier.createTopUpProduct({ amountKurus, merchantOid: oid, tenant: shopierCreds(req, method) });
+      await dbAsync.run('UPDATE tenant_payments SET provider_ref = ? WHERE id = ?', [product.productId, id]);
+      res.status(201).json({ merchant_oid: oid, payment_url: product.url });
+    } catch (err) {
+      await closePayment(dbAsync, id, err.message);
+      throw err;
+    }
+    sweepShopier(req, method).catch(() => {});
+  } catch (err) { next(err); }
+});
+
+router.post('/shopier/webhook', async (req, res) => {
+  try {
+    const method = (await loadMethods(req.tenant.id)).shopier;
+    if (!method.configured || !Shopier.verifyWebhookSignature(req.rawBody, req.headers['shopier-signature'], method.secrets.webhook_token)) {
+      return res.status(400).type('text').send('bad signature');
+    }
+    await settleShopierOrder(req, method, req.body || {});
+    return res.type('text').send('OK');
+  } catch (err) {
+    console.error('Bayi Shopier bildirimi:', err.message);
     return res.status(500).type('text').send('ERROR');
   }
 });

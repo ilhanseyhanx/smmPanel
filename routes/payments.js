@@ -594,3 +594,4 @@ module.exports = router;
 module.exports.applyDepositBonus = applyDepositBonus;
 module.exports.settleShopierOrder = settleShopierOrder;
 module.exports.reconcilePendingShopierPayments = reconcilePendingShopierPayments;
+module.exports.shopierLineAmountKurus = shopierLineAmountKurus;

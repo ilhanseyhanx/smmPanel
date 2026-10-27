@@ -11,7 +11,7 @@ const cookieParser = require('cookie-parser');
 const compression = require('compression');
 const { rateLimit } = require('express-rate-limit');
 const { notFoundApi, errorHandler } = require('../middleware/errorHandler');
-const { tenantForHost, tenantSettings } = require('./resolve');
+const { tenantForHost, tenantSettings, baseDomain, normalizeHost, isMainHost } = require('./resolve');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const TEMPLATE_PATH = path.join(PUBLIC_DIR, 'index.html');
@@ -70,7 +70,11 @@ function buildTenantApp() {
   app.disable('x-powered-by');
   app.use(cookieParser());
   app.use(compression());
-  app.use(express.json({ limit: '512kb' }));
+  // Shopier bildirimi imzayi ham govde uzerinden dogrular.
+  app.use(express.json({
+    limit: '512kb',
+    verify: (req, res, buf) => { if (req.url.startsWith('/api/payments/shopier/webhook')) req.rawBody = buf; }
+  }));
   app.use(express.urlencoded({ extended: false, limit: '512kb' }));
 
   const rateLimitHandler = (req, res, next, options) => res.status(options.statusCode).send(options.message);
@@ -121,9 +125,29 @@ function buildTenantApp() {
 
 const tenantApp = buildTenantApp();
 
+// Taban alan adinin bayisi olmayan alt adresi (rastgele.taban.com): Jet sitesi
+// ACILMAZ; markasiz bir "bulunamadi" sayfasi doner ve dizine eklenmez.
+function unknownSubdomainPage() {
+  return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Site bulunamadı</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0}
+main{text-align:center;padding:24px}h1{font-size:1.4rem;margin:0 0 8px}p{color:#94a3b8;margin:0}</style></head>
+<body><main><h1>Site bulunamadı</h1><p>Bu adreste yayında bir site yok.</p></main></body></html>`;
+}
+
+function isBaseSubdomain(rawHost) {
+  const base = baseDomain();
+  const host = normalizeHost(rawHost);
+  return Boolean(base && host && host !== base && host.endsWith(`.${base}`) && !isMainHost(host));
+}
+
 function tenantDispatcher(req, res, next) {
   tenantForHost(req.headers.host).then(tenant => {
-    if (!tenant) return next();
+    if (!tenant) {
+      if (!isBaseSubdomain(req.headers.host)) return next();
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+      return res.status(404).type('html').send(unknownSubdomainPage());
+    }
     req.tenant = tenant;
     tenantApp(req, res, err => {
       if (err) return errorHandler(err, req, res, () => {});

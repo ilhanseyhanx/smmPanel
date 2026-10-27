@@ -21,6 +21,7 @@ const {
 } = require('../services/tenantPayments');
 const { invalidateTenantCache, tenantSettings, baseDomain } = require('./resolve');
 const { PAGE_MAP: LEGAL_PAGES, listPages } = require('./legalPages');
+const Shopier = require('../services/shopier');
 const { signOwnerSession, setOwnerCookie, clearOwnerCookie, requireOwner } = require('./panelSession');
 
 const router = express.Router();
@@ -650,7 +651,9 @@ const paymentSettingsSchema = z.object({
   merchant_key: secretField,
   merchant_salt: secretField,
   api_key: secretField,
-  ipn_secret: secretField
+  ipn_secret: secretField,
+  pat: z.string().trim().max(4000).optional().default(''),
+  image_url: z.union([z.literal(''), z.url().max(500).refine(v => v.startsWith('https://'), 'Görsel adresi https:// ile başlamalı.')]).optional()
 });
 const rejectSchema = z.object({ reason: z.string().trim().max(300).optional().default('') });
 
@@ -665,6 +668,8 @@ function panelMethod(m) {
     accounts: m.public.accounts || '',
     instructions: m.public.instructions || '',
     test_mode: Boolean(m.public.test_mode),
+    image_url: m.public.image_url || '',
+    webhook_ready: m.method === 'shopier' ? Boolean(m.secrets.webhook_token) : undefined,
     saved: Object.fromEntries(PAYMENT_METHODS[m.method].secrets.map(key => [key, Boolean(m.secrets[key])]))
   };
 }
@@ -677,6 +682,7 @@ router.get('/payment-settings', async (req, res, next) => {
       methods: Object.values(methods).map(panelMethod),
       callback_urls: {
         paytr: `${base}/api/payments/paytr/callback`,
+        shopier: `${base}/api/payments/shopier/webhook`,
         nowpayments: `${base}/api/payments/nowpayments/callback`
       }
     });
@@ -688,15 +694,37 @@ router.put('/payment-settings/:method', validate(paymentSettingsSchema), async (
     const method = String(req.params.method);
     if (!PAYMENT_METHODS[method]) return res.status(404).json({ error: 'Bilinmeyen ödeme yöntemi.' });
     const body = req.body;
-    const publicData = method === 'bank'
+    let publicData = method === 'bank'
       ? { accounts: normalizePlainText(body.accounts || '', 2000), instructions: normalizePlainText(body.instructions || '', 1000) }
       : method === 'paytr' ? { test_mode: Boolean(body.test_mode) } : {};
+    let internalSecrets;
+    if (method === 'shopier') {
+      const current = (await loadMethods(req.tenant.id)).shopier;
+      publicData = {
+        image_url: body.image_url !== undefined ? body.image_url : (current.public.image_url || ''),
+        webhook_id: current.public.webhook_id || ''
+      };
+      const newPat = String(body.pat || '').trim();
+      const pat = newPat || current.secrets.pat;
+      // Yeni anahtar girildiyse veya abonelik hic kurulmadiysa: bayinin Shopier
+      // hesabinda bu sitenin adresine "order.created" bildirimi acilir.
+      if (pat && (newPat || !current.secrets.webhook_token)) {
+        const url = `${req.protocol}://${req.get('host')}/api/payments/shopier/webhook`;
+        if (current.public.webhook_id && current.secrets.pat) {
+          await Shopier.removeWebhookSubscription(current.secrets.pat, current.public.webhook_id).catch(() => {});
+        }
+        const hook = await Shopier.createWebhookSubscription(pat, url);
+        internalSecrets = { webhook_token: hook.token };
+        publicData.webhook_id = hook.id;
+      }
+    }
     const saved = await saveMethod(req.tenant.id, method, {
       enabled: body.enabled,
       minKurus: body.min != null ? toKurus(body.min) : undefined,
       maxKurus: body.max != null ? toKurus(body.max) : undefined,
       publicData,
-      secrets: body
+      secrets: body,
+      internalSecrets
     });
     const changedKeys = PAYMENT_METHODS[method].secrets.filter(key => String(body[key] || '').trim());
     await ownerActivity(req, 'payment_settings_changed', {

@@ -215,6 +215,15 @@ test('ana site ve bilinmeyen adres eskisi gibi Jet sitesini açar', async () => 
   assert.match(bilinmeyen.text, /view-admin/);
 });
 
+test('taban alan adının bayisi olmayan alt adresi Jet sitesini açmaz, markasız 404 döner', async () => {
+  for (const url of ['/', '/api/services', '/dijital-urunler']) {
+    const res = await request(app).get(url).set('Host', 'kimsenin-degil.bayi.test');
+    assert.equal(res.status, 404, url);
+    assert.doesNotMatch(res.text, /SMMJET|jetsmmpanel|view-admin/i, url);
+    assert.match(res.headers['x-robots-tag'], /noindex/);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Musteri oturumu ve izolasyon
 // ---------------------------------------------------------------------------
@@ -499,7 +508,10 @@ test('bayisi olan kullanıcı silinemez; bayilik adres onayıyla silinir', async
   assert.equal(yanlis.status, 400);
   const diger = await dbAsync.get("SELECT id FROM tenants WHERE slug = 'diger'");
   assert.equal((await admin.delete(`/api/admin/resellers/${diger.id}`).send({ confirm: 'diger' })).status, 200);
-  assert.equal((await vitrin('diger.bayi.test').get('/')).text.includes('view-admin'), true, 'silinen bayi hâlâ açılıyor');
+  // Silinen bayinin adresi ne bayi sitesini ne de Jet sitesini acar.
+  const silinen = await vitrin('diger.bayi.test').get('/');
+  assert.equal(silinen.status, 404, 'silinen bayi hâlâ açılıyor');
+  assert.doesNotMatch(silinen.text, /view-admin|Diğer SMM/);
 });
 
 test('telafi geçmişi olan kullanıcı silinebilir (yabancı anahtar hatası yok)', async () => {

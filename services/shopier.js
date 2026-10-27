@@ -134,18 +134,19 @@ async function request(method, path, { body, pat } = {}) {
 
 // Webhook teslim edilemezse odemeyi kaybetmemek icin siparisler API'den de
 // dogrulanir. Shopier liste ucu dogrudan bir dizi dondurur.
-async function listOrders(params = {}) {
+// pat verilirse bayinin kendi Shopier hesabi kullanilir (bayi sitesi odemesi).
+async function listOrders(params = {}, pat) {
   const query = new URLSearchParams();
   query.set('limit', String(Math.min(50, Math.max(1, Number(params.limit) || 20))));
   query.set('sort', params.sort || 'dateDesc');
   if (params.productId) query.set('productId', String(params.productId));
-  const result = await request('get', `/orders?${query.toString()}`);
+  const result = await request('get', `/orders?${query.toString()}`, { pat });
   return Array.isArray(result) ? result : [];
 }
 
-async function findPaidOrderByProductId(productId) {
+async function findPaidOrderByProductId(productId, pat) {
   if (!productId) return null;
-  const orders = await listOrders({ productId, limit: 20 });
+  const orders = await listOrders({ productId, limit: 20 }, pat);
   return orders.find(order =>
     String(order?.paymentStatus || '').toLowerCase() === 'paid' &&
     Array.isArray(order?.lineItems) &&
@@ -178,6 +179,25 @@ async function registerWebhook(patOverride) {
   await saveSecret('shopier_webhook_token', String(created.token));
   await savePlain('shopier_webhook_id', String(created.id || ''));
   return { id: created.id, url, event: created.event || 'order.created' };
+}
+
+// Bayi sitesi icin: abonelik bayinin hesabinda acilir, imza anahtari CAGIRANA
+// doner (site_settings'e YAZILMAZ; bayinin sifreli ayarina girer).
+async function createWebhookSubscription(pat, url) {
+  if (!pat) throw configError('Önce Kişisel Erişim Anahtarını girin.');
+  const created = await request('post', '/webhooks', { pat, body: { event: 'order.created', url } });
+  if (!created?.token) {
+    const error = new Error('Shopier webhook aboneliği oluşturuldu ama imza anahtarı dönmedi. Tekrar kaydetmeyi deneyin.');
+    error.status = 400;
+    throw error;
+  }
+  return { id: String(created.id || ''), token: String(created.token) };
+}
+
+async function removeWebhookSubscription(pat, id) {
+  if (!pat || !id) return false;
+  await request('delete', `/webhooks/${encodeURIComponent(id)}`, { pat });
+  return true;
 }
 
 async function removeWebhook(patOverride) {
@@ -250,21 +270,30 @@ function productImageUrl(config) {
  * Bakiye yuklemesi icin gecici bir urun olusturur.
  * @returns {{productId: string, url: string}} musterinin yonlendirilecegi adres
  */
-async function createTopUpProduct({ amountKurus, merchantOid }) {
-  const config = await getConfig();
+// tenant: bayi sitesi odemesi ({ pat, webhookToken, siteName, imageUrl }).
+// Bayide gorsel istege baglidir; bos ise urune gorsel eklenmez (Jet'in
+// gorseli bayi magazasinda kullanilmaz).
+async function createTopUpProduct({ amountKurus, merchantOid, tenant }) {
+  const config = tenant
+    ? { pat: tenant.pat, webhookToken: tenant.webhookToken, baseUrl: 'bayi', productImage: tenant.imageUrl || '' }
+    : await getConfig();
   if (!config.pat) throw configError('Shopier ödemesi henüz yapılandırılmamış. Admin panelinden Kişisel Erişim Anahtarını ekleyin.');
   if (!config.webhookToken) throw configError('Shopier webhook kaydı yapılmadan ödeme alınamaz (ödeme onayı gelmez, bakiye yüklenmez).');
   if (!config.baseUrl) throw configError('PUBLIC_BASE_URL ayarlanmadan Shopier ödemesi alınamaz.');
 
   const amount = (amountKurus / 100).toFixed(2);
+  const media = tenant
+    ? (config.productImage ? [{ type: 'image', url: config.productImage, placement: 1 }] : undefined)
+    : [{ type: 'image', url: productImageUrl(config), placement: 1 }];
   const product = await request('post', '/products', {
+    pat: config.pat,
     body: {
       title: `Bakiye Yükleme ₺${amount}`,
       type: 'digital',
       // Bu metin Shopier'de HERKESE ACIK urun sayfasinda gorunur; kullanici
       // adi buraya yazilmaz. Referans opak bir jetondur, destek icin kalir.
-      description: `Jet SMM Panel bakiye yüklemesi. Ödeme onaylandığında bakiyeniz otomatik yüklenir. Referans: ${merchantOid}`,
-      media: [{ type: 'image', url: productImageUrl(config), placement: 1 }],
+      description: `${tenant ? tenant.siteName : 'Jet SMM Panel'} bakiye yüklemesi. Ödeme onaylandığında bakiyeniz otomatik yüklenir. Referans: ${merchantOid}`,
+      ...(media ? { media } : {}),
       priceData: { currency: 'TRY', price: amount },
       // Dijital urun; kargo yok ama alan zorunlu.
       shippingPayer: 'sellerPays',
@@ -286,10 +315,10 @@ async function createTopUpProduct({ amountKurus, merchantOid }) {
 // Odeme bitince (veya yarim kalinca) gecici urun magazadan silinir; aksi halde
 // dukkanda yuzlerce "Bakiye Yukleme" urunu birikir. Hata yutulur: temizlik
 // basarisiz olsa da odeme akisi etkilenmemeli.
-async function deleteProduct(productId) {
+async function deleteProduct(productId, pat) {
   if (!productId) return false;
   try {
-    await request('delete', `/products/${encodeURIComponent(productId)}`);
+    await request('delete', `/products/${encodeURIComponent(productId)}`, { pat });
     return true;
   } catch (err) {
     console.error('Shopier ürün silinemedi:', productId, err.message);
@@ -333,7 +362,7 @@ async function setProductImage(url) {
 module.exports = {
   apiBase,
   getConfig, isConfigured, getStatus, saveSecret, savePlain,
-  registerWebhook, removeWebhook,
+  registerWebhook, removeWebhook, createWebhookSubscription, removeWebhookSubscription,
   verifyWebhookSignature, verifyWebhook,
   listOrders, findPaidOrderByProductId,
   createTopUpProduct, deleteProduct, sweepAbandonedProducts, setProductImage

@@ -302,7 +302,13 @@
     failed: ['Başarısız', 'canceled'],
     rejected: ['Reddedildi', 'canceled']
   };
-  const METHOD_ICON = { bank: 'fa-building-columns', paytr: 'fa-credit-card', nowpayments: 'fa-bitcoin-sign' };
+  const METHOD_ICON = { bank: 'fa-building-columns', paytr: 'fa-credit-card', shopier: 'fa-credit-card', nowpayments: 'fa-bitcoin-sign' };
+  // Shopier odeme sayfasi siteye geri yonlendirmez; musteri donunce son
+  // odemesi bu anahtardan bulunup durumu sorulur.
+  const PENDING_KEY = 'sf-pay-oid';
+  function rememberPending(oid) { try { sessionStorage.setItem(PENDING_KEY, oid); } catch { /* gizli pencere */ } }
+  function forgetPending() { try { sessionStorage.removeItem(PENDING_KEY); } catch { /* gizli pencere */ } }
+  function pendingOid() { try { return sessionStorage.getItem(PENDING_KEY); } catch { return null; } }
 
   async function loadFunds() {
     const [methods, history] = await Promise.all([api('/payments/methods'), api('/payments/history')]);
@@ -348,10 +354,12 @@
           <p class="sf-form-error" role="alert"></p>
           <button type="submit" class="sf-btn sf-btn-primary sf-btn-block">Ödeme Bildirimi Gönder</button>
         </form>`;
-    } else if (m.method === 'paytr') {
+    } else if (m.method === 'paytr' || m.method === 'shopier') {
       box.innerHTML = `
-        <form class="sf-form" id="sf-pay-form" data-method="paytr" novalidate>
-          <p class="sf-muted sf-step">Güvenli kart ödeme sayfasına yönlendirileceksin. Ödeme onaylanınca bakiyen otomatik yüklenir.</p>
+        <form class="sf-form" id="sf-pay-form" data-method="${m.method}" novalidate>
+          <p class="sf-muted sf-step">${m.method === 'shopier'
+            ? 'Shopier ödeme sayfasına yönlendirileceksin. Ödemeden sonra bu sayfaya dönünce bakiyen kontrol edilip yüklenir.'
+            : 'Güvenli kart ödeme sayfasına yönlendirileceksin. Ödeme onaylanınca bakiyen otomatik yüklenir.'}</p>
           ${amountField(m)}
           <p class="sf-form-error" role="alert"></p>
           <button type="submit" class="sf-btn sf-btn-primary sf-btn-block"><i class="fa-solid fa-lock" aria-hidden="true"></i> Kartla Öde</button>
@@ -391,6 +399,11 @@
         const data = await api('/payments/paytr/token', { method: 'POST', body: JSON.stringify(body) });
         location.href = data.payment_url;
         return;
+      } else if (method === 'shopier') {
+        const data = await api('/payments/shopier/create', { method: 'POST', body: JSON.stringify(body) });
+        rememberPending(data.merchant_oid);
+        location.href = data.payment_url;
+        return;
       } else if (method === 'nowpayments') {
         const data = await api('/payments/nowpayments/create', { method: 'POST', body: JSON.stringify(body) });
         showCryptoBox(data);
@@ -424,6 +437,7 @@
         const data = await api('/payments/status/' + encodeURIComponent(oid));
         const p = data.payment;
         if (p.status !== 'pending') {
+          if (pendingOid() === oid) forgetPending();
           if (state.customer) { state.customer.balance = data.balance; setCustomer(state.customer); }
           const message = p.status === 'completed'
             ? `${money(p.amount)} bakiyene eklendi.`
@@ -443,10 +457,14 @@
   // Kart odemesinden donus: /bakiye?odeme=<kayit> (onay birkac saniye surebilir).
   function watchReturn() {
     const oid = new URLSearchParams(location.search).get('odeme');
-    if (!oid) return;
-    history.replaceState({}, '', '/bakiye');
-    toast('Ödemen kontrol ediliyor…');
-    pollPayment(oid, 20, 3000);
+    if (oid) {
+      history.replaceState({}, '', '/bakiye');
+      toast('Ödemen kontrol ediliyor…');
+      pollPayment(oid, 20, 3000);
+      return;
+    }
+    const shopierOid = pendingOid();
+    if (shopierOid) pollPayment(shopierOid, 24, 5000);
   }
 
   async function loadPaymentHistory() {

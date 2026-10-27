@@ -22,6 +22,7 @@ const { app } = require('../server');
 const { initDatabase, dbAsync, db } = require('../config/database');
 const PayTR = require('../services/paytr');
 const NowPayments = require('../services/nowpayments');
+const Shopier = require('../services/shopier');
 
 const SIFRE = 'OdemeTestSifresi_2026';
 const HOST = 'odeme.panel.test';
@@ -90,7 +91,7 @@ test.after(async () => {
 test('başlangıçta hiçbir yöntem açık değil; vitrin boş liste görür', async () => {
   const ayar = await panel.get('/api/panel/payment-settings');
   assert.equal(ayar.status, 200);
-  assert.deepEqual(ayar.body.methods.map(m => m.method), ['bank', 'paytr', 'nowpayments']);
+  assert.deepEqual(ayar.body.methods.map(m => m.method), ['bank', 'paytr', 'shopier', 'nowpayments']);
   assert.ok(ayar.body.methods.every(m => !m.enabled));
   assert.match(ayar.body.callback_urls.paytr, /odeme\.panel\.test\/api\/payments\/paytr\/callback$/);
   assert.deepEqual((await site().get('/api/payments/methods')).body.methods, []);
@@ -246,6 +247,71 @@ test('NOWPayments: bayinin anahtarıyla adres alınır, imzalı finished bildiri
     assert.equal(await bakiye(musteri.id), once + 50000);
   } finally {
     NowPayments.createPayment = gercek;
+  }
+});
+
+test('Shopier: anahtar kaydedilince bayinin hesabında bildirim kurulur, imzalı bildirim bakiyeyi yazar', async () => {
+  const gercek = {
+    hook: Shopier.createWebhookSubscription,
+    urun: Shopier.createTopUpProduct,
+    sil: Shopier.deleteProduct,
+    bul: Shopier.findPaidOrderByProductId
+  };
+  let hookArgs;
+  let urunArgs;
+  const silinen = [];
+  Shopier.createWebhookSubscription = async (pat, url) => { hookArgs = { pat, url }; return { id: 'wh-77', token: 'bayi-shopier-imza' }; };
+  Shopier.createTopUpProduct = async args => { urunArgs = args; return { productId: `urun-${Date.now()}`, url: 'https://www.shopier.com/urun' }; };
+  Shopier.deleteProduct = async (id, pat) => { silinen.push({ id, pat }); return true; };
+  try {
+    const kayit = await panel.put('/api/panel/payment-settings/shopier').send({ enabled: true, pat: 'bayi-pat-123' });
+    assert.equal(kayit.status, 200, JSON.stringify(kayit.body));
+    assert.deepEqual(hookArgs, { pat: 'bayi-pat-123', url: 'http://odeme.panel.test/api/payments/shopier/webhook' });
+    assert.equal(kayit.body.method.webhook_ready, true);
+    assert.ok(!JSON.stringify(kayit.body).includes('bayi-shopier-imza'), 'imza anahtarı panele dönmez');
+
+    const res = await musteri.post('/api/payments/shopier/create').send({ amount: 75 });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.equal(res.body.payment_url, 'https://www.shopier.com/urun');
+    assert.equal(urunArgs.tenant.pat, 'bayi-pat-123');
+    assert.equal(urunArgs.tenant.imageUrl, '', 'görsel yoksa boş gider');
+    assert.equal(urunArgs.tenant.siteName, 'Ödeme SMM');
+    const kayitli = await dbAsync.get('SELECT provider_ref FROM tenant_payments WHERE merchant_oid = ?', [res.body.merchant_oid]);
+
+    const once = await bakiye(musteri.id);
+    const siparis = JSON.stringify({ id: 'S1', paymentStatus: 'paid', lineItems: [{ productId: kayitli.provider_ref, total: '75.00' }] });
+    const imza = crypto.createHmac('sha256', 'bayi-shopier-imza').update(siparis).digest('hex');
+    const sahte = await site().post('/api/payments/shopier/webhook').set('Content-Type', 'application/json').set('Shopier-Signature', 'yanlis').send(siparis);
+    assert.equal(sahte.status, 400);
+    const cb = await site().post('/api/payments/shopier/webhook').set('Content-Type', 'application/json').set('Shopier-Signature', imza).send(siparis);
+    assert.equal(cb.text, 'OK');
+    assert.equal(await bakiye(musteri.id), once + 7500);
+    assert.deepEqual(silinen.at(-1), { id: kayitli.provider_ref, pat: 'bayi-pat-123' }, 'geçici ürün bayinin mağazasından silinir');
+    await site().post('/api/payments/shopier/webhook').set('Content-Type', 'application/json').set('Shopier-Signature', imza).send(siparis);
+    assert.equal(await bakiye(musteri.id), once + 7500, 'tekrar gelen bildirim çift yüklemez');
+  } finally {
+    Object.assign(Shopier, { createWebhookSubscription: gercek.hook, createTopUpProduct: gercek.urun, deleteProduct: gercek.sil, findPaidOrderByProductId: gercek.bul });
+  }
+});
+
+test('Shopier: bildirim gelmese de durum sorgusu siparişi bayinin hesabından bulup yazar', async () => {
+  const gercek = { urun: Shopier.createTopUpProduct, bul: Shopier.findPaidOrderByProductId, sil: Shopier.deleteProduct };
+  Shopier.createTopUpProduct = async () => ({ productId: 'urun-mutabakat', url: 'https://www.shopier.com/urun2' });
+  Shopier.deleteProduct = async () => true;
+  try {
+    const res = await musteri.post('/api/payments/shopier/create').send({ amount: 30 });
+    let sorulanPat;
+    Shopier.findPaidOrderByProductId = async (id, pat) => {
+      sorulanPat = pat;
+      return { id: 'S2', paymentStatus: 'paid', lineItems: [{ productId: id, total: '30.00' }] };
+    };
+    const once = await bakiye(musteri.id);
+    const durum = await musteri.get(`/api/payments/status/${res.body.merchant_oid}`);
+    assert.equal(durum.body.payment.status, 'completed');
+    assert.equal(sorulanPat, 'bayi-pat-123');
+    assert.equal(await bakiye(musteri.id), once + 3000);
+  } finally {
+    Object.assign(Shopier, { createTopUpProduct: gercek.urun, findPaidOrderByProductId: gercek.bul, deleteProduct: gercek.sil });
   }
 });
 

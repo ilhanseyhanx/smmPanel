@@ -234,7 +234,9 @@ async function realDepositKurus(userId) {
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,28}[a-z0-9])$/;
 const RESERVED_SLUGS = new Set([
   'www', 'api', 'admin', 'panel', 'app', 'mail', 'smtp', 'ftp', 'ns1', 'ns2', 'cdn', 'static', 'assets',
-  'jet', 'jetsmm', 'jetsmmpanel', 'smmjet', 'demo', 'test', 'destek', 'support', 'bayi', 'status'
+  'jet', 'jetsmm', 'jetsmmpanel', 'smmjet', 'demo', 'test', 'destek', 'support', 'bayi', 'status',
+  // Taban alan adinda (seyilstudios.com) baska islere ayrilmis adresler.
+  'legal', 'send', 'cf-bounce', 'email', 'mx', 'blog', 'docs', 'help'
 ]);
 
 function validateSlug(value) {

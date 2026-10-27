@@ -15,6 +15,9 @@ const MAX_KURUS = 10_000_000; // 100.000 TL
 const METHODS = {
   bank: { label: 'Havale / EFT / Papara', secrets: [], minKurus: 1000, floorKurus: 100 },
   paytr: { label: 'Kredi / Banka Kartı', secrets: ['merchant_id', 'merchant_key', 'merchant_salt'], minKurus: 1000, floorKurus: 100 },
+  // Shopier: bayi yalnizca anahtarini (PAT) girer; webhook imza anahtari
+  // kaydederken bayinin hesabinda acilan abonelikten gelir (webhook_token).
+  shopier: { label: 'Kart (Shopier)', secrets: ['pat'], minKurus: 1000, floorKurus: 1000 },
   nowpayments: { label: 'Kripto Para', secrets: ['api_key', 'ipn_secret'], minKurus: 40000, floorKurus: 10000 }
 };
 
@@ -29,6 +32,7 @@ function parseJson(value) {
 
 function isConfigured(method, secrets, pub) {
   if (method === 'bank') return Boolean(String(pub.accounts || '').trim());
+  if (method === 'shopier' && !String(secrets.webhook_token || '').trim()) return false;
   return METHODS[method].secrets.every(key => String(secrets[key] || '').trim());
 }
 
@@ -61,11 +65,13 @@ function httpError(message, status = 400) {
 
 // Bos gelen anahtar alani eskisini korur: panel anahtari geri gostermedigi
 // icin bayi yalnizca degistirdigi alani doldurur.
-async function saveMethod(tenantId, method, { enabled, minKurus, maxKurus, publicData, secrets }) {
+// internalSecrets: kullanicidan gelmeyen, sistemin urettigi gizli degerler
+// (Shopier webhook imza anahtari gibi).
+async function saveMethod(tenantId, method, { enabled, minKurus, maxKurus, publicData, secrets, internalSecrets }) {
   const meta = METHODS[method];
   if (!meta) throw httpError('Bilinmeyen ödeme yöntemi.');
   const current = (await loadMethods(tenantId))[method];
-  const merged = { ...current.secrets };
+  const merged = { ...current.secrets, ...(internalSecrets || {}) };
   for (const key of meta.secrets) {
     const value = String(secrets?.[key] ?? '').trim();
     if (value) merged[key] = value;
@@ -78,7 +84,9 @@ async function saveMethod(tenantId, method, { enabled, minKurus, maxKurus, publi
   if (enabled && !isConfigured(method, merged, pub)) {
     throw httpError(method === 'bank'
       ? 'Açmadan önce en az bir hesap bilgisi (IBAN / Papara) yazın.'
-      : 'Açmadan önce tüm anahtar alanlarını doldurun.');
+      : method === 'shopier'
+        ? 'Açmadan önce Kişisel Erişim Anahtarını girin (ödeme bildirimi kaydederken kurulur).'
+        : 'Açmadan önce tüm anahtar alanlarını doldurun.');
   }
   await dbAsync.run(
     `INSERT INTO tenant_payment_settings (tenant_id, method, enabled, min_kurus, max_kurus, public_json, secrets_encrypted, updated_at)

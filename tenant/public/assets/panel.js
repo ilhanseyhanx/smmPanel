@@ -532,7 +532,7 @@
     failed: ['Başarısız', 'canceled'],
     rejected: ['Reddedildi', 'canceled']
   };
-  const METHOD_LABEL = { bank: 'Havale / EFT', paytr: 'Kart (PayTR)', nowpayments: 'Kripto' };
+  const METHOD_LABEL = { bank: 'Havale / EFT', paytr: 'Kart (PayTR)', shopier: 'Kart (Shopier)', nowpayments: 'Kripto' };
 
   function setPayCount(count) {
     const el = $('#pn-pay-count');
@@ -614,9 +614,10 @@
     merchant_key: 'Merchant Key',
     merchant_salt: 'Merchant Salt',
     api_key: 'API anahtarı',
-    ipn_secret: 'IPN gizli anahtarı'
+    ipn_secret: 'IPN gizli anahtarı',
+    pat: 'Kişisel Erişim Anahtarı (PAT)'
   };
-  const PAY_FIELDS = ['accounts', 'instructions', 'merchant_id', 'merchant_key', 'merchant_salt', 'api_key', 'ipn_secret'];
+  const PAY_FIELDS = ['accounts', 'instructions', 'merchant_id', 'merchant_key', 'merchant_salt', 'api_key', 'ipn_secret', 'pat', 'image_url'];
 
   function secretInput(m, key) {
     const placeholder = m.saved[key] ? 'Kayıtlı. Değiştirmek için yenisini yaz.' : 'Henüz girilmedi';
@@ -634,6 +635,11 @@
       fields = `${['merchant_id', 'merchant_key', 'merchant_salt'].map(key => secretInput(m, key)).join('')}
         <label class="sf-check"><input type="checkbox" name="test_mode" ${m.test_mode ? 'checked' : ''}> Test modu (gerçek çekim yapılmaz)</label>
         <div class="pn-note">PayTR mağaza panelinde <strong>Bildirim URL</strong> alanına bunu yaz:<code>${escapeHtml(urls.paytr || '')}</code></div>`;
+    } else if (m.method === 'shopier') {
+      fields = `${secretInput(m, 'pat')}
+        <label>Ürün görseli adresi <small>(isteğe bağlı; boşsa ödeme sayfasında görsel olmaz)</small><input name="image_url" class="sf-input" maxlength="500" inputmode="url" value="${escapeHtml(m.image_url)}" placeholder="https://cdn.shopier.app/..."></label>
+        <div class="pn-note">Shopier panelinde <strong>Entegrasyonlar → Kişisel Erişim Anahtarı</strong> bölümünden anahtar oluştur. Kaydedince ödeme bildirimi senin Shopier hesabına otomatik kurulur.
+          <code>${m.webhook_ready ? 'Ödeme bildirimi kurulu' : 'Ödeme bildirimi henüz kurulmadı'}</code></div>`;
     } else if (m.method === 'nowpayments') {
       fields = `${['api_key', 'ipn_secret'].map(key => secretInput(m, key)).join('')}
         <div class="pn-note">IPN gizli anahtarını NOWPayments panelinde <strong>Store Settings → IPN</strong> bölümünden alırsın. Bildirim adresi her ödemeyle otomatik gönderilir.</div>`;

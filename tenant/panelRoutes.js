@@ -26,6 +26,7 @@ const billing = require('../services/resellerBilling');
 const { THEME_KEYS, themeOf, publicThemes } = require('./themes');
 const cloudflare = require('../services/cloudflare');
 const tenantBranding = require('../services/tenantBranding');
+const demoData = require('./demoData');
 const { digitalSettings, tenantDigitalCatalog } = require('../services/tenantDigital');
 const tenantDomains = require('../services/tenantDomains');
 const { signOwnerSession, setOwnerCookie, clearOwnerCookie, requireOwner } = require('./panelSession');
@@ -142,6 +143,27 @@ router.post('/logout', (req, res) => {
 
 router.use(requireOwner);
 
+// Demo panel: siparis, musteri, odeme ve kayit listeleri ornek veridir
+// (tenant/demoData.js); ornegi olmayan adresler gercek isleyiciye duser.
+router.use(async (req, res, next) => {
+  if (!req.demoPanel || req.method !== 'GET') return next();
+  try {
+    const host = `${req.protocol}://${req.get('host')}`;
+    const out = demoData.panelResponse(req.path, req.query, {
+      settings: await getResellerSettings(),
+      topUpUrl: jetTopUpUrl(),
+      callbackUrls: {
+        paytr: `${host}/api/payments/paytr/callback`,
+        shopier: `${host}/api/payments/shopier/webhook`,
+        nowpayments: `${host}/api/payments/nowpayments/callback`
+      }
+    });
+    if (!out) return next();
+    if (out.status) return res.status(out.status).json(out.body);
+    res.json(out);
+  } catch (err) { next(err); }
+});
+
 router.get('/me', async (req, res, next) => {
   try {
     const settings = await getResellerSettings();
@@ -149,8 +171,9 @@ router.get('/me', async (req, res, next) => {
     const domains = await dbAsync.all("SELECT domain, status FROM tenant_domains WHERE tenant_id = ? ORDER BY id", [req.tenant.id]);
     const full = await dbAsync.get('SELECT * FROM tenants WHERE id = ?', [req.tenant.id]);
     res.json({
-      subscription: billing.subscriptionInfo(full, settings, req.owner.balance_kurus),
-      owner: { username: req.owner.username, balance: fromKurus(req.owner.balance_kurus) },
+      subscription: req.demoPanel ? demoData.demoSubscription(settings) : billing.subscriptionInfo(full, settings, req.owner.balance_kurus),
+      owner: { username: req.owner.username, balance: req.demoPanel ? demoData.OWNER_BALANCE : fromKurus(req.owner.balance_kurus) },
+      demo: req.demoPanel ? { jet_url: String(process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '') || null } : undefined,
       tenant: {
         name: req.tenant.name,
         slug: req.tenant.slug,
@@ -158,7 +181,8 @@ router.get('/me', async (req, res, next) => {
         status_reason: req.tenant.status_reason,
         discount_percent: effectiveDiscountPercent(req.tenant, settings),
         default_markup_percent: req.tenant.default_markup_percent,
-        subdomain: base ? `${req.tenant.slug}.${base}` : null,
+        // Demo: her demo adresi (demo-gece...) kendi adresini gosterir.
+        subdomain: req.demoPanel ? panelHost(req) : (base ? `${req.tenant.slug}.${base}` : null),
         domains
       },
       top_up_url: jetTopUpUrl()

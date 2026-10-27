@@ -168,3 +168,10 @@
   .pn-sidebar-foot { flex-direction: row; display: flex; margin-top: 0; }
   .pn-main { padding: 18px 16px 40px; }
 }
+
+/* Demo panel seridi (tenant/demo.js) */
+.pn-demo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 12px 16px; margin-bottom: 16px; border-radius: 12px; background: #0f172a; color: #e2e8f0; font-weight: 600; font-size: .9rem; }
+.pn-demo strong { color: #fde047; letter-spacing: .04em; margin-right: 6px; }
+.pn-demo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pn-demo-actions a { padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(226, 232, 240, .3); color: #e2e8f0; font-size: .84rem; }
+.pn-demo-actions a:hover { background: #e2e8f0; color: #0f172a; }

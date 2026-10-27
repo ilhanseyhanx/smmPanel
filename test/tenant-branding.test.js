@@ -105,7 +105,7 @@ test('bayi silinince yüklenen görselleri de silinir', async () => {
   assert.ok(!fs.existsSync(klasor));
 });
 
-test('demo bayi: tema şeridi, kayıt/sipariş kapalı, arama motorlarına kapalı', async () => {
+test('demo bayi: site şeridi, kayıt/sipariş kapalı, arama motorlarına kapalı', async () => {
   const sahip = (await dbAsync.run("INSERT INTO users (username, email, password) VALUES ('demo_bayi', 'demo@x.invalid', 'x')")).id;
   await dbAsync.run("INSERT INTO tenants (owner_user_id, slug, name, plan_status, settings_json) VALUES (?, 'demo', 'Demo SMM', 'comp', ?)",
     [sahip, JSON.stringify({ demo: true })]);
@@ -114,7 +114,7 @@ test('demo bayi: tema şeridi, kayıt/sipariş kapalı, arama motorlarına kapal
   const sayfa = await demo.get('/?tema=neon');
   assert.equal(sayfa.status, 200);
   assert.match(sayfa.text, /sf-demo-bar/);
-  assert.match(sayfa.text, /<a href="\/\?tema=neon" class="active" aria-current="true">Neon<\/a>/);
+  assert.match(sayfa.text, /href="\/\/demo-neon\.marka\.test\/"/);
   assert.match(sayfa.text, /name="robots" content="noindex"/);
   assert.match((await demo.get('/robots.txt')).text, /Disallow: \//);
   const kayit = await demo.post('/api/auth/register').send({ username: 'deneme', email: 'd@x.com', password: 'DenemeSifre_2026' });
@@ -122,11 +122,12 @@ test('demo bayi: tema şeridi, kayıt/sipariş kapalı, arama motorlarına kapal
   assert.equal((await demo.get('/api/services')).status, 200, 'okuma açık');
 });
 
-test('/bayilik tema galerisi her tema için demo bağlantısı verir; demo- adresleri ayrılmış', async () => {
+test('/bayilik canlı demolar her tema için demo sitesine bağlanır; demo- adresleri ayrılmış', async () => {
   await admin.put('/api/admin/resellers/settings').send({ public_page_enabled: true, discount_percent: 10, applications_open: true, default_markup_percent: 30 });
   const sayfa = (await request(app).get('/bayilik')).text;
   assert.match(sayfa, /10 hazır tema/);
-  assert.match(sayfa, /https:\/\/demo\.marka\.test\/\?tema=glass/);
+  assert.match(sayfa, /https:\/\/demo-cam\.marka\.test\//);
+  assert.match(sayfa, /https:\/\/demo\.marka\.test\/admin/);
   const { validateSlug } = require('../services/resellers');
   assert.equal(validateSlug('demo-neon').ok, false);
   assert.equal(validateSlug('demolar').ok, true);

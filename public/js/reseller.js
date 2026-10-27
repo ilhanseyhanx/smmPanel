@@ -27,7 +27,34 @@ Object.assign(SmmApp.prototype, {
     }
   },
 
+  // Kazanc hesaplayicisi (#bp-calc): kar = satis * oran / (100 + oran),
+  // net = kar - aylik ucret. Ilk degerler sunucuda basilir.
+  rpBindCalc() {
+    const box = document.getElementById('bp-calc');
+    if (!box || box.dataset.bound) return;
+    box.dataset.bound = '1';
+    const fee = Number(box.dataset.fee) || 0;
+    const sales = document.getElementById('bp-calc-sales');
+    const markup = document.getElementById('bp-calc-markup');
+    const tl = value => `${value < 0 ? '−' : ''}₺${Math.abs(Math.round(value)).toLocaleString('tr-TR')}`;
+    const update = () => {
+      const s = Number(sales.value) || 0;
+      const m = Number(markup.value) || 0;
+      const gross = s * m / (100 + m);
+      document.getElementById('bp-calc-sales-out').textContent = tl(s);
+      document.getElementById('bp-calc-markup-out').textContent = `%${m}`;
+      document.getElementById('bp-calc-gross').textContent = tl(gross);
+      const net = document.getElementById('bp-calc-net');
+      net.textContent = tl(gross - fee);
+      net.classList.toggle('is-negative', gross - fee < 0);
+    };
+    sales.addEventListener('input', update);
+    markup.addEventListener('input', update);
+    update();
+  },
+
   async renderResellerAccount() {
+    this.rpBindCalc();
     const box = document.getElementById('bayilik-account');
     if (!box) return;
     const esc = value => this.escapeHtml(value);

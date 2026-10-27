@@ -257,6 +257,7 @@ const API = {
   updateAdminReseller: (id, payload) => API.request(`/admin/resellers/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   setAdminResellerStatus: (id, status, reason) => API.request(`/admin/resellers/${id}/status`, { method: 'POST', body: JSON.stringify({ status, reason }) }),
   deleteAdminReseller: (id, confirm) => API.request(`/admin/resellers/${id}`, { method: 'DELETE', body: JSON.stringify({ confirm }) }),
+  ensureResellerDemo: () => API.request('/admin/resellers/demo', { method: 'POST' }),
   addAdminResellerDomain: (id, domain) => API.request(`/admin/resellers/${id}/domains`, { method: 'POST', body: JSON.stringify({ domain }) }),
   setAdminResellerDomainStatus: (id, domainId, status) => API.request(`/admin/resellers/${id}/domains/${domainId}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   removeAdminResellerDomain: (id, domainId) => API.request(`/admin/resellers/${id}/domains/${domainId}`, { method: 'DELETE' }),

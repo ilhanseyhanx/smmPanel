@@ -192,6 +192,14 @@
       alert.hidden = true;
     }
     renderBillingBanner(me.subscription);
+    // Demo panel: sifresiz ve salt okunur; cikis yerine siteye/bayilik sayfasina donus.
+    const demoBox = $('#pn-demo');
+    demoBox.hidden = !me.demo;
+    $('#pn-logout').hidden = Boolean(me.demo);
+    if (me.demo) {
+      demoBox.innerHTML = `<span><strong>DEMO</strong>Yönetim panelini gez; ayarlar, fiyatlar ve listeler gerçek paneldekiyle aynı. Değişiklikler kaydedilmez.</span>
+        <span class="pn-demo-actions"><a href="/">Siteye dön</a>${me.demo.jet_url ? `<a href="${escapeHtml(me.demo.jet_url)}/bayilik">Bayilik sayfası</a>` : ''}</span>`;
+    }
     return me;
   }
 

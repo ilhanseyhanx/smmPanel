@@ -9,6 +9,7 @@
 // Sonuclar (bulunamayanlar dahil) kisa sure onbellekte tutulur; admin bayi
 // ya da alan adi degistirdiginde invalidateTenantCache() cagrilir.
 const { dbAsync } = require('../config/database');
+const demo = require('./demo');
 
 const CACHE_TTL_MS = 30_000;
 const MAX_CACHE = 5000;
@@ -60,7 +61,11 @@ async function lookup(host) {
   if (base && host.endsWith(`.${base}`)) {
     const slug = host.slice(0, -(base.length + 1));
     if (!slug || slug.includes('.')) return null;
-    return (await dbAsync.get(`SELECT ${TENANT_COLUMNS} FROM tenants t WHERE t.slug = ?`, [slug])) || null;
+    // demo-<site>: demo bayinin o temali kopyasi (tenant/demo.js).
+    const demoKey = demo.demoKeyOfSlug(slug);
+    const row = await dbAsync.get(`SELECT ${TENANT_COLUMNS} FROM tenants t WHERE t.slug = ?`, [demoKey ? demo.DEMO_SLUG : slug]);
+    if (demoKey) return row ? demo.demoVariant(row, demoKey) : null;
+    return row || null;
   }
   return (await dbAsync.get(
     `SELECT ${TENANT_COLUMNS} FROM tenant_domains d JOIN tenants t ON t.id = d.tenant_id

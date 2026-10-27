@@ -10,6 +10,7 @@
 const jwt = require('jsonwebtoken');
 const { dbAsync } = require('../config/database');
 const { JWT_SECRET } = require('../middleware/auth');
+const { isDemoTenant } = require('./demo');
 
 const COOKIE = 'tadmin';
 const ISSUER = 'smmpanel-tenant-admin';
@@ -41,8 +42,20 @@ function clearOwnerCookie(res) {
   res.clearCookie(COOKIE, { path: '/' });
 }
 
+const OWNER_COLUMNS = 'id, username, email, balance_kurus, banned, token_version, two_factor_enabled';
+
 async function requireOwner(req, res, next) {
   try {
+    // Demo bayi (tenant/demo.js): panel sifresiz ve salt okunurdur; yazma
+    // istekleri tenant/index.js'te reddedilir.
+    if (isDemoTenant(req.tenant)) {
+      const demoOwner = await dbAsync.get(`SELECT ${OWNER_COLUMNS} FROM users WHERE id = ?`, [req.tenant.owner_user_id]);
+      if (demoOwner) {
+        req.owner = demoOwner;
+        req.demoPanel = true;
+        return next();
+      }
+    }
     const token = req.cookies?.[COOKIE];
     let decoded = null;
     if (token) {
@@ -51,10 +64,7 @@ async function requireOwner(req, res, next) {
       } catch { decoded = null; }
     }
     const user = decoded && Number(decoded.uid) === Number(req.tenant.owner_user_id)
-      ? await dbAsync.get(
-        'SELECT id, username, email, balance_kurus, banned, token_version, two_factor_enabled FROM users WHERE id = ?',
-        [decoded.uid]
-      )
+      ? await dbAsync.get(`SELECT ${OWNER_COLUMNS} FROM users WHERE id = ?`, [decoded.uid])
       : null;
     if (!user || user.token_version !== decoded.ver) {
       clearOwnerCookie(res);

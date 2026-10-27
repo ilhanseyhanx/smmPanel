@@ -117,9 +117,30 @@ Object.assign(SmmApp.prototype, {
     return parts.length ? parts.join('<br>') : `<code>${esc(t.slug)}</code>`;
   },
 
+  // Demo bayi (/bayilik canli demolari) kurulu mu?
+  renderResellerDemoState() {
+    const el = document.getElementById('reseller-demo-state');
+    if (!el || !this.adminResellersData) return;
+    const demo = (this.adminResellersData.tenants || []).find(t => t.is_demo);
+    el.innerHTML = demo
+      ? `Kurulu · ${demo.subdomain ? `<a href="https://${this.escapeHtml(demo.subdomain)}" target="_blank" rel="noopener">${this.escapeHtml(demo.subdomain)}</a>` : `#${demo.id}`}`
+      : '<span style="color:var(--danger);">Kurulu değil</span>';
+  },
+
+  async ensureResellerDemo() {
+    try {
+      const res = await API.ensureResellerDemo();
+      showToast(res.message, 'success');
+      await this.loadAdminResellers();
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
+    }
+  },
+
   renderAdminResellersTable() {
     const tbody = document.getElementById('admin-resellers-tbody');
     if (!tbody || !this.adminResellersData) return;
+    this.renderResellerDemoState();
     const esc = v => this.escapeHtml(v ?? '');
     const q = String(document.getElementById('admin-resellers-search')?.value || '').trim().toLocaleLowerCase('tr-TR');
     const rows = (this.adminResellersData.tenants || []).filter(t => !q || [
@@ -133,7 +154,7 @@ Object.assign(SmmApp.prototype, {
       const st = this.resellerStatusInfo(t.status);
       const lowBalance = t.owner && t.owner.balance < 50;
       return `<tr>
-        <td><a href="#" onclick="app.openAdminResellerDetail(${t.id}); return false;"><strong>${esc(t.name)}</strong></a><small style="display:block;color:var(--text-dim);">#${t.id} · ${this.fmtDbDateTime(t.created_at)}</small></td>
+        <td><a href="#" onclick="app.openAdminResellerDetail(${t.id}); return false;"><strong>${esc(t.name)}</strong></a>${t.is_demo ? ' <span class="badge badge-processing">Demo</span>' : ''}<small style="display:block;color:var(--text-dim);">#${t.id} · ${this.fmtDbDateTime(t.created_at)}</small></td>
         <td>${t.owner ? `<a href="#" onclick="app.openUserFromReseller(${t.owner.id}); return false;">${esc(t.owner.username)}</a>${t.owner.banned ? ' <span class="badge badge-canceled">Banlı</span>' : ''}` : '—'}</td>
         <td style="font-size:.85rem;">${this.resellerAddressesHtml(t)}</td>
         <td><span class="badge ${st.badge}"><i class="fa-solid ${st.icon}"></i> ${st.label}</span></td>
@@ -280,7 +301,7 @@ Object.assign(SmmApp.prototype, {
       <button class="btn btn-outline btn-sm" onclick="app.editResellerField('default_markup_percent')"><i class="fa-solid fa-arrow-trend-up"></i> Kâr</button>
       <button class="btn btn-outline btn-sm" onclick="app.addResellerDomain()"><i class="fa-solid fa-globe"></i> Alan Adı Ekle</button>
       <button class="btn btn-outline btn-sm" onclick="app.changeResellerSubscription()"><i class="fa-solid fa-calendar-plus"></i> Abonelik</button>
-      <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="app.deleteReseller()"><i class="fa-solid fa-trash"></i> Sil</button>`;
+      ${t.settings?.demo ? '' : '<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="app.deleteReseller()"><i class="fa-solid fa-trash"></i> Sil</button>'}`;
 
     const info = (label, value) => `
       <div class="user-detail-info-item">

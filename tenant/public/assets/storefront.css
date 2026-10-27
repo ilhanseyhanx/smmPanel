@@ -144,11 +144,22 @@ a { color: var(--primary); text-decoration: none; }
 .sf-brand-logo { display: block; height: 38px; width: auto; max-width: 190px; object-fit: contain; }
 .sf-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .sf-footer-text { flex-basis: 100%; order: 3; font-size: 0.84rem; white-space: pre-line; }
-.sf-demo-bar { display: flex; align-items: center; gap: 10px; overflow-x: auto; padding: 8px 16px; background: #0f172a; color: #e2e8f0; font-size: 0.84rem; scrollbar-width: none; }
-.sf-demo-bar::-webkit-scrollbar { display: none; }
-.sf-demo-bar strong { white-space: nowrap; }
-.sf-demo-bar a { flex: none; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(226, 232, 240, .25); color: #e2e8f0; font-weight: 600; white-space: nowrap; }
-.sf-demo-bar a:hover, .sf-demo-bar a.active { background: #e2e8f0; color: #0f172a; }
+.sf-demo-bar { display: flex; align-items: center; gap: 10px 14px; padding: 8px 16px; background: #0b1020; color: #e2e8f0; font-size: 0.84rem; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+.sf-demo-tag { flex: none; padding: 3px 8px; border-radius: 6px; background: #fde047; color: #0b1020; font-weight: 800; font-size: 0.72rem; letter-spacing: .08em; }
+.sf-demo-sites { flex: 1 1 auto; min-width: 0; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.sf-demo-sites::-webkit-scrollbar { display: none; }
+.sf-demo-bar a { flex: none; padding: 4px 11px; border-radius: 999px; border: 1px solid rgba(226, 232, 240, .22); color: #e2e8f0; font-weight: 600; white-space: nowrap; }
+.sf-demo-bar a:hover, .sf-demo-bar a.active { background: #e2e8f0; color: #0b1020; }
+.sf-demo-actions { flex: none; display: flex; gap: 6px; }
+.sf-demo-bar .sf-demo-cta { background: rgba(253, 224, 71, .12); border-color: rgba(253, 224, 71, .45); color: #fde047; }
+.sf-demo-bar .sf-demo-cta:hover { background: #fde047; color: #0b1020; }
+.sf-demo-bar .sf-demo-back { border-color: transparent; color: #94a3b8; }
+@media (max-width: 860px) {
+  .sf-demo-bar { flex-wrap: wrap; }
+  .sf-demo-sites { order: 3; flex-basis: 100%; }
+  .sf-demo-actions { margin-left: auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .sf-demo-bar .sf-demo-back { display: none; }
+}
 
 /* Sifre sifirlama */
 .sf-link-btn { justify-self: center; border: 0; background: none; padding: 2px 4px; color: var(--primary); font: inherit; font-weight: 600; font-size: 0.88rem; cursor: pointer; }

@@ -200,6 +200,7 @@ router.get('/', async (req, res, next) => {
         banned: Boolean(row.owner_banned)
       },
       ...addressesOf(row, byTenant.get(row.id) || []),
+      is_demo: tenantSettings(row).demo === true,
       subscription: billing.subscriptionInfo(row, settings, row.owner_balance_kurus),
       stats: statsFromRow(row)
     }));
@@ -219,6 +220,21 @@ router.get('/', async (req, res, next) => {
     summary.fee_income_30d = fromKurus(fees.total);
     summary.fee_invoices_30d = fees.n;
     res.json({ settings, base_domain: baseDomain() || null, summary, tenants });
+  } catch (err) { next(err); }
+});
+
+// Demo bayiyi kurar ya da onarir (services/demoTenant.js): demo.<taban>,
+// demo-<site>.<taban> adresleri, musteri gozuyle gezme ve demo panel.
+router.post('/demo', async (req, res, next) => {
+  try {
+    const result = await require('../services/demoTenant').ensureDemoTenant();
+    await audit(req, result.created ? 'tenant_demo_created' : 'tenant_demo_repaired', result.id, null);
+    const base = baseDomain();
+    res.json({
+      message: result.created ? 'Demo siteler kuruldu.' : 'Demo siteler onarıldı.',
+      tenant_id: result.id,
+      url: base ? `https://demo.${base}` : null
+    });
   } catch (err) { next(err); }
 });
 
@@ -606,6 +622,10 @@ router.delete('/:id', validate(deleteSchema), async (req, res, next) => {
   try {
     const tenant = await loadTenant(req, res);
     if (!tenant) return;
+    // Demo bayi /bayilik sayfasindaki canli demolari besler; silinirse hepsi kirilir.
+    if (tenantSettings(tenant).demo === true) {
+      return res.status(409).json({ error: 'Bu, /bayilik sayfasındaki canlı demo siteleri ve demo paneli besleyen demo bayi; silinemez. Bozulduysa "Demo siteleri kur / onar" düğmesini kullan.' });
+    }
     if (req.body.confirm !== tenant.slug) {
       return res.status(400).json({ error: `Silmeyi onaylamak için bayinin adresini ("${tenant.slug}") yazın.` });
     }

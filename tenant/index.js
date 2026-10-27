@@ -18,6 +18,9 @@ const TEMPLATE_PATH = path.join(PUBLIC_DIR, 'index.html');
 const PANEL_TEMPLATE_PATH = path.join(PUBLIC_DIR, 'panel.html');
 const { themeOf, fontHref, THEME_KEYS } = require('./themes');
 const tenantBranding = require('../services/tenantBranding');
+const demo = require('./demo');
+const demoData = require('./demoData');
+const { loadCustomer, signCustomerSession, setCustomerCookie } = require('./session');
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -65,14 +68,21 @@ function heroTitle(value) {
   return escapeHtml(value || DEFAULT_HERO_TITLE).replace(/\[([^\]]{1,80})\]/, '<span>$1</span>').replace(/[[\]]/g, '');
 }
 
-// Demo site: ustte tema degistirici serit (yalnizca demo bayide).
-function demoBanner(current) {
-  const links = THEME_KEYS.map(key => `<a href="/?tema=${key}"${key === current ? ' class="active" aria-current="true"' : ''}>${escapeHtml(themeOf(key).name)}</a>`).join('');
-  return `  <div class="sf-demo-bar"><strong>Demo site · temaları dene:</strong>${links}</div>`;
+// Demo seridindeki diger demo sitelere giden adreslerin koku: "demo-gece.taban.com"
+// isteginde "taban.com" (yerelde port dahil). Demo adresi degilse bos.
+function demoHostSuffix(host) {
+  const value = String(host || '').toLowerCase();
+  const dot = value.indexOf('.');
+  return dot > 0 && /^demo(-[a-z]+)?$/.test(value.slice(0, dot)) ? value.slice(dot + 1) : '';
+}
+
+function jetUrl() {
+  return String(process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
 }
 
 // previewTheme: ?tema= ile gosterilen tema (kaydedilmez, dizine eklenmez).
-function renderStorefront(tenant, { previewTheme = null } = {}) {
+// host: istegin adresi (demo seridi diger demo sitelere bu koke baglanir).
+function renderStorefront(tenant, { previewTheme = null, host = '' } = {}) {
   const settings = tenantSettings(tenant);
   const theme = themeOf(previewTheme || tenant.theme);
   const primary = safeColor(settings.primary_color, theme.accent);
@@ -93,7 +103,7 @@ function renderStorefront(tenant, { previewTheme = null } = {}) {
     .replaceAll('%%HERO_TITLE%%', heroTitle(settings.hero_title))
     .replaceAll('%%HERO_TEXT%%', escapeHtml(settings.hero_text || DEFAULT_HERO_TEXT))
     .replaceAll('%%FOOTER_TEXT%%', settings.footer_text ? `<span class="sf-footer-text">${escapeHtml(settings.footer_text)}</span>` : '')
-    .replaceAll('%%DEMO_BANNER%%', settings.demo ? demoBanner(theme.key) : '')
+    .replaceAll('%%DEMO_BANNER%%', settings.demo ? demo.demoBar({ currentKey: settings.demo_site || null, hostSuffix: demoHostSuffix(host), jetUrl: jetUrl() }) : '')
     .replace('--primary: %%PRIMARY%%;', `--primary: ${primary}; --on-primary: ${onColor(primary)};`)
     .replaceAll('%%PRIMARY%%', primary)
     .replaceAll('%%DESCRIPTION%%', escapeHtml(settings.description || `${tenant.name} — sosyal medya hizmetleri paneli`));
@@ -131,10 +141,23 @@ function buildTenantApp() {
   // hakkini tuketmesin.
   app.use('/api/panel/login', rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, handler: rateLimitHandler }));
   app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
-  // Demo bayi (Jet'in tema vitrini): kayit, giris, siparis ve odeme kapali.
+  // Demo bayi (tenant/demo.js): hicbir yazma istegi calismaz (cikis haric).
   app.use('/api', (req, res, next) => {
-    if (req.method === 'GET' || req.path.startsWith('/panel') || !tenantSettings(req.tenant).demo) return next();
-    res.status(403).json({ error: 'Bu bir demo site; kayıt, giriş ve sipariş kapalı.', error_en: 'This is a demo site; sign-up and orders are disabled.' });
+    if (req.method === 'GET' || !tenantSettings(req.tenant).demo || req.path === '/auth/logout') return next();
+    if (req.path.startsWith('/panel')) {
+      return res.status(403).json({ error: 'Bu bir demo panel; gezebilirsin ama değişiklikler kaydedilmez.', error_en: 'This is a demo panel; changes are not saved.' });
+    }
+    res.status(403).json({ error: 'Bu bir demo site; kayıt, sipariş ve ödeme kapalı.', error_en: 'This is a demo site; sign-up, orders and payments are disabled.' });
+  });
+  // Demo musterisinin siparis ve yukleme listeleri ornek veridir.
+  app.get(['/api/orders', '/api/payments/history', '/api/payments/methods'], async (req, res, next) => {
+    try {
+      if (!tenantSettings(req.tenant).demo || !(await loadCustomer(req))) return next();
+      const coins = Object.entries(require('../services/nowpayments').SUPPORTED_COINS)
+        .map(([code, c]) => ({ code, label: c.label, network: c.network, recommended: Boolean(c.recommended) }));
+      const body = demoData.storefrontResponse(req.path.slice(4), coins);
+      return body ? res.json(body) : next();
+    } catch (err) { next(err); }
   });
 
   app.use('/api/panel', require('./panelRoutes'));
@@ -170,6 +193,20 @@ function buildTenantApp() {
     res.type(tenantBranding.MIME[type]).sendFile(file, err => { if (err && !res.headersSent) res.status(404).end(); });
   });
 
+  // Demo: "Musteri gozuyle" - sifresiz demo musteri hesabiyla giris.
+  app.get('/demo/musteri', async (req, res, next) => {
+    try {
+      if (!tenantSettings(req.tenant).demo) return next();
+      const { SHOPPER_USERNAME } = require('../services/demoTenant');
+      const customer = await require('../config/database').dbAsync.get(
+        'SELECT id, token_version FROM tenant_customers WHERE tenant_id = ? AND username = ?', [req.tenant.id, SHOPPER_USERNAME]);
+      if (!customer) return res.redirect(302, '/');
+      setCustomerCookie(res, signCustomerSession(req.tenant, customer));
+      res.setHeader('Cache-Control', 'no-store');
+      res.redirect(302, '/order');
+    } catch (err) { next(err); }
+  });
+
   // Yonetim paneli askidaki bayide de acilir: sahip durumu ve sebebi gorur.
   app.get(['/admin', /^\/admin\/.*/], (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -184,7 +221,7 @@ function buildTenantApp() {
       return res.status(503).type('html').send(unavailablePage(req.tenant));
     }
     const tema = String(req.query.tema || '');
-    res.type('html').send(renderStorefront(req.tenant, { previewTheme: THEME_KEYS.includes(tema) ? tema : null }));
+    res.type('html').send(renderStorefront(req.tenant, { previewTheme: THEME_KEYS.includes(tema) ? tema : null, host: req.headers.host }));
   });
 
   app.use(errorHandler);

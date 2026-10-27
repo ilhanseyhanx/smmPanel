@@ -139,6 +139,7 @@ function buildTenantApp() {
 
   app.use('/api/panel', require('./panelRoutes'));
   app.use('/api/payments', require('./paymentRoutes'));
+  app.use('/api/digital', require('./digitalRoutes'));
   app.use('/api', require('./routes'));
   app.use(notFoundApi);
 
@@ -147,6 +148,12 @@ function buildTenantApp() {
       ? 'User-agent: *\nAllow: /\nDisallow: /admin\n'
       : 'User-agent: *\nDisallow: /\n');
   });
+
+  // Dijital urun kart gorselleri (Jet'in galerisi; marka icermez).
+  app.use('/dijital-gorseller', express.static(path.join(__dirname, '..', 'public', 'dijital-gorseller'), {
+    index: false,
+    maxAge: process.env.NODE_ENV === 'production' ? '7d' : 0
+  }));
 
   app.use('/assets', express.static(path.join(PUBLIC_DIR, 'assets'), {
     index: false,

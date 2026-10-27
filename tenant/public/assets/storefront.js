@@ -3,9 +3,9 @@
 (function () {
   'use strict';
 
-  const state = { site: null, customer: null, categories: [], services: [], servicesLoaded: false, methods: [], method: null, payTimer: null };
-  const USER_VIEWS = new Set(['order', 'orders', 'account', 'funds']);
-  const ROUTES = { '/': 'home', '/services': 'services', '/order': 'order', '/orders': 'orders', '/account': 'account', '/bakiye': 'funds', '/sifre-sifirla': 'reset' };
+  const state = { site: null, customer: null, categories: [], services: [], servicesLoaded: false, methods: [], method: null, payTimer: null, digital: [], dgCategory: '', afterAuth: null };
+  const USER_VIEWS = new Set(['order', 'orders', 'account', 'funds', 'dorders']);
+  const ROUTES = { '/': 'home', '/services': 'services', '/order': 'order', '/orders': 'orders', '/account': 'account', '/bakiye': 'funds', '/sifre-sifirla': 'reset', '/dijital': 'digital', '/dijital/siparislerim': 'dorders' };
 
   // Yasal sayfalar /sayfa/<slug> adresinde acilir.
   function routeOf(path) {
@@ -88,7 +88,9 @@
       setCustomer(data.customer);
       form.reset();
       toast(kind === 'register' ? 'Hesabın oluşturuldu, hoş geldin!' : 'Giriş yapıldı.');
-      navigate('/order');
+      // Dijital urun penceresinden gelen ziyaretci urunlere geri doner.
+      navigate(state.afterAuth || '/order');
+      state.afterAuth = null;
     } catch (err) {
       errorEl.textContent = err.message;
     } finally {
@@ -537,6 +539,224 @@
     }
   }
 
+  // ------------------------------------------------------------- pencere
+  function openModal(html) {
+    $('#sf-modal-body').innerHTML = html;
+    $('#sf-modal').hidden = false;
+    document.body.classList.add('sf-modal-open');
+    return $('#sf-modal-body');
+  }
+
+  function closeModal() {
+    $('#sf-modal').hidden = true;
+    $('#sf-modal-body').innerHTML = '';
+    document.body.classList.remove('sf-modal-open');
+  }
+
+  // ------------------------------------------------------------- dijital urunler
+  // Satin alma musterinin bakiyesinden yapilir; teslim edilen hesap/lisans
+  // bilgileri yalnizca bu musteriye, "Dijital Siparislerim"de gosterilir.
+  const DG_STATUS = {
+    pending: ['Hazırlanıyor', 'processing'],
+    processing: ['Hazırlanıyor', 'processing'],
+    completed: ['Teslim edildi', 'completed'],
+    failed: ['İade edildi', 'canceled'],
+    refunded: ['İade edildi', 'canceled']
+  };
+  const fold = text => String(text || '').toLocaleLowerCase('tr-TR');
+
+  function setDigitalNav(on) {
+    $$('[data-digital-nav]').forEach(el => { el.hidden = !on; });
+  }
+
+  async function loadDigital() {
+    const data = await api('/digital/products');
+    state.digital = data.products;
+    setDigitalNav(state.digital.length > 0);
+    renderDigital();
+  }
+
+  function digitalCard(p) {
+    const soldOut = p.stock !== null && p.stock <= 0;
+    const meta = [
+      p.delivery_time ? `<li><i class="fa-solid fa-bolt" aria-hidden="true"></i> ${escapeHtml(p.delivery_time)}</li>` : '',
+      p.warranty_hours > 0 ? `<li><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> ${p.warranty_hours} saat garanti</li>` : '',
+      p.format ? `<li><i class="fa-solid fa-key" aria-hidden="true"></i> ${escapeHtml(p.format)}</li>` : ''
+    ].join('');
+    const stock = p.stock === null ? '' : `<span class="sf-dg-stock${soldOut ? ' is-out' : ''}">${soldOut ? 'Tükendi' : 'Stok: ' + Number(p.stock).toLocaleString('tr-TR')}</span>`;
+    const media = p.image
+      ? `<img src="${escapeHtml(p.image)}" alt="" loading="lazy" decoding="async" width="800" height="500">`
+      : '<i class="fa-solid fa-bag-shopping" aria-hidden="true"></i>';
+    return `<article class="sf-card sf-dg-card${soldOut ? ' is-sold-out' : ''}">
+      <div class="sf-dg-media${p.image ? '' : ' is-empty'}">${media}${p.category ? `<span class="sf-dg-cat">${escapeHtml(p.category)}</span>` : ''}${stock}</div>
+      <div class="sf-dg-body">
+        <h2>${escapeHtml(p.name)}</h2>
+        ${p.description ? `<p class="sf-dg-desc">${escapeHtml(p.description)}</p>` : ''}
+        ${meta ? `<ul class="sf-dg-meta">${meta}</ul>` : ''}
+        <div class="sf-dg-foot">
+          <div><strong class="sf-price">${money(p.price)}</strong> <small class="sf-muted">/ adet</small></div>
+          <button type="button" class="sf-btn sf-btn-primary sf-btn-sm" data-dg-buy="${p.id}"${soldOut ? ' disabled' : ''}>${soldOut ? 'Tükendi' : 'Satın Al'}</button>
+        </div>
+      </div>
+    </article>`;
+  }
+
+  function renderDigital() {
+    const cats = [...new Map(state.digital.filter(p => p.category).map(p => [fold(p.category), p.category])).entries()];
+    if (!cats.some(([key]) => key === state.dgCategory)) state.dgCategory = '';
+    const chips = $('#sf-digital-cats');
+    chips.hidden = cats.length < 2;
+    chips.innerHTML = [['', 'Tümü'], ...cats].map(([key, label]) => `<button type="button" class="${key === state.dgCategory ? 'active' : ''}" data-dg-cat="${escapeHtml(key)}">${escapeHtml(label)}</button>`).join('');
+    const query = fold($('#sf-digital-search').value.trim());
+    const list = state.digital.filter(p => (!state.dgCategory || fold(p.category) === state.dgCategory)
+      && (!query || fold(`${p.name} ${p.category}`).includes(query)));
+    $('#sf-digital-list').innerHTML = list.length ? list.map(digitalCard).join('')
+      : `<div class="sf-card sf-empty"><i class="fa-solid fa-bag-shopping" aria-hidden="true"></i><p>${state.digital.length ? 'Aramana uygun ürün bulunamadı.' : 'Şu anda satışta dijital ürün yok.'}</p></div>`;
+  }
+
+  function openDigitalBuy(productId) {
+    const p = state.digital.find(x => x.id === productId);
+    if (!p) return;
+    const head = `<h2 class="sf-modal-title" id="sf-modal-title">${escapeHtml(p.name)}</h2>
+      <p class="sf-muted sf-modal-sub">${escapeHtml(p.category || 'Dijital ürün')} · ${money(p.price)} / adet</p>`;
+    if (!state.customer) {
+      openModal(`${head}
+        <p>Satın almak için hesabına giriş yap. Hesabın yoksa kayıt birkaç saniye sürer.</p>
+        <div class="sf-modal-actions">
+          <button type="button" class="sf-btn sf-btn-primary" data-open-auth="login" data-after="/dijital">Giriş Yap</button>
+          <button type="button" class="sf-btn sf-btn-ghost" data-open-auth="register" data-after="/dijital">Kayıt Ol</button>
+        </div>`);
+      return;
+    }
+    const maxQty = p.stock === null ? p.max : Math.max(0, Math.min(p.max, p.stock));
+    if (maxQty < p.min) { toast('Bu ürünün stoğu yetersiz.', 'error'); return; }
+    const box = openModal(`${head}
+      ${p.description ? `<p class="sf-dg-full-desc">${escapeHtml(p.description)}</p>` : ''}
+      ${p.format ? `<p class="sf-muted sf-small">Teslim biçimi: <strong>${escapeHtml(p.format)}</strong></p>` : ''}
+      <form class="sf-form" id="sf-dg-form" novalidate>
+        <label>Adet <small>(${p.min} – ${maxQty.toLocaleString('tr-TR')})</small>
+          <input name="quantity" type="number" inputmode="numeric" min="${p.min}" max="${maxQty}" step="1" value="${p.min}" required></label>
+        <dl class="sf-dg-sum" id="sf-dg-sum"></dl>
+        <label class="sf-check"><input type="checkbox" name="consent"> Ürünün hemen teslim edilmesini istiyorum; teslimattan sonra cayma hakkımın sona ereceğini kabul ediyorum.</label>
+        <p class="sf-form-error" role="alert"></p>
+        <div id="sf-dg-action"></div>
+      </form>`);
+    const form = $('#sf-dg-form', box);
+    const update = () => {
+      const qty = Number.parseInt(form.quantity.value, 10) || 0;
+      const total = Math.round(p.price * 100 * qty) / 100;
+      const balance = Number(state.customer?.balance || 0);
+      $('#sf-dg-sum', box).innerHTML = `<div><dt>Birim fiyat</dt><dd>${money(p.price)}</dd></div>
+        <div><dt>Bakiyen</dt><dd>${money(balance)}</dd></div>
+        <div class="is-total"><dt>Toplam</dt><dd>${money(total)}</dd></div>`;
+      const action = $('#sf-dg-action', box);
+      if (qty < p.min || qty > maxQty) {
+        action.innerHTML = `<p class="sf-form-error">Adet ${p.min} ile ${maxQty} arasında olmalı.</p>`;
+      } else if (balance < total) {
+        action.innerHTML = `<a href="/bakiye" data-nav="funds" class="sf-btn sf-btn-primary sf-btn-block"><i class="fa-solid fa-wallet" aria-hidden="true"></i> Bakiye Yükle</a>
+          <p class="sf-muted sf-small sf-center">Bakiyen yetersiz: ${money(total - balance)} daha gerekiyor.</p>`;
+      } else {
+        action.innerHTML = `<button type="submit" class="sf-btn sf-btn-primary sf-btn-block"><i class="fa-solid fa-wallet" aria-hidden="true"></i> Bakiyemle Satın Al · ${money(total)}</button>`;
+      }
+    };
+    form.quantity.addEventListener('input', update);
+    form.addEventListener('submit', event => { event.preventDefault(); buyDigital(p, form); });
+    update();
+  }
+
+  async function buyDigital(p, form) {
+    const errorEl = $('.sf-form-error', form);
+    const button = $('button[type=submit]', form);
+    errorEl.textContent = '';
+    if (!form.consent.checked) { errorEl.textContent = 'Devam etmek için onay kutusunu işaretle.'; return; }
+    if (button) button.disabled = true;
+    try {
+      const data = await api('/digital/orders', { method: 'POST', body: JSON.stringify({ product_id: p.id, quantity: Number(form.quantity.value), consent: true }) });
+      state.customer.balance = data.balance;
+      setCustomer(state.customer);
+      if (data.order.status === 'completed') showDelivery(data.order, data.items, data.usage, true);
+      else {
+        openModal(`<h2 class="sf-modal-title" id="sf-modal-title">${escapeHtml(p.name)}</h2>
+          <div class="sf-dg-wait"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i>
+            <p><strong>Siparişin hazırlanıyor.</strong><br>Ürün birkaç dakika içinde teslim edilir; bilgiler Dijital Siparişlerim sayfasında görünür. Aynı ürünü tekrar satın alma.</p></div>
+          <div class="sf-modal-actions"><a href="/dijital/siparislerim" data-nav="dorders" class="sf-btn sf-btn-primary">Siparişlerime Git</a></div>`);
+      }
+      loadDigital().catch(() => {});
+    } catch (err) {
+      errorEl.textContent = err.message;
+      if (button) button.disabled = false;
+      if (err.status === 401) { closeModal(); setCustomer(null); navigate('/'); }
+      else refreshCustomer();
+    }
+  }
+
+  function showDelivery(order, items, usage, fresh) {
+    const list = Array.isArray(items) ? items : [];
+    const box = openModal(`<h2 class="sf-modal-title" id="sf-modal-title">${escapeHtml(order.product_name)}</h2>
+      <p class="sf-muted sf-modal-sub">#D${order.id} · ${order.quantity} adet</p>
+      ${fresh ? '<p class="sf-dg-done"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Teslim edildi. Bilgilerini kopyala ya da indir; Dijital Siparişlerim sayfasından tekrar görebilirsin.</p>' : ''}
+      ${list.length ? `<div class="sf-dg-items">
+          <div class="sf-dg-items-head"><strong>${list.length} kayıt</strong>
+            <span><button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-dg-copy><i class="fa-solid fa-copy" aria-hidden="true"></i> Tümünü Kopyala</button>
+            <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-dg-download><i class="fa-solid fa-download" aria-hidden="true"></i> .txt</button></span>
+          </div>
+          <ol>${list.map(item => `<li><code>${escapeHtml(item)}</code></li>`).join('')}</ol>
+        </div>` : `<p class="sf-form-error">${escapeHtml(order.failure_reason || 'Bu sipariş için teslimat bilgisi bulunmuyor.')}</p>`}
+      ${usage ? `<div class="sf-dg-usage"><strong>Kullanım talimatı</strong><p>${escapeHtml(usage)}</p></div>` : ''}
+      <p class="sf-muted sf-small"><i class="fa-solid fa-lock" aria-hidden="true"></i> Bu bilgileri kimseyle paylaşma. Sorun olursa garanti süresi içinde site yöneticisine yaz.</p>`);
+    $('[data-dg-copy]', box)?.addEventListener('click', async event => {
+      try { await navigator.clipboard.writeText(list.join('\n')); event.currentTarget.textContent = 'Kopyalandı'; } catch { toast('Kopyalanamadı; metni seçip elle kopyala.', 'error'); }
+    });
+    $('[data-dg-download]', box)?.addEventListener('click', () => {
+      const url = URL.createObjectURL(new Blob([list.join('\n') + '\n' + (usage ? '\n' + usage + '\n' : '')], { type: 'text/plain;charset=utf-8' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `siparis-D${order.id}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+  }
+
+  async function openDelivery(orderId) {
+    openModal('<p class="sf-muted">Yükleniyor…</p>');
+    try {
+      const data = await api('/digital/orders/' + orderId);
+      showDelivery(data.order, data.items, data.usage, false);
+    } catch (err) {
+      openModal(`<p class="sf-form-error">${escapeHtml(err.message)}</p>`);
+    }
+  }
+
+  async function loadDigitalOrders() {
+    const tbody = $('#sf-dorders-tbody');
+    try {
+      const data = await api('/digital/orders');
+      if (!data.orders.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="sf-muted">Henüz dijital siparişin yok.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = data.orders.map(o => {
+        const [label, cls] = DG_STATUS[o.status] || DG_STATUS.processing;
+        const refund = o.refunded > 0 ? `<div class="sf-muted sf-small">iade ${money(o.refunded)}</div>` : '';
+        const view = o.status === 'completed' || (o.status === 'refunded' && o.item_count > 0)
+          ? `<button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-dg-view="${o.id}"><i class="fa-solid fa-key" aria-hidden="true"></i> Bilgiler</button>` : '';
+        return `<tr>
+          <td data-label="No">#D${o.id}</td>
+          <td data-label="Ürün">${escapeHtml(o.product_name)}</td>
+          <td data-label="Adet">${Number(o.quantity).toLocaleString('tr-TR')}</td>
+          <td data-label="Tutar" class="sf-price"><span>${money(o.charge)}${refund}</span></td>
+          <td data-label="Durum"><span class="sf-badge sf-badge-${cls}">${label}</span></td>
+          <td data-label="Tarih">${formatDate(o.created_at)}</td>
+          <td class="sf-rtable-action">${view}</td>
+        </tr>`;
+      }).join('');
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="7" class="sf-muted">${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+
   // ------------------------------------------------------------- yasal sayfalar
   // Duz metin: "## " baslik, "- " madde, bos satir paragraf. Once kacis, sonra bicim.
   function formatLegal(text) {
@@ -581,7 +801,9 @@
     if (USER_VIEWS.has(view) && !state.customer) view = 'home';
     if (view === 'home' && state.customer) view = 'order';
     $$('.sf-view').forEach(section => { section.hidden = section.dataset.view !== view; });
-    $$('.sf-nav a').forEach(link => link.classList.toggle('active', link.dataset.nav === view));
+    const navKey = view === 'dorders' ? 'digital' : view;
+    $$('.sf-nav a').forEach(link => link.classList.toggle('active', link.dataset.nav === navKey));
+    closeModal();
     window.scrollTo(0, 0);
     if (view !== 'page' && state.site) document.title = state.site.name;
     if (view !== 'funds') clearTimeout(state.payTimer);
@@ -596,6 +818,8 @@
         state.pendingServiceId = null;
       }
       if (view === 'orders') await loadOrders();
+      if (view === 'digital') await loadDigital();
+      if (view === 'dorders') await loadDigitalOrders();
       if (view === 'account') await refreshCustomer();
     } catch (err) {
       toast(err.message, 'error');
@@ -617,6 +841,7 @@
       }
       const openAuth = event.target.closest('[data-open-auth]');
       if (openAuth) {
+        state.afterAuth = openAuth.dataset.after || null;
         navigate('/');
         showAuthTab(openAuth.dataset.openAuth);
         $('#sf-auth-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -632,6 +857,13 @@
       }
       const refillBtn = event.target.closest('[data-refill]');
       if (refillBtn) { requestRefill(Number(refillBtn.dataset.refill), refillBtn); return; }
+      const buyBtn = event.target.closest('[data-dg-buy]');
+      if (buyBtn) { openDigitalBuy(Number(buyBtn.dataset.dgBuy)); return; }
+      const catBtn = event.target.closest('[data-dg-cat]');
+      if (catBtn) { state.dgCategory = catBtn.dataset.dgCat; renderDigital(); return; }
+      const viewBtn = event.target.closest('[data-dg-view]');
+      if (viewBtn) { openDelivery(Number(viewBtn.dataset.dgView)); return; }
+      if (event.target.closest('[data-modal-close]') || event.target.id === 'sf-modal') { closeModal(); return; }
       const payTab = event.target.closest('[data-pay-method]');
       if (payTab) { state.method = payTab.dataset.payMethod; renderMethodTabs(); renderMethod(); return; }
       const copy = event.target.closest('[data-copy]');
@@ -653,6 +885,8 @@
     $('#sf-order-comments').addEventListener('input', updateCharge);
     $('#sf-order-form').addEventListener('submit', submitOrder);
     $('#sf-orders-refresh').addEventListener('click', loadOrders);
+    $('#sf-digital-search').addEventListener('input', renderDigital);
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && !$('#sf-modal').hidden) closeModal(); });
     window.addEventListener('popstate', () => showView(routeOf(location.pathname)));
   }
 
@@ -663,6 +897,7 @@
       const site = await api('/site');
       state.site = site;
       setCustomer(site.customer);
+      setDigitalNav(Boolean(site.digital));
       const note = site.settings?.announcement;
       if (note) { const bar = $('#sf-announcement'); bar.textContent = note; bar.hidden = false; }
       const contact = [site.settings?.support_email, site.settings?.telegram].filter(Boolean).map(escapeHtml).join(' · ');

@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="/assets/storefront.css?v=20261027c">
-  <link rel="stylesheet" href="/assets/panel.css?v=20261027f">
+  <link rel="stylesheet" href="/assets/storefront.css?v=20261028a">
+  <link rel="stylesheet" href="/assets/panel.css?v=20261028a">
   <style>:root { --primary: %%PRIMARY%%; }</style>
 </head>
 <body class="pn-body">
@@ -43,6 +43,7 @@
         <a href="/admin/services" data-go="services"><i class="fa-solid fa-tags" aria-hidden="true"></i><span>Servisler & Fiyatlar</span></a>
         <a href="/admin/customers" data-go="customers"><i class="fa-solid fa-users" aria-hidden="true"></i><span>Müşteriler</span></a>
         <a href="/admin/orders" data-go="orders"><i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i><span>Siparişler</span></a>
+        <a href="/admin/digital" data-go="digital"><i class="fa-solid fa-key" aria-hidden="true"></i><span>Dijital Ürünler</span></a>
         <a href="/admin/payments" data-go="payments"><i class="fa-solid fa-money-bill-transfer" aria-hidden="true"></i><span>Ödemeler</span><b class="pn-nav-count" id="pn-pay-count" hidden></b></a>
         <a href="/admin/payment-settings" data-go="paysettings"><i class="fa-solid fa-credit-card" aria-hidden="true"></i><span>Ödeme Ayarları</span></a>
         <a href="/admin/domain" data-go="domain"><i class="fa-solid fa-globe" aria-hidden="true"></i><span>Alan Adı</span></a>
@@ -154,6 +155,40 @@
           </table>
         </div>
         <div class="pn-pager" id="pn-ord-pager"></div>
+      </section>
+
+      <!-- DIJITAL URUNLER -->
+      <section class="pn-view" data-view="digital" hidden>
+        <div class="sf-card pn-toolbar-card">
+          <form class="pn-inline-form" id="pn-dg-settings-form">
+            <label class="pn-radio"><input type="checkbox" name="enabled"> Dijital ürünleri sitemde sat</label>
+            <label>Dijital kâr oranı (%)<input type="number" name="markup" class="sf-input" min="0" max="1000" step="0.1" placeholder="Servislerle aynı"></label>
+            <button type="submit" class="sf-btn sf-btn-primary">Kaydet</button>
+          </form>
+          <p class="sf-muted pn-help" id="pn-dg-help"></p>
+        </div>
+        <div class="sf-tabs pn-tabs" role="tablist">
+          <button type="button" class="active" data-dg-tab="products">Ürünler</button>
+          <button type="button" data-dg-tab="orders">Satışlar</button>
+        </div>
+        <div data-dg-panel="products">
+          <div class="pn-filters"><input type="search" id="pn-dg-search" class="sf-input" placeholder="Ürün ara..." aria-label="Ürün ara"></div>
+          <div class="sf-card sf-table-wrap">
+            <table class="sf-table pn-table">
+              <thead><tr><th>Ürün</th><th>Stok</th><th>Alışınız</th><th>Satış Fiyatı</th><th>Kâr</th><th>Durum</th><th></th></tr></thead>
+              <tbody id="pn-dg-products"></tbody>
+            </table>
+          </div>
+        </div>
+        <div data-dg-panel="orders" hidden>
+          <div class="sf-card sf-table-wrap">
+            <table class="sf-table pn-table">
+              <thead><tr><th>No</th><th>Müşteri</th><th>Ürün</th><th>Adet</th><th>Müşteri Ödedi</th><th>Maliyet</th><th>Kâr</th><th>Durum</th><th>Tarih</th></tr></thead>
+              <tbody id="pn-dg-orders"></tbody>
+            </table>
+          </div>
+          <div class="pn-pager" id="pn-dg-pager"></div>
+        </div>
       </section>
 
       <!-- ALAN ADI -->
@@ -306,6 +341,6 @@
   </div>
 
   <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
-  <script src="/assets/panel.js?v=20261027f" defer></script>
+  <script src="/assets/panel.js?v=20261028a" defer></script>
 </body>
 </html>

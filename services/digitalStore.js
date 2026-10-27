@@ -25,6 +25,7 @@ const { dbAsync, withTransaction } = require('../config/database');
 const { encryptSecret, decryptSecret, normalizePlainText } = require('../utils/security');
 const { fromKurus } = require('../utils/money');
 const { DigitalProviderClient } = require('./digitalProvider');
+const { changeCustomerBalance } = require('./resellers');
 
 const MAX_CHECK_EMAILS = 1000;
 // Uzun sure 'processing' kalan ve tamamlandi deyip hesap gondermeyen
@@ -103,7 +104,42 @@ async function refundInTx(tx, order, amountKurus) {
   if (amount <= 0) return 0;
   await tx.run('UPDATE users SET balance_kurus = balance_kurus + ?, balance = (balance_kurus + ?) / 100.0 WHERE id = ?', [amount, amount, order.user_id]);
   await tx.run('UPDATE digital_orders SET refunded_kurus = refunded_kurus + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [amount, order.id]);
+  if (order.tenant_customer_id) await syncDigitalTenantRefund(tx, order.id);
   return amount;
+}
+
+// Bayi sitesinden alinan sipariste bayiye (Jet tarafi) yapilan iade, bayinin
+// musterisine ayni oranda yansir. Tekrar cagrilmasi guvenlidir: yalnizca fark
+// kadar iade eder (SMM tarafindaki syncTenantRefund ile ayni kural).
+async function syncDigitalTenantRefund(tx, orderId) {
+  const o = await tx.get(
+    `SELECT id, tenant_id, tenant_customer_id, charge_kurus, refunded_kurus, tenant_charge_kurus, tenant_refunded_kurus
+       FROM digital_orders WHERE id = ?`, [orderId]);
+  if (!o?.tenant_customer_id || !(o.tenant_charge_kurus > 0)) return 0;
+  const ownerRefund = Math.min(o.refunded_kurus || 0, o.charge_kurus || 0);
+  const target = o.charge_kurus > 0
+    ? Math.min(o.tenant_charge_kurus, Math.round(o.tenant_charge_kurus * ownerRefund / o.charge_kurus))
+    : 0;
+  const delta = target - (o.tenant_refunded_kurus || 0);
+  if (delta <= 0) return 0;
+  const changed = await changeCustomerBalance(tx, {
+    tenantId: o.tenant_id, customerId: o.tenant_customer_id, amountKurus: delta,
+    type: 'refund', note: `Dijital #D${o.id} iadesi`, actor: 'system'
+  });
+  if (!changed) return 0; // musteri silinmis olabilir
+  await tx.run('UPDATE digital_orders SET tenant_refunded_kurus = tenant_refunded_kurus + ? WHERE id = ?', [delta, o.id]);
+  return delta;
+}
+
+// Bayi musterisine donen siparis ozeti: tutarlar musterinin odedigidir.
+function tenantPublicOrder(order) {
+  const base = publicOrder(order);
+  return {
+    ...base,
+    unit_price: fromKurus(Math.round((order.tenant_charge_kurus || 0) / Math.max(1, order.quantity))),
+    charge: fromKurus(order.tenant_charge_kurus || 0),
+    refunded: fromKurus(order.tenant_refunded_kurus || 0)
+  };
 }
 
 /**
@@ -130,10 +166,13 @@ async function applyProviderOrder(orderId, providerOrder, { allowEmptyCompletion
           items.length ? null : 'Sağlayıcı siparişi tamamladı ama hesap bilgisi göndermedi; destek ekibimiz kontrol ediyor.',
           order.id]
       );
-      await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)', [
-        order.user_id, 'order', 'Dijital ürün teslim edildi',
-        `#D${order.id} numaralı "${order.product_name}" siparişin hazır. Bilgileri Dijital Ürünler > Siparişlerim bölümünden görebilirsin.`
-      ]);
+      // Bayi siparisinde alici bayinin musterisidir; Jet bildirimi gitmez.
+      if (!order.tenant_id) {
+        await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)', [
+          order.user_id, 'order', 'Dijital ürün teslim edildi',
+          `#D${order.id} numaralı "${order.product_name}" siparişin hazır. Bilgileri Dijital Ürünler > Siparişlerim bölümünden görebilirsin.`
+        ]);
+      }
       event = { type: items.length ? 'completed' : 'empty', order };
     } else if (providerOrder.status === 'failed' || providerOrder.status === 'refunded') {
       const refunded = await refundInTx(tx, order, order.charge_kurus);
@@ -142,10 +181,12 @@ async function applyProviderOrder(orderId, providerOrder, { allowEmptyCompletion
            failure_reason = COALESCE(failure_reason, ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
         [providerOrderId, total, 'Sağlayıcı siparişi tamamlayamadı; tutar bakiyene iade edildi.', order.id]
       );
-      await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)', [
-        order.user_id, 'order', 'Dijital ürün siparişi iade edildi',
-        `#D${order.id} numaralı "${order.product_name}" siparişi tamamlanamadı; ₺${fromKurus(refunded).toFixed(2)} bakiyene iade edildi.`
-      ]);
+      if (!order.tenant_id) {
+        await tx.run('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)', [
+          order.user_id, 'order', 'Dijital ürün siparişi iade edildi',
+          `#D${order.id} numaralı "${order.product_name}" siparişi tamamlanamadı; ₺${fromKurus(refunded).toFixed(2)} bakiyene iade edildi.`
+        ]);
+      }
       event = { type: 'failed', order };
     } else if (order.status !== 'processing' || providerOrderId !== order.provider_order_id) {
       await tx.run(
@@ -169,7 +210,11 @@ async function applyProviderOrder(orderId, providerOrder, { allowEmptyCompletion
 // SATIN ALMA
 // ---------------------------------------------------------------------------
 
-async function purchase({ user, productId, quantity }) {
+// tenant (bayi sitesinden alim): { id, customerId, customerName, tenantName,
+//   unitCostKurus: bayinin adet alis fiyati (Jet fiyati - bayi indirimi),
+//   unitSellKurus: musterinin odedigi adet fiyat }. user = bayinin sahibi.
+// Musteri bakiyesi ve sahibin Jet bakiyesi ayni islemde duser.
+async function purchase({ user, productId, quantity, tenant = null }) {
   const qty = Number(quantity);
   const product = await dbAsync.get('SELECT * FROM digital_products WHERE id = ? AND status = 1', [productId]);
   if (!product) throw httpError(404, 'Ürün bulunamadı veya satışta değil.', { messageEn: 'Product not found or not for sale.' });
@@ -216,14 +261,39 @@ async function purchase({ user, productId, quantity }) {
     ]);
     throw httpError(409, 'Bu ürün şu anda satışta değil.', { messageEn: 'This product is currently unavailable.' });
   }
+  // Bayi indirimi Jet'i zarara sokuyorsa bayiye satilmaz.
+  if (tenant && unitCostKurus > 0 && unitCostKurus >= tenant.unitCostKurus) {
+    throw httpError(409, 'Bu ürün şu anda satışta değil.', { messageEn: 'This product is currently unavailable.' });
+  }
 
-  const chargeKurus = product.price_kurus * qty;
+  const unitPriceKurus = tenant ? tenant.unitCostKurus : product.price_kurus;
+  const chargeKurus = unitPriceKurus * qty;
+  const tenantChargeKurus = tenant ? tenant.unitSellKurus * qty : 0;
   const orderId = await withTransaction(async tx => {
+    let tenantLog = null;
+    if (tenant) {
+      tenantLog = await changeCustomerBalance(tx, {
+        tenantId: tenant.id, customerId: tenant.customerId, amountKurus: -tenantChargeKurus,
+        type: 'digital_order', note: `Dijital: ${product.name} × ${qty}`, actor: `customer:${tenant.customerName}`
+      });
+      if (!tenantLog) {
+        throw httpError(402, `Yetersiz bakiye. Gerekli tutar ₺${fromKurus(tenantChargeKurus).toFixed(2)}.`, {
+          messageEn: `Not enough balance. Required amount: ${fromKurus(tenantChargeKurus).toFixed(2)} TRY.`,
+          code: 'insufficient_balance'
+        });
+      }
+    }
     const debit = await tx.run(
       'UPDATE users SET balance_kurus = balance_kurus - ?, balance = (balance_kurus - ?) / 100.0 WHERE id = ? AND balance_kurus >= ?',
       [chargeKurus, chargeKurus, user.id, chargeKurus]
     );
     if (debit.changes !== 1) {
+      // Bayinin Jet bakiyesi bitti: musteri tutar gormez, bayi islem kaydinda gorur.
+      if (tenant) {
+        throw httpError(503, 'Bu site şu anda sipariş kabul etmiyor. Lütfen daha sonra tekrar dene.', {
+          messageEn: 'This site is not accepting orders right now.', code: 'TENANT_OWNER_BALANCE'
+        });
+      }
       throw httpError(402, `Yetersiz bakiye. Gerekli tutar ₺${fromKurus(chargeKurus).toFixed(2)}.`, {
         messageEn: `Not enough balance. Required amount: ${fromKurus(chargeKurus).toFixed(2)} TRY.`,
         code: 'insufficient_balance'
@@ -231,10 +301,12 @@ async function purchase({ user, productId, quantity }) {
     }
     const ins = await tx.run(
       `INSERT INTO digital_orders (user_id, product_id, provider_id, product_name, quantity, unit_price_kurus,
-         charge_kurus, cost_currency, consent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-      [user.id, product.id, provider.id, product.name, qty, product.price_kurus, chargeKurus, provider.currency || 'USD']
+         charge_kurus, cost_currency, consent_at, tenant_id, tenant_customer_id, tenant_charge_kurus)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)`,
+      [user.id, product.id, provider.id, product.name, qty, unitPriceKurus, chargeKurus, provider.currency || 'USD',
+        tenant ? tenant.id : null, tenant ? tenant.customerId : null, tenantChargeKurus]
     );
+    if (tenantLog) await tx.run('UPDATE tenant_balance_logs SET note = ? WHERE id = ?', [`Dijital #D${ins.id}: ${product.name} × ${qty}`, tenantLog.logId]);
     return ins.id;
   });
 
@@ -277,7 +349,7 @@ async function purchase({ user, productId, quantity }) {
   }
   if (order.status !== 'failed') {
     notifyAdmin('🛍️ Dijital Ürün Satıldı', [
-      `👤 Kullanıcı: ${user.username}`,
+      tenant ? `🏪 Bayi: ${tenant.tenantName} (sahibi ${user.username}) · müşteri ${tenant.customerName}` : `👤 Kullanıcı: ${user.username}`,
       `📦 Ürün: ${product.name} × ${qty}`,
       `💰 Tutar: ₺${fromKurus(chargeKurus).toFixed(2)}`,
       order.provider_total !== null && order.provider_total !== undefined
@@ -286,6 +358,15 @@ async function purchase({ user, productId, quantity }) {
     ].filter(Boolean));
   }
 
+  if (tenant) {
+    const customer = await dbAsync.get('SELECT balance_kurus FROM tenant_customers WHERE id = ?', [tenant.customerId]);
+    return {
+      order: tenantPublicOrder(order),
+      items: order.status === 'completed' ? decryptItems(order) : [],
+      usage: order.usage_note || '',
+      balance: fromKurus(customer?.balance_kurus || 0)
+    };
+  }
   const balance = await dbAsync.get('SELECT balance_kurus FROM users WHERE id = ?', [user.id]);
   return {
     order: publicOrder(order),
@@ -561,6 +642,8 @@ module.exports = {
   costKurusOf,
   decryptItems,
   publicOrder,
+  tenantPublicOrder,
+  syncDigitalTenantRefund,
   applyProviderOrder,
   purchase,
   syncOpenOrders,

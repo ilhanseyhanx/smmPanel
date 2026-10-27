@@ -17,6 +17,7 @@ const { tenantCatalog, tenantPriceForService, logTenantActivity } = require('../
 const securityMonitor = require('../services/securityMonitor');
 const { tenantSettings } = require('./resolve');
 const { listPages, getPage } = require('./legalPages');
+const { digitalSettings, tenantDigitalCatalog } = require('../services/tenantDigital');
 const {
   signCustomerSession, setCustomerCookie, clearCustomerCookie, loadCustomer, requireCustomer
 } = require('./session');
@@ -92,7 +93,9 @@ router.get('/site', async (req, res, next) => {
         support_email: settings.support_email || null,
         telegram: settings.telegram || null
       },
-      customer: customer && !customer.banned ? publicCustomer(customer) : null
+      customer: customer && !customer.banned ? publicCustomer(customer) : null,
+      // Menude "Dijital Urunler" yalnizca satista urun varsa gorunur.
+      digital: digitalSettings(req.tenant).enabled && (await tenantDigitalCatalog(req.tenant)).length > 0
     });
   } catch (err) { next(err); }
 });

@@ -8,6 +8,7 @@
     services: { path: '/admin/services', title: 'Servisler & Fiyatlar' },
     customers: { path: '/admin/customers', title: 'Müşteriler' },
     orders: { path: '/admin/orders', title: 'Siparişler' },
+    digital: { path: '/admin/digital', title: 'Dijital Ürünler' },
     payments: { path: '/admin/payments', title: 'Ödemeler' },
     paysettings: { path: '/admin/payment-settings', title: 'Ödeme Ayarları' },
     site: { path: '/admin/site', title: 'Site Ayarları' },
@@ -24,7 +25,7 @@
     partial: ['Kısmi', 'partial'],
     canceled: ['İptal', 'canceled']
   };
-  const state = { me: null, services: null, selected: new Set(), orderPage: 1, payPage: 1, logTab: 'activity', logs: null, pages: [], callbackUrls: {} };
+  const state = { me: null, services: null, selected: new Set(), orderPage: 1, payPage: 1, logTab: 'activity', logs: null, pages: [], callbackUrls: {}, digital: null, dgTab: 'products', dgPage: 1 };
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -712,7 +713,7 @@
     try {
       const d = await api(`/customers/${id}`);
       const c = d.customer;
-      const types = { order: 'Sipariş', refund: 'İade', manual_add: 'Bakiye ekleme', manual_subtract: 'Bakiye düşme', deposit: 'Yükleme' };
+      const types = { order: 'Sipariş', refund: 'İade', manual_add: 'Bakiye ekleme', manual_subtract: 'Bakiye düşme', deposit: 'Yükleme', digital_order: 'Dijital sipariş' };
       openModal(c.username, `
         <div class="pn-kpis" style="margin-bottom:14px;">
           <div class="pn-kpi"><div class="pn-kpi-label">Bakiye</div><div class="pn-kpi-value">${money(c.balance)}</div><div class="pn-kpi-sub">${escapeHtml(c.email)}</div></div>
@@ -754,6 +755,141 @@
       <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-page="${d.page - 1}" ${d.page <= 1 ? 'disabled' : ''}>Önceki</button>
       <span class="sf-muted">${d.page} / ${d.pages} · ${num(d.total)} sipariş</span>
       <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-page="${d.page + 1}" ${d.page >= d.pages ? 'disabled' : ''}>Sonraki</button>` : `<span class="sf-muted">${num(d.total)} sipariş</span>`;
+  }
+
+  // ------------------------------------------------------------- dijital urunler
+  // Katalog Jet'in dijital urunleridir; alis fiyati Jet fiyatindan bayi
+  // indirimiyle hesaplanir, satis fiyati kar orani ya da sabit fiyatla.
+  const DG_STATUS = { pending: 'processing', processing: 'processing', completed: 'completed', failed: 'canceled', refunded: 'canceled' };
+  const DG_LABEL = { pending: 'Hazırlanıyor', processing: 'Hazırlanıyor', completed: 'Teslim edildi', failed: 'İade edildi', refunded: 'İade edildi' };
+
+  async function loadDigital() {
+    const d = await api('/digital');
+    state.digital = d;
+    const form = $('#pn-dg-settings-form');
+    form.enabled.checked = d.enabled;
+    form.markup.value = d.own_markup ?? '';
+    form.markup.placeholder = `Servislerle aynı (%${state.me?.tenant?.default_markup_percent ?? d.markup_percent})`;
+    $('#pn-dg-help').textContent = `Alış fiyatınız Jet fiyatından %${d.discount_percent} indirimlidir. Özel ayar yapmadığınız ürünler alışınızın üzerine %${d.markup_percent} eklenerek satılır. Müşteri satın aldığında tutar müşterinin bakiyesinden, alış fiyatı sizin bakiyenizden düşer; bilgiler müşteriye anında teslim edilir.`;
+    renderDigitalProducts();
+    if (state.dgTab === 'orders') await loadDigitalOrders();
+  }
+
+  function renderDigitalProducts() {
+    const d = state.digital;
+    if (!d) return;
+    const q = $('#pn-dg-search').value.trim().toLocaleLowerCase('tr-TR');
+    const rows = d.products.filter(p => !q || `${p.name} ${p.category}`.toLocaleLowerCase('tr-TR').includes(q));
+    $('#pn-dg-products').innerHTML = rows.length ? rows.map(p => {
+      let status;
+      if (p.below_cost) status = '<span class="sf-badge sf-badge-canceled">Zararına · gizli</span>';
+      else if (!p.enabled) status = '<span class="sf-badge sf-badge-pending">Satışta değil</span>';
+      else if (p.stock !== null && p.stock <= 0) status = '<span class="sf-badge sf-badge-pending">Stok yok</span>';
+      else status = '<span class="sf-badge sf-badge-completed">Satışta</span>';
+      const mode = p.mode === 'fixed' ? 'sabit fiyat' : (p.mode === 'custom' ? `özel %${p.markup_percent}` : `varsayılan %${d.markup_percent}`);
+      const thumb = p.image ? `<img class="pn-dg-thumb" src="${escapeHtml(p.image)}" alt="" loading="lazy">` : '<span class="pn-dg-thumb"><i class="fa-solid fa-key" aria-hidden="true"></i></span>';
+      return `<tr>
+        <td><div class="pn-dg-name">${thumb}<div><strong>${escapeHtml(p.name)}</strong>${p.category ? `<span class="pn-sub">${escapeHtml(p.category)}</span>` : ''}</div></div></td>
+        <td>${p.stock === null ? '—' : num(p.stock)}</td>
+        <td class="pn-num">${money(p.cost)} <span class="pn-sub">Jet fiyatı ${money(p.jet_price)}</span></td>
+        <td class="pn-num">${money(p.sell)} <span class="pn-sub">${mode}</span></td>
+        <td>${profitCell(p.profit)}</td>
+        <td>${status}</td>
+        <td><button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-dg-edit="${p.id}">Düzenle</button></td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="7" class="sf-muted">${d.products.length ? 'Aramaya uyan ürün yok.' : 'Şu anda satışta dijital ürün yok.'}</td></tr>`;
+  }
+
+  function editDigital(id) {
+    const d = state.digital;
+    const p = d?.products.find(x => x.id === id);
+    if (!p) return;
+    const mode = p.mode === 'fixed' ? 'fixed' : (p.mode === 'custom' ? 'markup' : 'default');
+    openModal(p.name, `
+      <form class="sf-form" id="pn-dg-form" novalidate>
+        <div class="pn-preview">Alışınız: <strong>${money(p.cost)}</strong> / adet</div>
+        ${p.below_cost ? '<p class="pn-alert pn-alert-warn" style="margin:0;">Bu ürünün sağlayıcı maliyeti şu an alış fiyatınızın üzerinde; fiyat düşene kadar sitenizde gizli kalır.</p>' : ''}
+        <div class="pn-radio-group">
+          <label class="pn-radio"><input type="radio" name="mode" value="default" ${mode === 'default' ? 'checked' : ''}> Varsayılan kâr (%${d.markup_percent})</label>
+          <label class="pn-radio"><input type="radio" name="mode" value="markup" ${mode === 'markup' ? 'checked' : ''}> Bu ürüne özel kâr oranı</label>
+          <label class="pn-radio"><input type="radio" name="mode" value="fixed" ${mode === 'fixed' ? 'checked' : ''}> Sabit satış fiyatı</label>
+        </div>
+        <label id="pn-dg-markup-label">Kâr oranı (%)<input name="markup" type="number" min="0" max="1000" step="0.1" class="sf-input" value="${p.markup_percent ?? d.markup_percent}"></label>
+        <label id="pn-dg-fixed-label">Satış fiyatı (₺ / adet)<input name="fixed" type="number" min="${p.cost}" step="0.01" class="sf-input" value="${p.fixed_price ?? p.sell}"></label>
+        <label class="pn-radio"><input type="checkbox" name="enabled" ${p.enabled ? 'checked' : ''}> Sitede satışta</label>
+        <div class="pn-preview" id="pn-dg-preview"></div>
+        <p class="sf-form-error" role="alert"></p>
+        <button type="submit" class="sf-btn sf-btn-primary">Kaydet</button>
+      </form>`);
+    const form = $('#pn-dg-form');
+    const update = () => {
+      const m = form.mode.value;
+      $('#pn-dg-markup-label').hidden = m !== 'markup';
+      $('#pn-dg-fixed-label').hidden = m !== 'fixed';
+      const rate = m === 'markup' ? Number(form.markup.value) || 0 : d.markup_percent;
+      const price = m === 'fixed' ? Number(form.fixed.value) || 0 : Math.round(p.cost * 100 * (100 + rate) / 100) / 100;
+      const profit = price - p.cost;
+      $('#pn-dg-preview').innerHTML = `Müşterinin göreceği fiyat: <strong>${money(price)}</strong> / adet · kârınız <span class="${profit >= 0 ? 'pn-profit-pos' : 'pn-profit-neg'}">${money(profit)}</span>`;
+    };
+    form.addEventListener('input', update);
+    form.addEventListener('change', update);
+    update();
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const m = form.mode.value;
+      const body = {
+        enabled: form.enabled.checked,
+        markup_percent: m === 'markup' ? Number(form.markup.value) : null,
+        fixed_price: m === 'fixed' ? Number(form.fixed.value) : null
+      };
+      try {
+        const res = await api(`/digital/products/${p.id}`, { method: 'PUT', body: JSON.stringify(body) });
+        closeModal();
+        toast(res.message);
+        await loadDigital();
+      } catch (err) {
+        $('.sf-form-error', form).textContent = err.message;
+      }
+    });
+  }
+
+  async function saveDigitalSettings(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const raw = form.markup.value.trim();
+    if (raw !== '' && !(Number(raw) >= 0)) { toast('Geçerli bir oran girin.', 'error'); return; }
+    try {
+      const res = await api('/digital/settings', { method: 'PUT', body: JSON.stringify({ enabled: form.enabled.checked, markup_percent: raw === '' ? null : Number(raw) }) });
+      toast(res.message);
+      await loadDigital();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  async function loadDigitalOrders() {
+    const d = await api(`/digital/orders?page=${state.dgPage}`);
+    $('#pn-dg-orders').innerHTML = d.orders.length ? d.orders.map(o => `<tr>
+      <td>#D${o.id}</td>
+      <td>${escapeHtml(o.customer || '—')}</td>
+      <td>${escapeHtml(o.product_name)}</td>
+      <td>${num(o.quantity)}</td>
+      <td class="pn-num">${money(o.paid)}${o.refunded > 0 ? `<span class="pn-sub">iade ${money(o.refunded)}</span>` : ''}</td>
+      <td class="pn-num">${money(o.cost)}</td>
+      <td>${profitCell(o.profit)}</td>
+      <td><span class="sf-badge sf-badge-${DG_STATUS[o.status] || 'processing'}">${DG_LABEL[o.status] || 'Hazırlanıyor'}</span></td>
+      <td>${formatDate(o.created_at)}</td></tr>`).join('') : '<tr><td colspan="9" class="sf-muted">Henüz dijital ürün satışınız yok.</td></tr>';
+    $('#pn-dg-pager').innerHTML = d.pages > 1 ? `
+      <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-dg-page="${d.page - 1}" ${d.page <= 1 ? 'disabled' : ''}>Önceki</button>
+      <span class="sf-muted">${d.page} / ${d.pages} · ${num(d.total)} satış</span>
+      <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-dg-page="${d.page + 1}" ${d.page >= d.pages ? 'disabled' : ''}>Sonraki</button>` : `<span class="sf-muted">${num(d.total)} satış</span>`;
+  }
+
+  function switchDigitalTab(tab) {
+    state.dgTab = tab;
+    $$('[data-dg-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.dgTab === tab));
+    $$('[data-dg-panel]').forEach(panel => { panel.hidden = panel.dataset.dgPanel !== tab; });
+    if (tab === 'orders') loadDigitalOrders().catch(err => toast(err.message, 'error'));
   }
 
   // ------------------------------------------------------------- site
@@ -1043,7 +1179,10 @@
     theme_changed: 'Tema değişti',
     domain_activated: 'Alan adı aktif oldu',
     branding_changed: 'Logo / simge değişti',
-    page_reset: 'Yasal sayfa otomatiğe döndü'
+    page_reset: 'Yasal sayfa otomatiğe döndü',
+    digital_order: 'Dijital ürün satıldı',
+    digital_settings_changed: 'Dijital ürün ayarı değişti',
+    digital_price_changed: 'Dijital ürün fiyatı değişti'
   };
   const ACTORS = { owner: 'Siz', customer: 'Müşteri', jet_admin: 'Yönetim', system: 'Sistem' };
 
@@ -1051,7 +1190,18 @@
     const d = entry.details;
     if (!d || typeof d !== 'object') return '';
     if (entry.action === 'customer_balance_changed') return `${escapeHtml(d.customer)}: ${Number(d.amount) > 0 ? '+' : ''}${money(d.amount)} → ${money(d.balance_after)}${d.note ? ' · ' + escapeHtml(d.note) : ''}`;
-    if (entry.action === 'owner_balance_low') return `Gerekli ${money(d.required)}, bakiyeniz ${money(d.owner_balance)}`;
+    if (entry.action === 'owner_balance_low') return d.product
+      ? `${escapeHtml(d.product)} · gerekli ${money(d.required)}`
+      : `Gerekli ${money(d.required)}, bakiyeniz ${money(d.owner_balance)}`;
+    if (entry.action === 'digital_order') return `#D${Number(d.order_id)} ${escapeHtml(d.product)} × ${num(d.quantity)} · ${money(d.charge)}`;
+    if (entry.action === 'digital_settings_changed') return `${d.enabled ? 'satışta' : 'sitede gizli'} · ${d.markup_percent === null || d.markup_percent === undefined ? 'servislerle aynı kâr' : `kâr %${d.markup_percent}`}`;
+    if (entry.action === 'digital_price_changed') {
+      const parts = [d.enabled ? 'satışta' : 'satışta değil'];
+      if (d.fixed_price !== null && d.fixed_price !== undefined) parts.push(`sabit ${money(d.fixed_price)}`);
+      else if (d.markup_percent !== null && d.markup_percent !== undefined) parts.push(`kâr %${d.markup_percent}`);
+      else parts.push('varsayılan kâr');
+      return `${escapeHtml(d.product)} · ${parts.join(' · ')}`;
+    }
     if (entry.action === 'service_price_changed') {
       const a = d.after || {};
       const parts = [a.enabled ? 'satışta' : 'satışta değil'];
@@ -1069,7 +1219,7 @@
 
   async function loadLogs(force = false) {
     if (!state.logs || force) state.logs = await api('/logs');
-    const types = { order: 'Sipariş', refund: 'İade', manual_add: 'Bakiye ekleme', manual_subtract: 'Bakiye düşme', deposit: 'Yükleme' };
+    const types = { order: 'Sipariş', refund: 'İade', manual_add: 'Bakiye ekleme', manual_subtract: 'Bakiye düşme', deposit: 'Yükleme', digital_order: 'Dijital sipariş' };
     $$('[data-log-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.logTab === state.logTab));
     if (state.logTab === 'activity') {
       $('#pn-logs-head').innerHTML = '<tr><th>Tarih</th><th>Kim</th><th>İşlem</th><th>Ayrıntı</th><th>IP</th></tr>';
@@ -1107,6 +1257,7 @@
       if (view === 'services') await loadServices();
       if (view === 'customers') await loadCustomers();
       if (view === 'orders') await loadOrders();
+      if (view === 'digital') await loadDigital();
       if (view === 'payments') await loadPayments();
       if (view === 'paysettings') await loadPaySettings();
       if (view === 'pages') await loadPagesView();
@@ -1144,6 +1295,8 @@
     $('#pn-login-form').addEventListener('submit', submitLogin);
     $('#pn-logout').addEventListener('click', logout);
     $('#pn-default-markup-form').addEventListener('submit', saveDefaultMarkup);
+    $('#pn-dg-settings-form').addEventListener('submit', saveDigitalSettings);
+    $('#pn-dg-search').addEventListener('input', debounce(renderDigitalProducts, 150));
     $('#pn-site-form').addEventListener('submit', saveSite);
     $('#pn-domain-form').addEventListener('submit', addDomain);
     document.addEventListener('change', event => {
@@ -1190,6 +1343,12 @@
       }
       const edit = t.closest('[data-svc-edit]');
       if (edit) { editService(Number(edit.dataset.svcEdit)); return; }
+      const dgEdit = t.closest('[data-dg-edit]');
+      if (dgEdit) { editDigital(Number(dgEdit.dataset.dgEdit)); return; }
+      const dgTab = t.closest('[data-dg-tab]');
+      if (dgTab) { switchDigitalTab(dgTab.dataset.dgTab); return; }
+      const dgPage = t.closest('[data-dg-page]');
+      if (dgPage && !dgPage.disabled) { state.dgPage = Number(dgPage.dataset.dgPage); loadDigitalOrders().catch(err => toast(err.message, 'error')); return; }
       const bulk = t.closest('[data-bulk]');
       if (bulk) { bulkAction(bulk.dataset.bulk); return; }
       const bal = t.closest('[data-cust-balance]');

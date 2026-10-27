@@ -26,6 +26,7 @@ const billing = require('../services/resellerBilling');
 const { THEME_KEYS, themeOf, publicThemes } = require('./themes');
 const cloudflare = require('../services/cloudflare');
 const tenantBranding = require('../services/tenantBranding');
+const { digitalSettings, tenantDigitalCatalog } = require('../services/tenantDigital');
 const tenantDomains = require('../services/tenantDomains');
 const { signOwnerSession, setOwnerCookie, clearOwnerCookie, requireOwner } = require('./panelSession');
 
@@ -603,6 +604,112 @@ router.get('/logs', async (req, res, next) => {
       balance_logs: balance.map(l => ({
         id: l.id, customer: l.customer, amount: fromKurus(l.amount_kurus), balance_after: fromKurus(l.balance_after_kurus),
         type: l.type, order_id: l.order_id, note: l.note, created_at: l.created_at
+      }))
+    });
+  } catch (err) { next(err); }
+});
+
+// -------------------------------------------------------- dijital urunler
+// Katalog Jet'in satistaki dijital urunleridir (services/tenantDigital.js).
+const digitalSettingsSchema = z.object({ enabled: z.boolean(), markup_percent: markupField.nullable().optional() });
+const digitalProductSchema = z.object({
+  enabled: z.boolean().optional(),
+  markup_percent: markupField.nullable().optional(),
+  fixed_price: z.coerce.number().finite().min(0).max(10_000_000).nullable().optional()
+});
+
+router.get('/digital', async (req, res, next) => {
+  try {
+    const ds = digitalSettings(req.tenant);
+    const settings = await getResellerSettings();
+    const catalog = await tenantDigitalCatalog(req.tenant, { includeHidden: true });
+    const own = tenantSettings(req.tenant).digital_markup_percent;
+    res.json({
+      enabled: ds.enabled,
+      markup_percent: ds.markupPercent,
+      own_markup: own === undefined || own === '' ? null : own,
+      discount_percent: effectiveDiscountPercent(req.tenant, settings),
+      products: catalog.map(row => ({
+        id: row.product.id,
+        name: row.product.name,
+        category: row.product.category || '',
+        image: row.product.image_url || null,
+        stock: row.product.stock === null || row.product.stock === undefined ? null : Number(row.product.stock),
+        jet_price: fromKurus(row.product.price_kurus),
+        cost: fromKurus(row.price.costKurus),
+        sell: fromKurus(row.price.sellKurus),
+        profit: fromKurus(row.price.sellKurus - row.price.costKurus),
+        mode: row.price.mode,
+        markup_percent: row.custom.markup_percent,
+        fixed_price: row.custom.fixed_price_kurus ? fromKurus(row.custom.fixed_price_kurus) : null,
+        enabled: row.enabled,
+        below_cost: row.belowCost
+      }))
+    });
+  } catch (err) { next(err); }
+});
+
+router.put('/digital/settings', validate(digitalSettingsSchema), async (req, res, next) => {
+  try {
+    const settings = { ...tenantSettings(req.tenant), digital_enabled: req.body.enabled };
+    if (req.body.markup_percent === null || req.body.markup_percent === undefined) delete settings.digital_markup_percent;
+    else settings.digital_markup_percent = req.body.markup_percent;
+    await dbAsync.run('UPDATE tenants SET settings_json = ? WHERE id = ?', [JSON.stringify(settings), req.tenant.id]);
+    invalidateTenantCache();
+    await ownerActivity(req, 'digital_settings_changed', { enabled: req.body.enabled, markup_percent: req.body.markup_percent ?? null });
+    res.json({ message: req.body.enabled ? 'Dijital ürün ayarları kaydedildi.' : 'Dijital ürünler sitende gizlendi.' });
+  } catch (err) { next(err); }
+});
+
+router.put('/digital/products/:id', validate(digitalProductSchema), async (req, res, next) => {
+  try {
+    const id = idParam(req.params.id);
+    const row = (await tenantDigitalCatalog(req.tenant, { includeHidden: true })).find(r => r.product.id === id);
+    if (!row) return res.status(404).json({ error: 'Ürün bulunamadı.' });
+    const current = await dbAsync.get('SELECT * FROM tenant_digital_prices WHERE tenant_id = ? AND product_id = ?', [req.tenant.id, id]);
+    const next_ = {
+      enabled: req.body.enabled ?? (current ? Boolean(current.enabled) : true),
+      markup_percent: req.body.markup_percent !== undefined ? req.body.markup_percent : (current?.markup_percent ?? null),
+      fixed_price_kurus: req.body.fixed_price !== undefined ? (req.body.fixed_price === null ? null : toKurus(req.body.fixed_price)) : (current?.fixed_price_kurus ?? null)
+    };
+    if (next_.fixed_price_kurus !== null && next_.fixed_price_kurus < row.price.costKurus) {
+      return res.status(400).json({ error: `Sabit fiyat alış fiyatının (₺${fromKurus(row.price.costKurus).toFixed(2)}) altında olamaz.`, field: 'fixed_price' });
+    }
+    if (next_.enabled && next_.markup_percent === null && next_.fixed_price_kurus === null) {
+      await dbAsync.run('DELETE FROM tenant_digital_prices WHERE tenant_id = ? AND product_id = ?', [req.tenant.id, id]);
+    } else {
+      await dbAsync.run(
+        `INSERT INTO tenant_digital_prices (tenant_id, product_id, enabled, markup_percent, fixed_price_kurus, updated_at)
+         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(tenant_id, product_id) DO UPDATE SET enabled = excluded.enabled, markup_percent = excluded.markup_percent,
+           fixed_price_kurus = excluded.fixed_price_kurus, updated_at = CURRENT_TIMESTAMP`,
+        [req.tenant.id, id, next_.enabled ? 1 : 0, next_.markup_percent, next_.fixed_price_kurus]
+      );
+    }
+    await ownerActivity(req, 'digital_price_changed', { product: row.product.name, enabled: next_.enabled, markup_percent: next_.markup_percent, fixed_price: next_.fixed_price_kurus === null ? null : fromKurus(next_.fixed_price_kurus) });
+    res.json({ message: `"${row.product.name}" güncellendi.` });
+  } catch (err) { next(err); }
+});
+
+router.get('/digital/orders', async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number.parseInt(req.query.page || '1', 10) || 1);
+    const limit = 50;
+    const [total, rows] = await Promise.all([
+      dbAsync.get('SELECT COUNT(*) AS n FROM digital_orders WHERE tenant_id = ?', [req.tenant.id]),
+      dbAsync.all(
+        `SELECT o.*, c.username AS customer FROM digital_orders o LEFT JOIN tenant_customers c ON c.id = o.tenant_customer_id
+          WHERE o.tenant_id = ? ORDER BY o.id DESC LIMIT ? OFFSET ?`, [req.tenant.id, limit, (page - 1) * limit])
+    ]);
+    res.json({
+      page, pages: Math.max(1, Math.ceil(total.n / limit)), total: total.n,
+      orders: rows.map(o => ({
+        id: o.id, customer: o.customer, product_name: o.product_name, quantity: o.quantity, status: o.status,
+        paid: fromKurus(o.tenant_charge_kurus - o.tenant_refunded_kurus),
+        refunded: fromKurus(o.tenant_refunded_kurus),
+        cost: fromKurus(o.charge_kurus - o.refunded_kurus),
+        profit: fromKurus((o.tenant_charge_kurus - o.tenant_refunded_kurus) - (o.charge_kurus - o.refunded_kurus)),
+        created_at: o.created_at
       }))
     });
   } catch (err) { next(err); }

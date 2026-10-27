@@ -64,6 +64,12 @@
 .pn-pager { display: flex; gap: 8px; justify-content: center; align-items: center; margin-top: 14px; }
 .pn-tabs { max-width: 420px; }
 
+/* Dijital urunler */
+.pn-inline-form .pn-radio { padding-bottom: 11px; }
+#pn-dg-settings-form .sf-input { width: 230px; max-width: 100%; }
+.pn-dg-name { display: flex; align-items: center; gap: 10px; min-width: 220px; }
+.pn-dg-thumb { flex: none; width: 48px; height: 32px; border-radius: 6px; object-fit: cover; background: var(--surface-2); display: grid; place-items: center; color: var(--muted); }
+
 /* Site ayarlari */
 .pn-site-form { max-width: 680px; }
 .pn-color-row { display: flex; gap: 10px; align-items: center; }

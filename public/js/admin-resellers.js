@@ -363,7 +363,10 @@ Object.assign(SmmApp.prototype, {
       owner_login: 'Bayi paneline giriş',
       service_price_changed: 'Servis fiyatı değişti',
       services_bulk_changed: 'Toplu servis işlemi',
-      site_settings_changed: 'Site ayarları değişti'
+      site_settings_changed: 'Site ayarları değişti',
+      digital_order: 'Dijital ürün satıldı',
+      digital_settings_changed: 'Dijital ürün ayarı değişti',
+      digital_price_changed: 'Dijital ürün fiyatı değişti'
     }[action] || action;
   },
 
@@ -383,7 +386,10 @@ Object.assign(SmmApp.prototype, {
       case 'customer_balance_changed':
         return `${esc(d.customer)}: ${Number(d.amount) > 0 ? '+' : ''}${this.fmtTl(d.amount)} → ${this.fmtTl(d.balance_after)}${d.note ? ` · ${esc(d.note)}` : ''}`;
       case 'owner_balance_low':
+        if (d.product) return `Dijital: ${esc(d.product)} · gerekli ${this.fmtTl(d.required)}`;
         return `Gerekli ${this.fmtTl(d.required)} · sahibin bakiyesi ${this.fmtTl(d.owner_balance)} · servis #${esc(d.service_id)}`;
+      case 'digital_order':
+        return `#D${esc(d.order_id)} ${esc(d.product)} × ${esc(d.quantity)} · ${this.fmtTl(d.charge)}`;
       case 'domain_status_changed':
         return `${esc(d.domain)}: ${esc(d.from)} → ${esc(d.to)}`;
       case 'service_price_changed': {

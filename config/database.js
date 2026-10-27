@@ -982,6 +982,24 @@ async function runMigrations() {
   `);
   // Urun karti gorseli: public/dijital-gorseller galerisinden secilen dosya.
   await addColumnIfMissing('digital_products', 'image_url', 'TEXT');
+  // Bayi sitesinden alinan dijital urun (F5): siparis bayinin (user_id) Jet
+  // siparisidir; tenant_* sutunlari musterinin odedigi tutari ve iadesini tasir.
+  await addColumnIfMissing('digital_orders', 'tenant_id', 'INTEGER');
+  await addColumnIfMissing('digital_orders', 'tenant_customer_id', 'INTEGER');
+  await addColumnIfMissing('digital_orders', 'tenant_charge_kurus', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumnIfMissing('digital_orders', 'tenant_refunded_kurus', 'INTEGER NOT NULL DEFAULT 0');
+  await dbAsync.exec(`
+    CREATE TABLE IF NOT EXISTS tenant_digital_prices (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES digital_products(id) ON DELETE CASCADE,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      markup_percent REAL,
+      fixed_price_kurus INTEGER,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (tenant_id, product_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_digital_orders_tenant ON digital_orders(tenant_id, tenant_customer_id, id DESC);
+  `);
 
   // --- ZIYARETCI AYAK IZI (5 Eki 2026) -------------------------------------
   // Oturum + adim akisi (services/footprint.js). Cerez onayi veren ziyaretcide

@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="%%FONT_HREF%%" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="/assets/storefront.css?v=20261027e">
+  <link rel="stylesheet" href="/assets/storefront.css?v=20261028a">
   <link rel="stylesheet" href="/assets/themes.css?v=20261027e">
   <style>:root { --primary: %%PRIMARY%%; --font: %%FONT%%; --font-display: %%FONT_DISPLAY%%; }</style>
 </head>
@@ -28,6 +28,7 @@
       <nav class="sf-nav" aria-label="Ana menü">
         <a href="/" data-nav="home" data-auth="guest">Ana Sayfa</a>
         <a href="/services" data-nav="services">Servisler</a>
+        <a href="/dijital" data-nav="digital" data-digital-nav hidden>Dijital Ürünler</a>
         <a href="/order" data-nav="order" data-auth="user">Yeni Sipariş</a>
         <a href="/bakiye" data-nav="funds" data-auth="user">Bakiye Yükle</a>
         <a href="/orders" data-nav="orders" data-auth="user">Siparişlerim</a>
@@ -54,6 +55,7 @@
           <div class="sf-hero-actions">
             <button type="button" class="sf-btn sf-btn-primary sf-btn-lg" data-open-auth="register">Hemen Başla</button>
             <a href="/services" data-nav="services" class="sf-btn sf-btn-ghost sf-btn-lg">Servisleri Gör</a>
+            <a href="/dijital" data-nav="digital" class="sf-btn sf-btn-ghost sf-btn-lg" data-digital-nav hidden>Dijital Ürünler</a>
           </div>
         </div>
         <div class="sf-card sf-auth-card" id="sf-auth-card">
@@ -99,6 +101,33 @@
         <input type="search" id="sf-service-search" class="sf-input" placeholder="Servis ara..." aria-label="Servis ara">
       </div>
       <div id="sf-services-list" class="sf-services-list"><p class="sf-muted">Yükleniyor…</p></div>
+    </section>
+
+    <!-- DIJITAL URUNLER (hesap bilgisi, lisans vb.; bakiyeyle alinir, aninda teslim) -->
+    <section class="sf-view" data-view="digital" hidden>
+      <div class="sf-page-head">
+        <h1>Dijital Ürünler</h1>
+        <div class="sf-head-tools">
+          <input type="search" id="sf-digital-search" class="sf-input" placeholder="Ürün ara..." aria-label="Ürün ara">
+          <a href="/dijital/siparislerim" data-nav="dorders" class="sf-btn sf-btn-ghost" data-auth="user"><i class="fa-solid fa-receipt" aria-hidden="true"></i> Siparişlerim</a>
+        </div>
+      </div>
+      <div class="sf-chips" id="sf-digital-cats" hidden></div>
+      <div class="sf-dg-grid" id="sf-digital-list"><p class="sf-muted">Yükleniyor…</p></div>
+    </section>
+
+    <!-- DIJITAL SIPARISLERIM -->
+    <section class="sf-view" data-view="dorders" hidden>
+      <div class="sf-page-head">
+        <h1>Dijital Siparişlerim</h1>
+        <a href="/dijital" data-nav="digital" class="sf-btn sf-btn-ghost"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Ürünlere Dön</a>
+      </div>
+      <div class="sf-card sf-table-wrap">
+        <table class="sf-table sf-rtable">
+          <thead><tr><th>No</th><th>Ürün</th><th>Adet</th><th>Tutar</th><th>Durum</th><th>Tarih</th><th></th></tr></thead>
+          <tbody id="sf-dorders-tbody"><tr><td colspan="7" class="sf-muted">Yükleniyor…</td></tr></tbody>
+        </table>
+      </div>
     </section>
 
     <!-- YENI SIPARIS -->
@@ -199,7 +228,13 @@
     </div>
   </footer>
 
+  <div class="sf-modal" id="sf-modal" hidden>
+    <div class="sf-modal-box" role="dialog" aria-modal="true" aria-labelledby="sf-modal-title">
+      <button type="button" class="sf-modal-close" data-modal-close aria-label="Kapat"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      <div id="sf-modal-body"></div>
+    </div>
+  </div>
   <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
-  <script src="/assets/storefront.js?v=20261027d" defer></script>
+  <script src="/assets/storefront.js?v=20261028a" defer></script>
 </body>
 </html>

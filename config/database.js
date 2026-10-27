@@ -296,6 +296,8 @@ async function runMigrations() {
   `);
   // Yorum daveti maili gonderildiyse zamani tutulur (cift gonderimi onlemek icin).
   await addColumnIfMissing('orders', 'review_mail_sent_at', 'DATETIME');
+  // Destek talebinin kapatildigi an (admin/kullanici "Kapat" dediginde).
+  await addColumnIfMissing('tickets', 'closed_at', 'DATETIME');
   // Siparisin bitis ani (tamamlandi/iptal/basarisiz/kismi). Kod yolu fark
   // etmeksizin (admin dugmesi, worker senkronu...) asagidaki trigger doldurur.
   await addColumnIfMissing('orders', 'completed_at', 'DATETIME');
@@ -896,6 +898,8 @@ async function runMigrations() {
     );
     CREATE INDEX IF NOT EXISTS idx_digital_checks_user ON digital_checks(user_id, id DESC);
   `);
+  // Urun karti gorseli: public/dijital-gorseller galerisinden secilen dosya.
+  await addColumnIfMissing('digital_products', 'image_url', 'TEXT');
 
   // --- ZIYARETCI AYAK IZI (5 Eki 2026) -------------------------------------
   // Oturum + adim akisi (services/footprint.js). Cerez onayi veren ziyaretcide

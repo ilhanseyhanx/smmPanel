@@ -33,6 +33,7 @@ const FP_KINDS = {
   coupon_submit: ['🎟️', 'Kupon denedi'],
   ticket_submit: ['🎧', 'Destek formu gönderdi'],
   digital_buy_open: ['🛍️', 'Dijital ürün satın al penceresini açtı'],
+  select_change: ['🔽', 'Seçim yaptı'],
   // Gecmis kayitlar (egitimler 26 Eki 2026'da kaldirildi).
   course_buy_open: ['🎓', 'Eğitim satın al penceresini açtı'],
   course_checkout: ['💳', 'Eğitim için kart ödemesi başlattı'],
@@ -255,6 +256,8 @@ Object.assign(SmmApp.prototype, {
         ${this.fpCard('Hizmet aramaları', this.fpTable(['Aranan', 'Oturum', 'Sonuç'], d.searches.map(r => `<tr class="${Number(r.min_results) === 0 ? 'fp-row-bad' : ''}"><td>${this.fpE(r.term)}</td><td>${this.fpNum(r.sessions)}</td><td>${Number(r.min_results) === 0 ? '<span class="fp-flag bad">Bulunamadı</span>' : this.fpNum(r.min_results)}</td></tr>`)), 'kırmızı: sitede olmayan, eklenebilecek hizmet')}
         ${this.fpCard('En çok tıklananlar', this.fpTable(['Öğe', 'Tıklama', 'Oturum'], d.clicks.map(r => `<tr><td>${this.fpE(r.label)}</td><td>${this.fpNum(r.n)}</td><td>${this.fpNum(r.sessions)}</td></tr>`)))}
       </div>
+      ${this.fpCard('Hizmetlere ilgi', this.fpTable(['Hizmet', 'Bilgi açma', 'Tıklama / seçim', 'Sipariş denemesi', 'Verilen sipariş', 'Oturum'], (d.services || []).map(r => `<tr><td class="fp-wrap"><strong>#${Number(r.sid)}</strong> ${this.fpE(r.name)}</td><td>${this.fpNum(r.views)}</td><td>${this.fpNum(r.clicks)}</td><td>${this.fpNum(r.tries)}</td><td>${Number(r.orders) ? `<span class="fp-flag good">${this.fpNum(r.orders)}</span>` : '0'}</td><td>${this.fpNum(r.sessions)}</td></tr>`)), 'hangi hizmete bakıldı, hangisine tıklandı, hangisi satın alındı')}
+      ${(d.digital || []).length ? this.fpCard('Dijital ürünlere ilgi', this.fpTable(['Ürün', 'Satın al penceresi', 'Tıklama', 'Satın alma', 'Oturum'], d.digital.map(r => `<tr><td class="fp-wrap">${this.fpE(r.name)}</td><td>${this.fpNum(r.opens)}</td><td>${this.fpNum(r.clicks)}</td><td>${Number(r.purchases) ? `<span class="fp-flag good">${this.fpNum(r.purchases)}</span>` : '0'}</td><td>${this.fpNum(r.sessions)}</td></tr>`))) : ''}
       ${this.fpCard('Hatalar ve takılmalar', this.fpTable(['Tür', 'Ayrıntı', 'Kez', 'Oturum'], d.errors.map(r => `<tr><td>${(FP_KINDS[r.kind] || ['', r.kind]).join(' ')}</td><td class="fp-wrap">${this.fpE(r.label)}</td><td>${this.fpNum(r.n)}</td><td>${this.fpNum(r.sessions)}</td></tr>`), 'Bu dönemde hata yok 🎉'))}
       <div class="fp-grid fp-grid-3">
         ${this.fpCard('Cihaz', simple(d.devices, 'Cihaz'))}
@@ -413,7 +416,7 @@ Object.assign(SmmApp.prototype, {
         if (e.kind === 'api_error' && e.meta?.msg) extra = `<span class="fp-muted">${this.fpE(e.meta.msg)}</span>`;
         if ((e.kind === 'click' || e.kind === 'outbound_click') && e.meta) extra = `<span class="fp-muted">${this.fpE(e.meta.to || e.meta.url || '')}</span>`;
         if ((e.kind === 'register_success' || e.kind === 'login_success') && e.meta?.method === 'google') extra = '<span class="fp-flag"><i class="fa-brands fa-google"></i> Google ile</span>';
-        const important = ['register_success', 'topup_success', 'order_created', 'course_purchase'].includes(e.kind);
+        const important = ['register_success', 'topup_success', 'order_created', 'digital_purchase', 'course_purchase'].includes(e.kind);
         const bad = ['api_error', 'js_error', 'rage_click', 'not_found'].includes(e.kind);
         return `<li class="fp-step${important ? ' good' : ''}${bad ? ' bad' : ''}${e.kind === 'page_view' ? ' page' : ''}">
           <span class="fp-step-time">+${String(Math.floor(off / 60)).padStart(2, '0')}:${String(off % 60).padStart(2, '0')}</span>

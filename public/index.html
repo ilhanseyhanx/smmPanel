@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20261027a">
+  <link rel="stylesheet" href="/css/style.css?v=20261027b">
 </head>
 <body>
 
@@ -1552,7 +1552,16 @@ Canceled     iptal edildi</pre>
           
           <!-- ADMIN TAB 1: DASHBOARD -->
           <div id="admin-tab-dashboard">
-            <h2 style="font-size: 1.6rem; margin-bottom: 20px;">📊 Panel Genel Bakış</h2>
+            <h2 style="font-size: 1.6rem; margin-bottom: 12px;">📊 Panel Genel Bakış</h2>
+            <!-- Donem: ciro, maliyet, kar, siparis kirilimi ve yeni musteri secilen doneme gore. -->
+            <div class="settings-subtabs dash-periods" id="admin-dashboard-periods" role="tablist" aria-label="Dönem">
+              <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-period="today" onclick="app.setDashboardPeriod('today')">Bugün</button>
+              <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-period="yesterday" onclick="app.setDashboardPeriod('yesterday')">Dün</button>
+              <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-period="7d" onclick="app.setDashboardPeriod('7d')">7 Gün</button>
+              <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-period="30d" onclick="app.setDashboardPeriod('30d')">30 Gün</button>
+              <button type="button" class="settings-subtab" role="tab" aria-selected="false" data-period="90d" onclick="app.setDashboardPeriod('90d')">90 Gün</button>
+              <button type="button" class="settings-subtab active" role="tab" aria-selected="true" data-period="all" onclick="app.setDashboardPeriod('all')">Tümü</button>
+            </div>
 
             <!-- PARA AKIŞI: müşteriden gelen, tedarikçiye giden ve cebe kalan -->
             <div class="stats-grid mb-30">
@@ -1560,7 +1569,7 @@ Canceled     iptal edildi</pre>
                 <div class="stat-icon"><i class="fa-solid fa-turkish-lira-sign"></i></div>
                 <div>
                   <div class="stat-val" id="admin-stat-revenue">₺0.00</div>
-                  <div class="stat-lbl">Toplam Ciro (iadeler düşülmüş)</div>
+                  <div class="stat-lbl" id="admin-stat-revenue-lbl">Toplam Ciro (iadeler düşülmüş)</div>
                 </div>
               </div>
               <div class="glass-card stat-card">
@@ -1576,14 +1585,14 @@ Canceled     iptal edildi</pre>
                 <div class="stat-icon green"><i class="fa-solid fa-sack-dollar"></i></div>
                 <div>
                   <div class="stat-val" id="admin-stat-profit">₺0.00</div>
-                  <div class="stat-lbl">Net Kâr (cebe kalan)</div>
+                  <div class="stat-lbl" id="admin-stat-profit-lbl">Net Kâr (cebe kalan)</div>
                 </div>
               </div>
               <div class="glass-card stat-card">
                 <div class="stat-icon green"><i class="fa-solid fa-user-check"></i></div>
                 <div>
                   <div class="stat-val" id="admin-stat-users">0</div>
-                  <div class="stat-lbl">Müşteri Sayısı</div>
+                  <div class="stat-lbl" id="admin-stat-users-lbl">Müşteri Sayısı</div>
                 </div>
               </div>
             </div>
@@ -1637,7 +1646,7 @@ Canceled     iptal edildi</pre>
             <!-- SON 30 GÜN CİRO / KÂR GRAFİĞİ -->
             <div class="glass-card mb-30">
               <div class="flex-between" style="margin-bottom: 10px;">
-                <h3 style="font-size: 1.05rem;">📈 Son 30 Gün — Ciro & Net Kâr</h3>
+                <h3 style="font-size: 1.05rem;" id="admin-chart-title">📈 Son 30 Gün — Ciro & Net Kâr</h3>
                 <div style="display: flex; gap: 14px; font-size: .75rem; color: var(--text-muted);">
                   <span><i class="fa-solid fa-square" style="color: rgba(139,92,246,.7);"></i> Ciro</span>
                   <span><i class="fa-solid fa-square" style="color: rgba(16,185,129,.85);"></i> Net Kâr</span>
@@ -2417,7 +2426,9 @@ Canceled     iptal edildi</pre>
 
           <!-- ADMIN TAB: SUPPORT TICKETS -->
           <div id="admin-tab-tickets" style="display: none;">
-            <h2 style="margin-bottom: 20px;">🎫 Müşteri Destek Biletleri</h2>
+            <h2 style="margin-bottom: 14px;">🎫 Müşteri Destek Biletleri</h2>
+            <!-- Filtreler app.loadAdminTickets ile sayilariyla cizilir. -->
+            <div class="settings-subtabs" id="admin-ticket-filters" role="tablist"></div>
             <div class="glass-card">
               <div class="table-responsive">
                 <table class="custom-table">
@@ -2427,7 +2438,8 @@ Canceled     iptal edildi</pre>
                       <th scope="col">Müşteri</th>
                       <th scope="col">Konu</th>
                       <th scope="col">Durum</th>
-                      <th scope="col">Tarih</th>
+                      <th scope="col">Son hareket</th>
+                      <th scope="col">Açılış</th>
                       <th scope="col" style="text-align: right;">İşlem</th>
                     </tr>
                   </thead>
@@ -4586,6 +4598,7 @@ Canceled     iptal edildi</pre>
         <span class="chat-live" id="chat-live-badge" title="Yeni mesajlar otomatik gelir">
           <span class="chat-live-dot"></span><span id="chat-live-text">Canlı</span>
         </span>
+        <button type="button" class="chat-status-btn" id="chat-status-btn" onclick="app.toggleActiveTicketStatus()" hidden></button>
         <button aria-label="Kapat" class="chat-close" onclick="app.closeModal('modal-ticket-chat')"><i class="fa-solid fa-xmark"></i></button>
       </div>
 
@@ -4593,6 +4606,7 @@ Canceled     iptal edildi</pre>
         <!-- Mesajlar buraya yuklenir -->
       </div>
 
+      <p class="chat-closed-note" id="chat-closed-note" hidden></p>
       <form class="chat-composer" onsubmit="app.handleSendTicketReply(event)">
         <textarea aria-label="Mesajınızı yazın" id="chat-reply-input" class="chat-input" rows="1" placeholder="Mesajınızı yazın..." required></textarea>
         <button type="submit" class="chat-send" id="chat-send-btn" aria-label="Gönder">
@@ -5111,8 +5125,8 @@ Canceled     iptal edildi</pre>
 
   <!-- App Main Scripts -->
   <!-- Ziyaretci ayak izi: api.js ve app.js'ten once yuklenir (window.JT). -->
-  <script src="/js/track.js?v=20261027a" defer></script>
-  <script src="/js/api.js?v=20261027a" defer></script>
-  <script src="/js/app.js?v=20261027a" defer></script>
+  <script src="/js/track.js?v=20261027b" defer></script>
+  <script src="/js/api.js?v=20261027b" defer></script>
+  <script src="/js/app.js?v=20261027b" defer></script>
 </body>
 </html>

@@ -99,14 +99,19 @@ Object.assign(SmmApp.prototype, {
     ].filter(Boolean).join('');
     const stock = p.stock === null ? ''
       : `<span class="dg-stock ${soldOut ? 'is-out' : 'is-in'}">${this.escapeHtml(soldOut ? this.dgText('Tükendi', 'Sold out') : `${this.dgText('Stok', 'Stock')}: ${Number(p.stock).toLocaleString('tr-TR')}`)}</span>`;
-    return `<article class="dg-card glass-card${soldOut ? ' is-sold-out' : ''}" data-dg-id="${Number(p.id)}" data-dg-cat="${this.escapeHtml(this.dgFold(p.category))}" data-dg-search="${this.escapeHtml(this.dgFold(`${p.name} ${p.category}`))}">
-      <div class="dg-card-top">${p.category ? `<span class="dg-cat">${this.escapeHtml(p.category)}</span>` : '<span></span>'}${stock}</div>
-      <h2 class="dg-card-title">${this.escapeHtml(p.name)}</h2>
-      ${p.description ? `<p class="dg-card-desc">${this.escapeHtml(p.description)}</p>` : ''}
-      ${meta ? `<ul class="dg-card-meta">${meta}</ul>` : ''}
-      <div class="dg-card-foot">
-        <div class="dg-price-box"><strong class="dg-price">${this.dgMoney(p.price)}</strong><small>${this.escapeHtml(this.dgText('/ adet', '/ item'))}</small></div>
-        <button type="button" class="dg-buy-btn" data-dg-buy="${Number(p.id)}"${soldOut ? ' disabled' : ''}>${this.escapeHtml(soldOut ? this.dgText('Tükendi', 'Sold out') : this.dgText('Satın Al', 'Buy'))}</button>
+    const media = p.image
+      ? `<img src="${this.escapeHtml(p.image)}" alt="${this.escapeHtml(p.name)}" loading="lazy" decoding="async" width="800" height="500">`
+      : '<i class="fa-solid fa-bag-shopping" aria-hidden="true"></i>';
+    return `<article class="dg-card glass-card${soldOut ? ' is-sold-out' : ''}" data-dg-id="${Number(p.id)}" data-dg-cat="${this.escapeHtml(this.dgFold(p.category))}" data-dg-search="${this.escapeHtml(this.dgFold(`${p.name} ${p.category}`))}" data-track-pid="${Number(p.id)}" data-track-ctx="${this.escapeHtml(String(p.name).slice(0, 80))}">
+      <div class="dg-card-media${p.image ? '' : ' is-empty'}">${media}${p.category ? `<span class="dg-cat">${this.escapeHtml(p.category)}</span>` : ''}${stock}</div>
+      <div class="dg-card-body">
+        <h2 class="dg-card-title">${this.escapeHtml(p.name)}</h2>
+        ${p.description ? `<p class="dg-card-desc">${this.escapeHtml(p.description)}</p>` : ''}
+        ${meta ? `<ul class="dg-card-meta">${meta}</ul>` : ''}
+        <div class="dg-card-foot">
+          <div class="dg-price-box"><strong class="dg-price">${this.dgMoney(p.price)}</strong><small>${this.escapeHtml(this.dgText('/ adet', '/ item'))}</small></div>
+          <button type="button" class="dg-buy-btn" data-dg-buy="${Number(p.id)}"${soldOut ? ' disabled' : ''}><span>${this.escapeHtml(soldOut ? this.dgText('Tükendi', 'Sold out') : this.dgText('Satın Al', 'Buy'))}</span>${soldOut ? '' : ' <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>'}</button>
+        </div>
       </div>
     </article>`;
   },
@@ -251,12 +256,14 @@ Object.assign(SmmApp.prototype, {
   // ===========================================================================
   // SATIN ALMA PENCERESI
   // ===========================================================================
-  dgModal(innerHtml) {
+  // Pencere: masaustunde ortada; mobilde (CSS) alttan acilan tam genislik
+  // panel. wide: satin alma ekraninin iki sutunlu genis hali.
+  dgModal(innerHtml, { wide = false } = {}) {
     let overlay = document.getElementById('dg-modal');
     if (!overlay) {
       overlay = document.createElement('div');
       overlay.id = 'dg-modal';
-      overlay.className = 'modal-backdrop active';
+      overlay.className = 'modal-backdrop active dg-sheet';
       overlay.setAttribute('role', 'dialog');
       overlay.setAttribute('aria-modal', 'true');
       overlay.setAttribute('aria-labelledby', 'dg-modal-title');
@@ -266,8 +273,9 @@ Object.assign(SmmApp.prototype, {
       this.dgEscHandler = event => { if (event.key === 'Escape') this.closeDigitalModal(); };
       document.addEventListener('keydown', this.dgEscHandler);
       document.body.appendChild(overlay);
+      document.body.classList.add('dg-modal-open');
     }
-    overlay.innerHTML = `<div class="glass-card modal-content crs-buy-modal dg-modal">
+    overlay.innerHTML = `<div class="glass-card modal-content crs-buy-modal dg-modal${wide ? ' dg-modal-wide' : ''}">
         <button type="button" class="btn-icon crs-buy-close" aria-label="${this.escapeHtml(this.dgText('Kapat', 'Close'))}" data-dg-close><i class="fa-solid fa-xmark"></i></button>
         ${innerHtml}
       </div>`;
@@ -276,6 +284,7 @@ Object.assign(SmmApp.prototype, {
 
   closeDigitalModal() {
     document.getElementById('dg-modal')?.remove();
+    document.body.classList.remove('dg-modal-open');
     if (this.dgEscHandler) document.removeEventListener('keydown', this.dgEscHandler);
     this.dgEscHandler = null;
   },
@@ -287,18 +296,45 @@ Object.assign(SmmApp.prototype, {
       </div>`;
   },
 
+  // Urun ozeti (gorsel, kategori, ad, ozellikler, aciklama): satin alma
+  // penceresinin sol sutunu; giris isteyen pencerede de kullanilir.
+  dgProductAside(product, { full = true } = {}) {
+    const facts = [
+      product.format ? ['fa-key', this.dgText('Teslimat biçimi', 'Delivery format'), product.format] : null,
+      product.delivery_time ? ['fa-bolt', this.dgText('Teslim süresi', 'Delivery time'), product.delivery_time] : null,
+      product.warranty_hours > 0 ? ['fa-shield-halved', this.dgText('Garanti', 'Warranty'), this.dgText(`${product.warranty_hours} saat`, `${product.warranty_hours} hours`)] : null,
+      product.stock !== null && product.stock > 0 ? ['fa-boxes-stacked', this.dgText('Stok', 'Stock'), Number(product.stock).toLocaleString('tr-TR')] : null
+    ].filter(Boolean);
+    return `<aside class="dg-buy-aside">
+        <div class="dg-buy-media${product.image ? '' : ' is-empty'}">
+          ${product.image ? `<img src="${this.escapeHtml(product.image)}" alt="" width="800" height="500">` : '<i class="fa-solid fa-bag-shopping" aria-hidden="true"></i>'}
+        </div>
+        <div class="dg-buy-intro">
+          ${product.category ? `<span class="dg-cat">${this.escapeHtml(product.category)}</span>` : ''}
+          <h2 id="dg-modal-title" class="dg-buy-name">${this.escapeHtml(product.name)}</h2>
+        </div>
+        ${full && facts.length ? `<ul class="dg-buy-facts">${facts.map(([icon, k, v]) => `<li><i class="fa-solid ${icon}" aria-hidden="true"></i><span>${this.escapeHtml(k)}</span><strong>${this.escapeHtml(v)}</strong></li>`).join('')}</ul>` : ''}
+        ${full && product.description ? `<p class="dg-buy-desc">${this.escapeHtml(product.description)}</p>` : ''}
+      </aside>`;
+  },
+
   openDigitalBuy(productId) {
     const product = (this.dgData?.products || []).find(p => Number(p.id) === Number(productId));
     if (!product) { showToast(this.dgText('Ürün bulunamadı.', 'Product not found.'), 'error'); return; }
     this.jt('digital_buy_open', { label: product.name, meta: { product_id: product.id } });
 
     if (!this.currentUser) {
-      this.dgModal(`${this.dgModalHead(product.name, this.escapeHtml(this.dgText(
-        'Satın almak için hesabına giriş yap. Hesabın yoksa ücretsiz kayıt birkaç saniye sürer.',
-        'Sign in to buy. No account yet? Signing up is free and takes a few seconds.')))}
-        <div class="crs-buy-actions">
-          <button type="button" class="btn btn-primary" data-dg-modal-auth="login"><i class="fa-solid fa-right-to-bracket"></i> ${this.escapeHtml(this.dgText('Giriş Yap', 'Sign In'))}</button>
-          <button type="button" class="btn btn-outline" data-dg-modal-auth="register"><i class="fa-solid fa-user-plus"></i> ${this.escapeHtml(this.dgText('Ücretsiz Kayıt Ol', 'Create a Free Account'))}</button>
+      this.dgModal(`<div class="dg-buy dg-buy-guest">
+          ${this.dgProductAside(product, { full: false })}
+          <div class="dg-buy-main">
+            <p class="dg-guest-text">${this.escapeHtml(this.dgText(
+              'Satın almak için hesabına giriş yap. Hesabın yoksa ücretsiz kayıt birkaç saniye sürer; giriş yapınca bu ürüne geri dönersin.',
+              'Sign in to buy. No account yet? Signing up is free and takes a few seconds; you will come back to this product after signing in.'))}</p>
+            <div class="crs-buy-actions">
+              <button type="button" class="btn btn-primary" data-dg-modal-auth="login"><i class="fa-solid fa-right-to-bracket"></i> ${this.escapeHtml(this.dgText('Giriş Yap', 'Sign In'))}</button>
+              <button type="button" class="btn btn-outline" data-dg-modal-auth="register"><i class="fa-solid fa-user-plus"></i> ${this.escapeHtml(this.dgText('Ücretsiz Kayıt Ol', 'Create a Free Account'))}</button>
+            </div>
+          </div>
         </div>`).querySelectorAll('[data-dg-modal-auth]').forEach(btn => {
         btn.addEventListener('click', () => {
           this.closeDigitalModal();
@@ -313,45 +349,47 @@ Object.assign(SmmApp.prototype, {
       showToast(this.dgText('Bu ürünün stoğu yetersiz.', 'Not enough stock for this product.'), 'warning');
       return;
     }
-    const facts = [
-      product.format ? [this.dgText('Teslimat biçimi', 'Delivery format'), this.escapeHtml(product.format)] : null,
-      product.delivery_time ? [this.dgText('Teslim süresi', 'Delivery time'), this.escapeHtml(product.delivery_time)] : null,
-      product.warranty_hours > 0 ? [this.dgText('Garanti', 'Warranty'), this.escapeHtml(this.dgText(`${product.warranty_hours} saat`, `${product.warranty_hours} hours`))] : null
-    ].filter(Boolean);
-    const overlay = this.dgModal(`${this.dgModalHead(product.name, product.category ? this.escapeHtml(product.category) : '')}
-      ${product.description ? `<p class="dg-modal-desc">${this.escapeHtml(product.description)}</p>` : ''}
-      ${facts.length ? `<dl class="crs-buy-rows dg-facts">${facts.map(([k, v]) => `<div><dt>${this.escapeHtml(k)}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}
-      <label class="dg-qty">
-        <span>${this.escapeHtml(this.dgText('Adet', 'Quantity'))} <small>(${product.min}–${maxQty.toLocaleString('tr-TR')})</small></span>
-        <div class="dg-qty-row">
-          <button type="button" class="dg-qty-step" data-step="-1" aria-label="-1">−</button>
-          <input type="number" class="form-control" id="dg-qty" min="${product.min}" max="${maxQty}" step="1" value="${product.min}" inputmode="numeric">
-          <button type="button" class="dg-qty-step" data-step="1" aria-label="+1">+</button>
+    // Hizli adet secimi: sinirlar icindeki yaygin adetler.
+    const quick = [...new Set([product.min, 5, 10, 25, 50, 100])].filter(n => n >= product.min && n <= maxQty).slice(0, 5);
+    const overlay = this.dgModal(`<div class="dg-buy">
+        ${this.dgProductAside(product)}
+        <div class="dg-buy-main">
+          <div class="dg-qty">
+            <label for="dg-qty">${this.escapeHtml(this.dgText('Adet', 'Quantity'))} <small>(${product.min}–${maxQty.toLocaleString('tr-TR')})</small></label>
+            <div class="dg-qty-row">
+              <button type="button" class="dg-qty-step" data-step="-1" aria-label="-1">−</button>
+              <input type="number" class="form-control" id="dg-qty" min="${product.min}" max="${maxQty}" step="1" value="${product.min}" inputmode="numeric">
+              <button type="button" class="dg-qty-step" data-step="1" aria-label="+1">+</button>
+            </div>
+            ${quick.length > 1 ? `<div class="dg-qty-quick">${quick.map(n => `<button type="button" data-qty="${n}">${n}</button>`).join('')}</div>` : ''}
+          </div>
+          <dl class="crs-buy-rows dg-buy-summary" id="dg-buy-rows"></dl>
+          <label class="crs-consent">
+            <input type="checkbox" id="dg-consent">
+            <span>${this.escapeHtml(this.dgText(
+              'Dijital ürünün hemen teslim edilmesini istiyorum; teslimattan sonra cayma hakkımın sona ereceğini kabul ediyorum.',
+              'I want the digital product delivered immediately and I accept that my right of withdrawal ends after delivery.'))}</span>
+          </label>
+          <div class="crs-buy-actions dg-buy-actions" id="dg-buy-actions"></div>
+          <p class="dg-secure"><i class="fa-solid fa-lock" aria-hidden="true"></i> ${this.escapeHtml(this.dgText('Ödeme bakiyenden alınır; bilgiler yalnızca sana gösterilir.', 'Paid from your balance; the details are shown only to you.'))}</p>
         </div>
-      </label>
-      <dl class="crs-buy-rows" id="dg-buy-rows"></dl>
-      <label class="crs-consent">
-        <input type="checkbox" id="dg-consent">
-        <span>${this.escapeHtml(this.dgText(
-          'Dijital ürünün hemen teslim edilmesini istiyorum; teslimattan sonra cayma hakkımın sona ereceğini kabul ediyorum.',
-          'I want the digital product delivered immediately and I accept that my right of withdrawal ends after delivery.'))}</span>
-      </label>
-      <div class="crs-buy-actions" id="dg-buy-actions"></div>`);
+      </div>`, { wide: true });
 
     const qtyInput = overlay.querySelector('#dg-qty');
     const update = () => {
       let qty = Number.parseInt(qtyInput.value, 10);
       if (!Number.isFinite(qty)) qty = product.min;
+      overlay.querySelectorAll('.dg-qty-quick [data-qty]').forEach(btn => btn.classList.toggle('active', Number(btn.dataset.qty) === qty));
       const total = Math.round(product.price * 100 * qty) / 100;
       const balance = Number(this.currentUser?.balance || 0);
       const enough = balance >= total;
       const valid = qty >= product.min && qty <= maxQty;
       const rows = [
         [this.dgText('Birim fiyat', 'Unit price'), this.dgMoney(product.price)],
-        [this.dgText('Toplam', 'Total'), this.dgMoney(total)],
-        [this.dgText('Mevcut bakiyen', 'Your balance'), this.dgMoney(balance)]
+        [this.dgText('Mevcut bakiyen', 'Your balance'), this.dgMoney(balance)],
+        [this.dgText('Toplam', 'Total'), this.dgMoney(total)]
       ];
-      overlay.querySelector('#dg-buy-rows').innerHTML = rows.map(([k, v], i) => `<div class="${i === 1 ? 'is-strong' : ''}"><dt>${this.escapeHtml(k)}</dt><dd>${v}</dd></div>`).join('');
+      overlay.querySelector('#dg-buy-rows').innerHTML = rows.map(([k, v], i) => `<div class="${i === 2 ? 'is-strong' : ''}"><dt>${this.escapeHtml(k)}</dt><dd>${v}</dd></div>`).join('');
       const actions = overlay.querySelector('#dg-buy-actions');
       if (!valid) {
         actions.innerHTML = `<p class="crs-buy-error">${this.escapeHtml(this.dgText(`Adet ${product.min} ile ${maxQty} arasında olmalı.`, `Quantity must be between ${product.min} and ${maxQty}.`))}</p>`;
@@ -369,6 +407,10 @@ Object.assign(SmmApp.prototype, {
     overlay.querySelectorAll('.dg-qty-step').forEach(btn => btn.addEventListener('click', () => {
       const next = (Number.parseInt(qtyInput.value, 10) || product.min) + Number(btn.dataset.step);
       qtyInput.value = Math.max(product.min, Math.min(maxQty, next));
+      update();
+    }));
+    overlay.querySelectorAll('.dg-qty-quick [data-qty]').forEach(btn => btn.addEventListener('click', () => {
+      qtyInput.value = btn.dataset.qty;
       update();
     }));
     update();

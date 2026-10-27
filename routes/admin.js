@@ -193,13 +193,35 @@ function requireIdParam(req, res, next) {
 router.use(authenticateToken, requireAdmin);
 
 // DASHBOARD STATS
+// Genel Bakis donemleri. Sinirlar Turkiye saatine gore (UTC+3, yaz saati yok)
+// gun basindan hesaplanir; created_at UTC tutuldugu icin sinir UTC'ye cevrilir.
+// Ifadeler sabittir (istemciden SQL gelmez), yalnizca anahtar secilir.
+const TR_GUN = offset => `datetime(date('now', '+3 hours', '${offset} days'), '-3 hours')`;
+const DASH_PERIODS = {
+  today: { label: 'Bugün', from: TR_GUN(0), to: null, unit: 'hour' },
+  yesterday: { label: 'Dün', from: TR_GUN(-1), to: TR_GUN(0), unit: 'hour' },
+  '7d': { label: 'Son 7 Gün', from: TR_GUN(-6), to: null, unit: 'day', days: 7 },
+  '30d': { label: 'Son 30 Gün', from: TR_GUN(-29), to: null, unit: 'day', days: 30 },
+  '90d': { label: 'Son 90 Gün', from: TR_GUN(-89), to: null, unit: 'day', days: 90 },
+  // Tumu: sayilar tum zamanlar; grafik son 30 gun (eski davranis).
+  all: { label: 'Tüm Zamanlar', from: null, to: null, unit: 'day', days: 30, chartFrom: TR_GUN(-29) }
+};
+
 router.get('/stats', async (req, res) => {
   try {
+    const periodKey = Object.prototype.hasOwnProperty.call(DASH_PERIODS, req.query.period) ? req.query.period : 'all';
+    const period = DASH_PERIODS[periodKey];
+    // Kolona gore donem kosulu ("" = sinirsiz). Basina AND/WHERE cagiran ekler.
+    const inPeriod = col => [period.from ? `${col} >= ${period.from}` : '', period.to ? `${col} < ${period.to}` : '']
+      .filter(Boolean).join(' AND ');
+    const where = col => (inPeriod(col) ? `WHERE ${inPeriod(col)}` : '');
+    const and = col => (inPeriod(col) ? `AND ${inPeriod(col)}` : '');
+
     // Ciro: musteriden gercekten tahsil kalan tutar. Iptal/basarisiz siparisler
     // tamamen, kismi siparisler kismen iade edildigi icin charge yerine
     // (charge - iade) toplanir; boylece iade edilen para ciroda gorunmez.
     const revenueRow = await dbAsync.get(
-      `SELECT COALESCE(SUM(charge_kurus - refunded_kurus), 0) as net_kurus FROM orders`
+      `SELECT COALESCE(SUM(charge_kurus - refunded_kurus), 0) as net_kurus FROM orders ${where('created_at')}`
     );
 
     // Siparis sayilari durum kiriliminda: "toplam" yalnizca gecerli (iptal ve
@@ -213,7 +235,7 @@ router.get('/stats', async (req, res) => {
         SUM(CASE WHEN status = 'partial' THEN 1 ELSE 0 END) as partial_count,
         SUM(CASE WHEN status = 'canceled' THEN 1 ELSE 0 END) as canceled_count,
         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count
-      FROM orders
+      FROM orders ${where('created_at')}
     `);
 
     // Tedarikci maliyeti: saglayiciya gercekten iletilen siparislerde
@@ -228,7 +250,7 @@ router.get('/stats', async (req, res) => {
       FROM orders o
       JOIN services s ON o.service_id = s.id
       WHERE o.status IN ('pending','processing','completed','partial')
-        AND s.provider_cost_rate > 0
+        AND s.provider_cost_rate > 0 ${and('o.created_at')}
       GROUP BY COALESCE(s.provider_cost_currency, 'USD')
     `);
     const exchangeSetting = await dbAsync.get("SELECT value FROM site_settings WHERE key = 'usd_try_rate'");
@@ -254,25 +276,30 @@ router.get('/stats', async (req, res) => {
       SELECT COUNT(*) as count FROM orders o
       JOIN services s ON o.service_id = s.id
       WHERE o.status IN ('pending','processing','completed','partial')
-        AND (s.provider_cost_rate IS NULL OR s.provider_cost_rate <= 0)
+        AND (s.provider_cost_rate IS NULL OR s.provider_cost_rate <= 0) ${and('o.created_at')}
     `);
 
-    // Son 30 gunun gunluk ciro/maliyet serisi (grafik icin). Maliyet, guncel
-    // saglayici fiyatiyla yaklasik hesaplanir ve kur uzerinden TL'ye cevrilir.
+    // Grafik serisi (secili doneme gore): bugun/dun saatlik, digerleri gunluk.
+    // Gun ve saat Turkiye saatine gore gruplanir. Maliyet, guncel saglayici
+    // fiyatiyla yaklasik hesaplanir ve kur uzerinden TL'ye cevrilir.
+    const hourly = period.unit === 'hour';
+    const bucket = col => (hourly ? `strftime('%H', ${col}, '+3 hours')` : `date(${col}, '+3 hours')`);
+    const chartFrom = period.chartFrom || period.from;
+    const chartRange = col => [chartFrom ? `${col} >= ${chartFrom}` : '', period.to ? `${col} < ${period.to}` : ''].filter(Boolean).join(' AND ') || '1 = 1';
     const dailyRevenueRows = await dbAsync.all(`
-      SELECT date(created_at) as day, SUM(charge_kurus - refunded_kurus) as net_kurus
-      FROM orders WHERE created_at >= date('now', '-29 days')
-      GROUP BY date(created_at)
+      SELECT ${bucket('created_at')} as day, SUM(charge_kurus - refunded_kurus) as net_kurus
+      FROM orders WHERE ${chartRange('created_at')}
+      GROUP BY day
     `);
     const dailyCostRows = await dbAsync.all(`
-      SELECT date(o.created_at) as day, COALESCE(s.provider_cost_currency, 'USD') as currency,
+      SELECT ${bucket('o.created_at')} as day, COALESCE(s.provider_cost_currency, 'USD') as currency,
              SUM((o.quantity - CASE WHEN o.status = 'partial' THEN COALESCE(o.remains, 0) ELSE 0 END)
                  * s.provider_cost_rate / 1000.0) as cost
       FROM orders o JOIN services s ON o.service_id = s.id
-      WHERE o.created_at >= date('now', '-29 days')
+      WHERE ${chartRange('o.created_at')}
         AND o.status IN ('pending','processing','completed','partial')
         AND s.provider_cost_rate > 0
-      GROUP BY date(o.created_at), COALESCE(s.provider_cost_currency, 'USD')
+      GROUP BY day, COALESCE(s.provider_cost_currency, 'USD')
     `);
     const revenueByDay = new Map(dailyRevenueRows.map(row => [row.day, fromKurus(row.net_kurus || 0)]));
     const costByDay = new Map();
@@ -280,19 +307,23 @@ router.get('/stats', async (req, res) => {
       const cost = (Number(row.cost) || 0) * (String(row.currency).toUpperCase() === 'TRY' ? 1 : usdTryRate);
       costByDay.set(row.day, (costByDay.get(row.day) || 0) + cost);
     }
-    const dailySeries = [];
-    for (let i = 29; i >= 0; i--) {
-      const date = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
-      const revenue = revenueByDay.get(date) || 0;
-      const cost = costByDay.get(date) || 0;
-      dailySeries.push({
-        day: date,
+    // Eksen: saatlikte 00..23, gunlukte Turkiye takvimine gore son N gun.
+    const slots = hourly
+      ? Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0'))
+      : Array.from({ length: period.days }, (_, i) => new Date(Date.now() + 3 * 3600000 - (period.days - 1 - i) * 86400000).toISOString().slice(0, 10));
+    const dailySeries = slots.map(slot => {
+      const revenue = revenueByDay.get(slot) || 0;
+      const cost = costByDay.get(slot) || 0;
+      return {
+        day: hourly ? `${slot}:00` : slot,
         revenue: Math.round(revenue * 100) / 100,
         profit: Math.round((revenue - cost) * 100) / 100
-      });
-    }
+      };
+    });
 
     const totalUsersRow = await dbAsync.get(`SELECT COUNT(*) as count FROM users WHERE role = 'client'`);
+    // Secili donemde kayit olan musteri (Tumu seciliyken toplamla ayni).
+    const newUsersRow = await dbAsync.get(`SELECT COUNT(*) as count FROM users WHERE role = 'client' ${and('created_at')}`);
     const activeProvidersRow = await dbAsync.get(`SELECT COUNT(*) as count FROM providers WHERE status = 1`);
     const pendingTicketsRow = await dbAsync.get(`SELECT COUNT(*) as count FROM tickets WHERE status = 'open'`);
     const pendingDepositsRow = await dbAsync.get(`SELECT COUNT(*) as count FROM payment_notifications WHERE status = 'pending'`);
@@ -322,10 +353,14 @@ router.get('/stats', async (req, res) => {
         canceled_orders: orderCountsRow.canceled_count || 0,
         failed_orders: orderCountsRow.failed_count || 0,
         total_users: totalUsersRow.count || 0,
+        new_users: newUsersRow.count || 0,
         active_providers: activeProvidersRow.count || 0,
         pending_tickets: pendingTicketsRow.count || 0
         , pending_deposits: pendingDepositsRow.count || 0
       },
+      period: periodKey,
+      period_label: period.label,
+      chart_unit: period.unit,
       dailySeries,
       recentOrders
     });

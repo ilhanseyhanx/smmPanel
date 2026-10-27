@@ -174,6 +174,14 @@ app.use((req, res, next) => {
   res.redirect(301, hedef + (soru === -1 ? '' : req.originalUrl.slice(soru)));
 });
 
+// Bot ziyareti: SEO dosyalari da Sistem Sagligi > Arama Motoru Ziyaretleri'ne
+// yazilir ("seo-dosyasi" grubu eskiden hep 0 kaliyordu; yalnizca sayfa
+// rotalari kayit yapiyordu). Asil yanit asagidaki rotalardan gelir.
+app.get(['/sitemap.xml', '/robots.txt', '/llms.txt', '/llms-full.txt'], (req, res, next) => {
+  require('./services/crawlerTracker').record(req, 200);
+  next();
+});
+
 // SEO: dinamik sitemap + robots (statik dosyalardan ONCE tanimlanmali)
 // Sitemap, PUBLIC_BASE_URL ve yayindaki blog yazilarindan uretilir.
 // ----------------------------------------------------
@@ -630,7 +638,12 @@ app.get('/blog/:slug', async (req, res) => {
 // vermesin diye kalici olarak bloga yonlendirilir (icerik egitseldi, en yakin
 // karsilik blog). Veritabanindaki egitim kayitlari arsiv olarak duruyor.
 // ----------------------------------------------------
-app.get(['/egitimler', '/egitimler/*splat'], (req, res) => res.redirect(301, '/blog'));
+// Botlarin eski adresleri yeniden taramasi Sistem Sagligi'nda "eski-egitim"
+// grubunda izlenir (Google 301'i gordukce adresleri dizinden dusurur).
+app.get(['/egitimler', '/egitimler/*splat'], (req, res) => {
+  require('./services/crawlerTracker').record(req, 301);
+  res.redirect(301, '/blog');
+});
 
 // Serve frontend static assets.
 // index: false -> ana sayfa istekleri asagidaki SPA handler'ina duser; orada

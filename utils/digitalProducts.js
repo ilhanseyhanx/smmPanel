@@ -116,7 +116,8 @@ function localizeProduct(row, lang = 'tr') {
     max: row.max_quantity,
     format: row.item_format || '',
     delivery_time: row.delivery_time || '',
-    warranty_hours: Number(row.warranty_hours || 0)
+    warranty_hours: Number(row.warranty_hours || 0),
+    image: row.image_url || null
   };
 }
 
@@ -135,14 +136,20 @@ function cardHtml(product, lang) {
   ].filter(Boolean).join('');
   const stock = product.stock === null ? ''
     : `<span class="dg-stock ${soldOut ? 'is-out' : 'is-in'}">${esc(soldOut ? t.soldOut : t.stock(product.stock.toLocaleString('tr-TR')))}</span>`;
-  return `<article class="dg-card glass-card${soldOut ? ' is-sold-out' : ''}" data-dg-id="${Number(product.id)}" data-dg-cat="${esc(fold(product.category))}" data-dg-search="${esc(fold(`${product.name} ${product.category}`))}">
-      <div class="dg-card-top">${product.category ? `<span class="dg-cat">${esc(product.category)}</span>` : '<span></span>'}${stock}</div>
-      <h2 class="dg-card-title">${esc(product.name)}</h2>
-      ${product.description ? `<p class="dg-card-desc">${esc(product.description)}</p>` : ''}
-      ${meta ? `<ul class="dg-card-meta">${meta}</ul>` : ''}
-      <div class="dg-card-foot">
-        <div class="dg-price-box"><strong class="dg-price">${esc(formatPrice(product.price))}</strong><small>${esc(t.perItem)}</small></div>
-        <button type="button" class="dg-buy-btn" data-dg-buy="${Number(product.id)}"${soldOut ? ' disabled' : ''}>${esc(soldOut ? t.soldOut : t.buy)}</button>
+  // Gorsel secilmemis urunde notr bir zemin + simge gosterilir.
+  const media = product.image
+    ? `<img src="${esc(product.image)}" alt="${esc(product.name)}" loading="lazy" decoding="async" width="800" height="500">`
+    : '<i class="fa-solid fa-bag-shopping" aria-hidden="true"></i>';
+  return `<article class="dg-card glass-card${soldOut ? ' is-sold-out' : ''}" data-dg-id="${Number(product.id)}" data-dg-cat="${esc(fold(product.category))}" data-dg-search="${esc(fold(`${product.name} ${product.category}`))}" data-track-pid="${Number(product.id)}" data-track-ctx="${esc(product.name.slice(0, 80))}">
+      <div class="dg-card-media${product.image ? '' : ' is-empty'}">${media}${product.category ? `<span class="dg-cat">${esc(product.category)}</span>` : ''}${stock}</div>
+      <div class="dg-card-body">
+        <h2 class="dg-card-title">${esc(product.name)}</h2>
+        ${product.description ? `<p class="dg-card-desc">${esc(product.description)}</p>` : ''}
+        ${meta ? `<ul class="dg-card-meta">${meta}</ul>` : ''}
+        <div class="dg-card-foot">
+          <div class="dg-price-box"><strong class="dg-price">${esc(formatPrice(product.price))}</strong><small>${esc(t.perItem)}</small></div>
+          <button type="button" class="dg-buy-btn" data-dg-buy="${Number(product.id)}"${soldOut ? ' disabled' : ''}><span>${esc(soldOut ? t.soldOut : t.buy)}</span>${soldOut ? '' : ' <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>'}</button>
+        </div>
       </div>
     </article>`;
 }

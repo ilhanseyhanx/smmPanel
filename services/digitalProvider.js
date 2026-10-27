@@ -21,6 +21,14 @@ const axios = require('axios');
 const { assertPublicProviderUrl, safeRequestConfig } = require('../utils/network');
 const { normalizePlainText } = require('../utils/security');
 
+// HTML etiketleri atilir ama metin ESCAPE edilmeden saklanir: sanitize-html
+// '&' isaretini '&amp;' yapiyordu ve ekranda (cikista zaten escape edilirken)
+// 'Design &amp; Stock' gibi bozuk gorunuyordu. Cikti her yerde escape edilir.
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" };
+function plain(value, max) {
+  return normalizePlainText(String(value ?? ''), max).replace(/&(amp|lt|gt|quot|#39);/g, (m, e) => ENTITIES[e]);
+}
+
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 function providerError(message, { definite = true, status = null } = {}) {
@@ -41,7 +49,7 @@ function messageFrom(body, fallback) {
     Array.isArray(body.errors) ? (body.errors[0]?.message || body.errors[0]) : null
   ];
   const found = candidates.find(item => typeof item === 'string' && item.trim());
-  return found ? normalizePlainText(found, 300) : fallback;
+  return found ? plain(found, 300) : fallback;
 }
 
 function toInt(value, fallback = null) {
@@ -58,17 +66,17 @@ function normalizeProduct(raw) {
   return {
     provider_product_id: String(id).trim().slice(0, 120),
     slug: normalizePlainText(String(raw.slug ?? id), 160),
-    name: normalizePlainText(String(raw.name || ''), 220) || `Ürün #${id}`,
-    category: normalizePlainText(String(raw.category?.name ?? raw.category ?? ''), 120),
+    name: plain(raw.name || '', 220) || `Ürün #${id}`,
+    category: plain(raw.category?.name ?? raw.category ?? '', 120),
     price: Number.isFinite(price) && price >= 0 ? price : null,
     stock: toInt(raw.stock),
-    format: normalizePlainText(String(raw.format || ''), 120),
-    delivery_time: normalizePlainText(String(raw.delivery_time || ''), 80),
+    format: plain(raw.format || '', 120),
+    delivery_time: plain(raw.delivery_time || '', 80),
     warranty_hours: Math.max(0, toInt(raw.warranty_hours, 0)),
     min: Math.max(1, toInt(raw.min, 1)),
     max: Math.max(1, toInt(raw.max, 100)),
-    description: normalizePlainText(String(raw.description || ''), 5000),
-    usage: normalizePlainText(String(raw.usage || ''), 5000)
+    description: plain(raw.description || '', 5000),
+    usage: plain(raw.usage || '', 5000)
   };
 }
 
@@ -128,7 +136,7 @@ class DigitalProviderClient {
   async getCategories() {
     const data = await this.request('GET', '/categories', { timeout: 10000 });
     return (Array.isArray(data) ? data : []).map(item => ({
-      name: normalizePlainText(String(item?.name || ''), 120),
+      name: plain(item?.name || '', 120),
       slug: normalizePlainText(String(item?.slug || ''), 120),
       products: toInt(item?.products, 0)
     })).filter(item => item.name);
@@ -218,8 +226,8 @@ function normalizeOrder(data) {
       .map(item => (typeof item === 'string' ? item : JSON.stringify(item)))
       .map(item => String(item).replace(/\r/g, '').trim().slice(0, 2000))
       .filter(Boolean),
-    usage: normalizePlainText(String(data?.usage || ''), 5000)
+    usage: plain(data?.usage || '', 5000)
   };
 }
 
-module.exports = { DigitalProviderClient, normalizeProduct, normalizeOrder, CHECK_STATUSES };
+module.exports = { DigitalProviderClient, normalizeProduct, normalizeOrder, plain, CHECK_STATUSES };

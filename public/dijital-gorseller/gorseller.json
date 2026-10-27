@@ -1,0 +1,1630 @@
+{
+ "note": "scripts/digital-visuals.js ile uretilir. Logolar: Simple Icons (CC0 1.0), Font Awesome Free (CC BY 4.0). Marka adlari ve logolari sahiplerine aittir.",
+ "brands": [
+  "instagram",
+  "gmail",
+  "x",
+  "tiktok",
+  "outlook",
+  "facebook",
+  "telegram",
+  "discord",
+  "threads",
+  "linkedin",
+  "twitch",
+  "snapchat",
+  "pinterest",
+  "youtube",
+  "reddit",
+  "yahoo",
+  "maildotcom",
+  "gmx",
+  "windows",
+  "office",
+  "coreldraw",
+  "adobe",
+  "chatgpt",
+  "claude",
+  "gemini",
+  "grok",
+  "nordvpn",
+  "expressvpn",
+  "pia",
+  "semrush",
+  "envato",
+  "freepik",
+  "netflix",
+  "duolingo",
+  "protonmail",
+  "capcut",
+  "winrar",
+  "vpn",
+  "ai",
+  "seo",
+  "design",
+  "email",
+  "license",
+  "premium",
+  "account"
+ ],
+ "images": [
+  {
+   "id": "instagram-1",
+   "file": "/dijital-gorseller/instagram-1.webp",
+   "brand": "instagram",
+   "label": "Instagram",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "instagram"
+   ]
+  },
+  {
+   "id": "instagram-2",
+   "file": "/dijital-gorseller/instagram-2.webp",
+   "brand": "instagram",
+   "label": "Instagram",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "instagram"
+   ]
+  },
+  {
+   "id": "instagram-3",
+   "file": "/dijital-gorseller/instagram-3.webp",
+   "brand": "instagram",
+   "label": "Instagram",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "instagram"
+   ]
+  },
+  {
+   "id": "gmail-1",
+   "file": "/dijital-gorseller/gmail-1.webp",
+   "brand": "gmail",
+   "label": "Gmail",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "gmail"
+   ]
+  },
+  {
+   "id": "gmail-2",
+   "file": "/dijital-gorseller/gmail-2.webp",
+   "brand": "gmail",
+   "label": "Gmail",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "gmail"
+   ]
+  },
+  {
+   "id": "gmail-3",
+   "file": "/dijital-gorseller/gmail-3.webp",
+   "brand": "gmail",
+   "label": "Gmail",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "gmail"
+   ]
+  },
+  {
+   "id": "x-1",
+   "file": "/dijital-gorseller/x-1.webp",
+   "brand": "x",
+   "label": "X (Twitter)",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "twitter",
+    "x (twitter)"
+   ]
+  },
+  {
+   "id": "x-2",
+   "file": "/dijital-gorseller/x-2.webp",
+   "brand": "x",
+   "label": "X (Twitter)",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "twitter",
+    "x (twitter)"
+   ]
+  },
+  {
+   "id": "x-3",
+   "file": "/dijital-gorseller/x-3.webp",
+   "brand": "x",
+   "label": "X (Twitter)",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "twitter",
+    "x (twitter)"
+   ]
+  },
+  {
+   "id": "tiktok-1",
+   "file": "/dijital-gorseller/tiktok-1.webp",
+   "brand": "tiktok",
+   "label": "TikTok",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "tiktok"
+   ]
+  },
+  {
+   "id": "tiktok-2",
+   "file": "/dijital-gorseller/tiktok-2.webp",
+   "brand": "tiktok",
+   "label": "TikTok",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "tiktok"
+   ]
+  },
+  {
+   "id": "tiktok-3",
+   "file": "/dijital-gorseller/tiktok-3.webp",
+   "brand": "tiktok",
+   "label": "TikTok",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "tiktok"
+   ]
+  },
+  {
+   "id": "outlook-1",
+   "file": "/dijital-gorseller/outlook-1.webp",
+   "brand": "outlook",
+   "label": "Outlook / Hotmail",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "outlook",
+    "hotmail",
+    "microsoft"
+   ]
+  },
+  {
+   "id": "outlook-2",
+   "file": "/dijital-gorseller/outlook-2.webp",
+   "brand": "outlook",
+   "label": "Outlook / Hotmail",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "outlook",
+    "hotmail",
+    "microsoft"
+   ]
+  },
+  {
+   "id": "outlook-3",
+   "file": "/dijital-gorseller/outlook-3.webp",
+   "brand": "outlook",
+   "label": "Outlook / Hotmail",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "outlook",
+    "hotmail",
+    "microsoft"
+   ]
+  },
+  {
+   "id": "facebook-1",
+   "file": "/dijital-gorseller/facebook-1.webp",
+   "brand": "facebook",
+   "label": "Facebook",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "facebook"
+   ]
+  },
+  {
+   "id": "facebook-2",
+   "file": "/dijital-gorseller/facebook-2.webp",
+   "brand": "facebook",
+   "label": "Facebook",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "facebook"
+   ]
+  },
+  {
+   "id": "facebook-3",
+   "file": "/dijital-gorseller/facebook-3.webp",
+   "brand": "facebook",
+   "label": "Facebook",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "facebook"
+   ]
+  },
+  {
+   "id": "telegram-1",
+   "file": "/dijital-gorseller/telegram-1.webp",
+   "brand": "telegram",
+   "label": "Telegram",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "telegram"
+   ]
+  },
+  {
+   "id": "telegram-2",
+   "file": "/dijital-gorseller/telegram-2.webp",
+   "brand": "telegram",
+   "label": "Telegram",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "telegram"
+   ]
+  },
+  {
+   "id": "telegram-3",
+   "file": "/dijital-gorseller/telegram-3.webp",
+   "brand": "telegram",
+   "label": "Telegram",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "telegram"
+   ]
+  },
+  {
+   "id": "discord-1",
+   "file": "/dijital-gorseller/discord-1.webp",
+   "brand": "discord",
+   "label": "Discord",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "discord"
+   ]
+  },
+  {
+   "id": "discord-2",
+   "file": "/dijital-gorseller/discord-2.webp",
+   "brand": "discord",
+   "label": "Discord",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "discord"
+   ]
+  },
+  {
+   "id": "discord-3",
+   "file": "/dijital-gorseller/discord-3.webp",
+   "brand": "discord",
+   "label": "Discord",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "discord"
+   ]
+  },
+  {
+   "id": "threads-1",
+   "file": "/dijital-gorseller/threads-1.webp",
+   "brand": "threads",
+   "label": "Threads",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "threads"
+   ]
+  },
+  {
+   "id": "threads-2",
+   "file": "/dijital-gorseller/threads-2.webp",
+   "brand": "threads",
+   "label": "Threads",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "threads"
+   ]
+  },
+  {
+   "id": "threads-3",
+   "file": "/dijital-gorseller/threads-3.webp",
+   "brand": "threads",
+   "label": "Threads",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "threads"
+   ]
+  },
+  {
+   "id": "linkedin-1",
+   "file": "/dijital-gorseller/linkedin-1.webp",
+   "brand": "linkedin",
+   "label": "LinkedIn",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "linkedin"
+   ]
+  },
+  {
+   "id": "linkedin-2",
+   "file": "/dijital-gorseller/linkedin-2.webp",
+   "brand": "linkedin",
+   "label": "LinkedIn",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "linkedin"
+   ]
+  },
+  {
+   "id": "linkedin-3",
+   "file": "/dijital-gorseller/linkedin-3.webp",
+   "brand": "linkedin",
+   "label": "LinkedIn",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "linkedin"
+   ]
+  },
+  {
+   "id": "twitch-1",
+   "file": "/dijital-gorseller/twitch-1.webp",
+   "brand": "twitch",
+   "label": "Twitch",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "twitch"
+   ]
+  },
+  {
+   "id": "twitch-2",
+   "file": "/dijital-gorseller/twitch-2.webp",
+   "brand": "twitch",
+   "label": "Twitch",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "twitch"
+   ]
+  },
+  {
+   "id": "twitch-3",
+   "file": "/dijital-gorseller/twitch-3.webp",
+   "brand": "twitch",
+   "label": "Twitch",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "twitch"
+   ]
+  },
+  {
+   "id": "snapchat-1",
+   "file": "/dijital-gorseller/snapchat-1.webp",
+   "brand": "snapchat",
+   "label": "Snapchat",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "snapchat"
+   ]
+  },
+  {
+   "id": "snapchat-2",
+   "file": "/dijital-gorseller/snapchat-2.webp",
+   "brand": "snapchat",
+   "label": "Snapchat",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "snapchat"
+   ]
+  },
+  {
+   "id": "snapchat-3",
+   "file": "/dijital-gorseller/snapchat-3.webp",
+   "brand": "snapchat",
+   "label": "Snapchat",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "snapchat"
+   ]
+  },
+  {
+   "id": "pinterest-1",
+   "file": "/dijital-gorseller/pinterest-1.webp",
+   "brand": "pinterest",
+   "label": "Pinterest",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "pinterest"
+   ]
+  },
+  {
+   "id": "pinterest-2",
+   "file": "/dijital-gorseller/pinterest-2.webp",
+   "brand": "pinterest",
+   "label": "Pinterest",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "pinterest"
+   ]
+  },
+  {
+   "id": "pinterest-3",
+   "file": "/dijital-gorseller/pinterest-3.webp",
+   "brand": "pinterest",
+   "label": "Pinterest",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "pinterest"
+   ]
+  },
+  {
+   "id": "youtube-1",
+   "file": "/dijital-gorseller/youtube-1.webp",
+   "brand": "youtube",
+   "label": "YouTube",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "youtube"
+   ]
+  },
+  {
+   "id": "youtube-2",
+   "file": "/dijital-gorseller/youtube-2.webp",
+   "brand": "youtube",
+   "label": "YouTube",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "youtube"
+   ]
+  },
+  {
+   "id": "youtube-3",
+   "file": "/dijital-gorseller/youtube-3.webp",
+   "brand": "youtube",
+   "label": "YouTube",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "youtube"
+   ]
+  },
+  {
+   "id": "reddit-1",
+   "file": "/dijital-gorseller/reddit-1.webp",
+   "brand": "reddit",
+   "label": "Reddit",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "reddit"
+   ]
+  },
+  {
+   "id": "reddit-2",
+   "file": "/dijital-gorseller/reddit-2.webp",
+   "brand": "reddit",
+   "label": "Reddit",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "reddit"
+   ]
+  },
+  {
+   "id": "reddit-3",
+   "file": "/dijital-gorseller/reddit-3.webp",
+   "brand": "reddit",
+   "label": "Reddit",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "reddit"
+   ]
+  },
+  {
+   "id": "yahoo-1",
+   "file": "/dijital-gorseller/yahoo-1.webp",
+   "brand": "yahoo",
+   "label": "Yahoo Mail",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "yahoo"
+   ]
+  },
+  {
+   "id": "yahoo-2",
+   "file": "/dijital-gorseller/yahoo-2.webp",
+   "brand": "yahoo",
+   "label": "Yahoo Mail",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "yahoo"
+   ]
+  },
+  {
+   "id": "yahoo-3",
+   "file": "/dijital-gorseller/yahoo-3.webp",
+   "brand": "yahoo",
+   "label": "Yahoo Mail",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "yahoo"
+   ]
+  },
+  {
+   "id": "maildotcom-1",
+   "file": "/dijital-gorseller/maildotcom-1.webp",
+   "brand": "maildotcom",
+   "label": "Mail.com",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "mail.com"
+   ]
+  },
+  {
+   "id": "maildotcom-2",
+   "file": "/dijital-gorseller/maildotcom-2.webp",
+   "brand": "maildotcom",
+   "label": "Mail.com",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "mail.com"
+   ]
+  },
+  {
+   "id": "maildotcom-3",
+   "file": "/dijital-gorseller/maildotcom-3.webp",
+   "brand": "maildotcom",
+   "label": "Mail.com",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "mail.com"
+   ]
+  },
+  {
+   "id": "gmx-1",
+   "file": "/dijital-gorseller/gmx-1.webp",
+   "brand": "gmx",
+   "label": "GMX",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "gmx"
+   ]
+  },
+  {
+   "id": "gmx-2",
+   "file": "/dijital-gorseller/gmx-2.webp",
+   "brand": "gmx",
+   "label": "GMX",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "gmx"
+   ]
+  },
+  {
+   "id": "gmx-3",
+   "file": "/dijital-gorseller/gmx-3.webp",
+   "brand": "gmx",
+   "label": "GMX",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "gmx"
+   ]
+  },
+  {
+   "id": "windows-1",
+   "file": "/dijital-gorseller/windows-1.webp",
+   "brand": "windows",
+   "label": "Windows",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "windows"
+   ]
+  },
+  {
+   "id": "windows-2",
+   "file": "/dijital-gorseller/windows-2.webp",
+   "brand": "windows",
+   "label": "Windows",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "windows"
+   ]
+  },
+  {
+   "id": "windows-3",
+   "file": "/dijital-gorseller/windows-3.webp",
+   "brand": "windows",
+   "label": "Windows",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "windows"
+   ]
+  },
+  {
+   "id": "office-1",
+   "file": "/dijital-gorseller/office-1.webp",
+   "brand": "office",
+   "label": "Microsoft Office",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "office"
+   ]
+  },
+  {
+   "id": "office-2",
+   "file": "/dijital-gorseller/office-2.webp",
+   "brand": "office",
+   "label": "Microsoft Office",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "office"
+   ]
+  },
+  {
+   "id": "office-3",
+   "file": "/dijital-gorseller/office-3.webp",
+   "brand": "office",
+   "label": "Microsoft Office",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "office"
+   ]
+  },
+  {
+   "id": "coreldraw-1",
+   "file": "/dijital-gorseller/coreldraw-1.webp",
+   "brand": "coreldraw",
+   "label": "CorelDRAW",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "coreldraw",
+    "corel"
+   ]
+  },
+  {
+   "id": "coreldraw-2",
+   "file": "/dijital-gorseller/coreldraw-2.webp",
+   "brand": "coreldraw",
+   "label": "CorelDRAW",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "coreldraw",
+    "corel"
+   ]
+  },
+  {
+   "id": "coreldraw-3",
+   "file": "/dijital-gorseller/coreldraw-3.webp",
+   "brand": "coreldraw",
+   "label": "CorelDRAW",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "coreldraw",
+    "corel"
+   ]
+  },
+  {
+   "id": "adobe-1",
+   "file": "/dijital-gorseller/adobe-1.webp",
+   "brand": "adobe",
+   "label": "Adobe Acrobat",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "adobe",
+    "acrobat"
+   ]
+  },
+  {
+   "id": "adobe-2",
+   "file": "/dijital-gorseller/adobe-2.webp",
+   "brand": "adobe",
+   "label": "Adobe Acrobat",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "adobe",
+    "acrobat"
+   ]
+  },
+  {
+   "id": "adobe-3",
+   "file": "/dijital-gorseller/adobe-3.webp",
+   "brand": "adobe",
+   "label": "Adobe Acrobat",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "adobe",
+    "acrobat"
+   ]
+  },
+  {
+   "id": "chatgpt-1",
+   "file": "/dijital-gorseller/chatgpt-1.webp",
+   "brand": "chatgpt",
+   "label": "ChatGPT",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "chatgpt",
+    "gpt",
+    "openai",
+    "codex"
+   ]
+  },
+  {
+   "id": "chatgpt-2",
+   "file": "/dijital-gorseller/chatgpt-2.webp",
+   "brand": "chatgpt",
+   "label": "ChatGPT",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "chatgpt",
+    "gpt",
+    "openai",
+    "codex"
+   ]
+  },
+  {
+   "id": "chatgpt-3",
+   "file": "/dijital-gorseller/chatgpt-3.webp",
+   "brand": "chatgpt",
+   "label": "ChatGPT",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "chatgpt",
+    "gpt",
+    "openai",
+    "codex"
+   ]
+  },
+  {
+   "id": "claude-1",
+   "file": "/dijital-gorseller/claude-1.webp",
+   "brand": "claude",
+   "label": "Claude",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "claude"
+   ]
+  },
+  {
+   "id": "claude-2",
+   "file": "/dijital-gorseller/claude-2.webp",
+   "brand": "claude",
+   "label": "Claude",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "claude"
+   ]
+  },
+  {
+   "id": "claude-3",
+   "file": "/dijital-gorseller/claude-3.webp",
+   "brand": "claude",
+   "label": "Claude",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "claude"
+   ]
+  },
+  {
+   "id": "gemini-1",
+   "file": "/dijital-gorseller/gemini-1.webp",
+   "brand": "gemini",
+   "label": "Gemini",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "gemini",
+    "google one"
+   ]
+  },
+  {
+   "id": "gemini-2",
+   "file": "/dijital-gorseller/gemini-2.webp",
+   "brand": "gemini",
+   "label": "Gemini",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "gemini",
+    "google one"
+   ]
+  },
+  {
+   "id": "gemini-3",
+   "file": "/dijital-gorseller/gemini-3.webp",
+   "brand": "gemini",
+   "label": "Gemini",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "gemini",
+    "google one"
+   ]
+  },
+  {
+   "id": "grok-1",
+   "file": "/dijital-gorseller/grok-1.webp",
+   "brand": "grok",
+   "label": "Grok",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "grok"
+   ]
+  },
+  {
+   "id": "grok-2",
+   "file": "/dijital-gorseller/grok-2.webp",
+   "brand": "grok",
+   "label": "Grok",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "grok"
+   ]
+  },
+  {
+   "id": "grok-3",
+   "file": "/dijital-gorseller/grok-3.webp",
+   "brand": "grok",
+   "label": "Grok",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "grok"
+   ]
+  },
+  {
+   "id": "nordvpn-1",
+   "file": "/dijital-gorseller/nordvpn-1.webp",
+   "brand": "nordvpn",
+   "label": "NordVPN",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "nordvpn"
+   ]
+  },
+  {
+   "id": "nordvpn-2",
+   "file": "/dijital-gorseller/nordvpn-2.webp",
+   "brand": "nordvpn",
+   "label": "NordVPN",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "nordvpn"
+   ]
+  },
+  {
+   "id": "nordvpn-3",
+   "file": "/dijital-gorseller/nordvpn-3.webp",
+   "brand": "nordvpn",
+   "label": "NordVPN",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "nordvpn"
+   ]
+  },
+  {
+   "id": "expressvpn-1",
+   "file": "/dijital-gorseller/expressvpn-1.webp",
+   "brand": "expressvpn",
+   "label": "ExpressVPN",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "expressvpn"
+   ]
+  },
+  {
+   "id": "expressvpn-2",
+   "file": "/dijital-gorseller/expressvpn-2.webp",
+   "brand": "expressvpn",
+   "label": "ExpressVPN",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "expressvpn"
+   ]
+  },
+  {
+   "id": "expressvpn-3",
+   "file": "/dijital-gorseller/expressvpn-3.webp",
+   "brand": "expressvpn",
+   "label": "ExpressVPN",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "expressvpn"
+   ]
+  },
+  {
+   "id": "pia-1",
+   "file": "/dijital-gorseller/pia-1.webp",
+   "brand": "pia",
+   "label": "Private Internet Access",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "pia vpn",
+    "private internet"
+   ]
+  },
+  {
+   "id": "pia-2",
+   "file": "/dijital-gorseller/pia-2.webp",
+   "brand": "pia",
+   "label": "Private Internet Access",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "pia vpn",
+    "private internet"
+   ]
+  },
+  {
+   "id": "pia-3",
+   "file": "/dijital-gorseller/pia-3.webp",
+   "brand": "pia",
+   "label": "Private Internet Access",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "pia vpn",
+    "private internet"
+   ]
+  },
+  {
+   "id": "semrush-1",
+   "file": "/dijital-gorseller/semrush-1.webp",
+   "brand": "semrush",
+   "label": "Semrush",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "semrush"
+   ]
+  },
+  {
+   "id": "semrush-2",
+   "file": "/dijital-gorseller/semrush-2.webp",
+   "brand": "semrush",
+   "label": "Semrush",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "semrush"
+   ]
+  },
+  {
+   "id": "semrush-3",
+   "file": "/dijital-gorseller/semrush-3.webp",
+   "brand": "semrush",
+   "label": "Semrush",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "semrush"
+   ]
+  },
+  {
+   "id": "envato-1",
+   "file": "/dijital-gorseller/envato-1.webp",
+   "brand": "envato",
+   "label": "Envato",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "envato"
+   ]
+  },
+  {
+   "id": "envato-2",
+   "file": "/dijital-gorseller/envato-2.webp",
+   "brand": "envato",
+   "label": "Envato",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "envato"
+   ]
+  },
+  {
+   "id": "envato-3",
+   "file": "/dijital-gorseller/envato-3.webp",
+   "brand": "envato",
+   "label": "Envato",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "envato"
+   ]
+  },
+  {
+   "id": "freepik-1",
+   "file": "/dijital-gorseller/freepik-1.webp",
+   "brand": "freepik",
+   "label": "Freepik",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "freepik"
+   ]
+  },
+  {
+   "id": "freepik-2",
+   "file": "/dijital-gorseller/freepik-2.webp",
+   "brand": "freepik",
+   "label": "Freepik",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "freepik"
+   ]
+  },
+  {
+   "id": "freepik-3",
+   "file": "/dijital-gorseller/freepik-3.webp",
+   "brand": "freepik",
+   "label": "Freepik",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "freepik"
+   ]
+  },
+  {
+   "id": "netflix-1",
+   "file": "/dijital-gorseller/netflix-1.webp",
+   "brand": "netflix",
+   "label": "Netflix",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "netflix"
+   ]
+  },
+  {
+   "id": "netflix-2",
+   "file": "/dijital-gorseller/netflix-2.webp",
+   "brand": "netflix",
+   "label": "Netflix",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "netflix"
+   ]
+  },
+  {
+   "id": "netflix-3",
+   "file": "/dijital-gorseller/netflix-3.webp",
+   "brand": "netflix",
+   "label": "Netflix",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "netflix"
+   ]
+  },
+  {
+   "id": "duolingo-1",
+   "file": "/dijital-gorseller/duolingo-1.webp",
+   "brand": "duolingo",
+   "label": "Duolingo",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "duolingo"
+   ]
+  },
+  {
+   "id": "duolingo-2",
+   "file": "/dijital-gorseller/duolingo-2.webp",
+   "brand": "duolingo",
+   "label": "Duolingo",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "duolingo"
+   ]
+  },
+  {
+   "id": "duolingo-3",
+   "file": "/dijital-gorseller/duolingo-3.webp",
+   "brand": "duolingo",
+   "label": "Duolingo",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "duolingo"
+   ]
+  },
+  {
+   "id": "protonmail-1",
+   "file": "/dijital-gorseller/protonmail-1.webp",
+   "brand": "protonmail",
+   "label": "Proton Mail",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "proton"
+   ]
+  },
+  {
+   "id": "protonmail-2",
+   "file": "/dijital-gorseller/protonmail-2.webp",
+   "brand": "protonmail",
+   "label": "Proton Mail",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "proton"
+   ]
+  },
+  {
+   "id": "protonmail-3",
+   "file": "/dijital-gorseller/protonmail-3.webp",
+   "brand": "protonmail",
+   "label": "Proton Mail",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "proton"
+   ]
+  },
+  {
+   "id": "capcut-1",
+   "file": "/dijital-gorseller/capcut-1.webp",
+   "brand": "capcut",
+   "label": "CapCut",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "capcut"
+   ]
+  },
+  {
+   "id": "capcut-2",
+   "file": "/dijital-gorseller/capcut-2.webp",
+   "brand": "capcut",
+   "label": "CapCut",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "capcut"
+   ]
+  },
+  {
+   "id": "capcut-3",
+   "file": "/dijital-gorseller/capcut-3.webp",
+   "brand": "capcut",
+   "label": "CapCut",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "capcut"
+   ]
+  },
+  {
+   "id": "winrar-1",
+   "file": "/dijital-gorseller/winrar-1.webp",
+   "brand": "winrar",
+   "label": "WinRAR",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "winrar"
+   ]
+  },
+  {
+   "id": "winrar-2",
+   "file": "/dijital-gorseller/winrar-2.webp",
+   "brand": "winrar",
+   "label": "WinRAR",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "winrar"
+   ]
+  },
+  {
+   "id": "winrar-3",
+   "file": "/dijital-gorseller/winrar-3.webp",
+   "brand": "winrar",
+   "label": "WinRAR",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "winrar"
+   ]
+  },
+  {
+   "id": "vpn-1",
+   "file": "/dijital-gorseller/vpn-1.webp",
+   "brand": "vpn",
+   "label": "VPN",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "vpn"
+   ]
+  },
+  {
+   "id": "vpn-2",
+   "file": "/dijital-gorseller/vpn-2.webp",
+   "brand": "vpn",
+   "label": "VPN",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "vpn"
+   ]
+  },
+  {
+   "id": "vpn-3",
+   "file": "/dijital-gorseller/vpn-3.webp",
+   "brand": "vpn",
+   "label": "VPN",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "vpn"
+   ]
+  },
+  {
+   "id": "ai-1",
+   "file": "/dijital-gorseller/ai-1.webp",
+   "brand": "ai",
+   "label": "Yapay Zekâ API",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "kimi",
+    "qwen",
+    "deepseek",
+    "glm",
+    "yapay zeka",
+    "ai api",
+    " api"
+   ]
+  },
+  {
+   "id": "ai-2",
+   "file": "/dijital-gorseller/ai-2.webp",
+   "brand": "ai",
+   "label": "Yapay Zekâ API",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "kimi",
+    "qwen",
+    "deepseek",
+    "glm",
+    "yapay zeka",
+    "ai api",
+    " api"
+   ]
+  },
+  {
+   "id": "ai-3",
+   "file": "/dijital-gorseller/ai-3.webp",
+   "brand": "ai",
+   "label": "Yapay Zekâ API",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "kimi",
+    "qwen",
+    "deepseek",
+    "glm",
+    "yapay zeka",
+    "ai api",
+    " api"
+   ]
+  },
+  {
+   "id": "seo-1",
+   "file": "/dijital-gorseller/seo-1.webp",
+   "brand": "seo",
+   "label": "SEO Araçları",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "seo",
+    "screaming frog"
+   ]
+  },
+  {
+   "id": "seo-2",
+   "file": "/dijital-gorseller/seo-2.webp",
+   "brand": "seo",
+   "label": "SEO Araçları",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "seo",
+    "screaming frog"
+   ]
+  },
+  {
+   "id": "seo-3",
+   "file": "/dijital-gorseller/seo-3.webp",
+   "brand": "seo",
+   "label": "SEO Araçları",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "seo",
+    "screaming frog"
+   ]
+  },
+  {
+   "id": "design-1",
+   "file": "/dijital-gorseller/design-1.webp",
+   "brand": "design",
+   "label": "Tasarım & Stok",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "design",
+    "flaticon",
+    "motion array",
+    "stock"
+   ]
+  },
+  {
+   "id": "design-2",
+   "file": "/dijital-gorseller/design-2.webp",
+   "brand": "design",
+   "label": "Tasarım & Stok",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "design",
+    "flaticon",
+    "motion array",
+    "stock"
+   ]
+  },
+  {
+   "id": "design-3",
+   "file": "/dijital-gorseller/design-3.webp",
+   "brand": "design",
+   "label": "Tasarım & Stok",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "design",
+    "flaticon",
+    "motion array",
+    "stock"
+   ]
+  },
+  {
+   "id": "email-1",
+   "file": "/dijital-gorseller/email-1.webp",
+   "brand": "email",
+   "label": "E-posta Hesabı",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "firstmail",
+    "rambler",
+    "mail account",
+    "e-posta"
+   ]
+  },
+  {
+   "id": "email-2",
+   "file": "/dijital-gorseller/email-2.webp",
+   "brand": "email",
+   "label": "E-posta Hesabı",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "firstmail",
+    "rambler",
+    "mail account",
+    "e-posta"
+   ]
+  },
+  {
+   "id": "email-3",
+   "file": "/dijital-gorseller/email-3.webp",
+   "brand": "email",
+   "label": "E-posta Hesabı",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "firstmail",
+    "rambler",
+    "mail account",
+    "e-posta"
+   ]
+  },
+  {
+   "id": "license-1",
+   "file": "/dijital-gorseller/license-1.webp",
+   "brand": "license",
+   "label": "Lisans Anahtarı",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "license",
+    "lifetime",
+    "retail",
+    "lisans"
+   ]
+  },
+  {
+   "id": "license-2",
+   "file": "/dijital-gorseller/license-2.webp",
+   "brand": "license",
+   "label": "Lisans Anahtarı",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "license",
+    "lifetime",
+    "retail",
+    "lisans"
+   ]
+  },
+  {
+   "id": "license-3",
+   "file": "/dijital-gorseller/license-3.webp",
+   "brand": "license",
+   "label": "Lisans Anahtarı",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "license",
+    "lifetime",
+    "retail",
+    "lisans"
+   ]
+  },
+  {
+   "id": "premium-1",
+   "file": "/dijital-gorseller/premium-1.webp",
+   "brand": "premium",
+   "label": "Premium Üyelik",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "premium",
+    "subscription",
+    "super",
+    "pro ",
+    "üyelik"
+   ]
+  },
+  {
+   "id": "premium-2",
+   "file": "/dijital-gorseller/premium-2.webp",
+   "brand": "premium",
+   "label": "Premium Üyelik",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "premium",
+    "subscription",
+    "super",
+    "pro ",
+    "üyelik"
+   ]
+  },
+  {
+   "id": "premium-3",
+   "file": "/dijital-gorseller/premium-3.webp",
+   "brand": "premium",
+   "label": "Premium Üyelik",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "premium",
+    "subscription",
+    "super",
+    "pro ",
+    "üyelik"
+   ]
+  },
+  {
+   "id": "account-1",
+   "file": "/dijital-gorseller/account-1.webp",
+   "brand": "account",
+   "label": "Hazır Hesap",
+   "variant": 1,
+   "variant_label": "Renkli",
+   "keywords": [
+    "account",
+    "hesap"
+   ]
+  },
+  {
+   "id": "account-2",
+   "file": "/dijital-gorseller/account-2.webp",
+   "brand": "account",
+   "label": "Hazır Hesap",
+   "variant": 2,
+   "variant_label": "Neo",
+   "keywords": [
+    "account",
+    "hesap"
+   ]
+  },
+  {
+   "id": "account-3",
+   "file": "/dijital-gorseller/account-3.webp",
+   "brand": "account",
+   "label": "Hazır Hesap",
+   "variant": 3,
+   "variant_label": "Koyu",
+   "keywords": [
+    "account",
+    "hesap"
+   ]
+  }
+ ]
+}

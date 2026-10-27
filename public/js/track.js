@@ -211,6 +211,19 @@
         else meta = { to: u.pathname.slice(0, 150) };
       } catch (err) { /* yoksay */ }
     } else if (href && href.charAt(0) === '/') meta = { to: href.split('?')[0].slice(0, 150) };
+    // Satir/kart baglami: "Sipariş Ver" tek basina hangi hizmet oldugunu
+    // soylemez; satirdaki data-track-ctx (or. "#123 Instagram Takipçi")
+    // etikete eklenir, hizmet/urun kimligi meta'ya yazilir.
+    var ctxEl = el.closest('[data-track-ctx]');
+    if (ctxEl) {
+      var ctx = (ctxEl.getAttribute('data-track-ctx') || '').replace(/\s+/g, ' ').trim().slice(0, 90);
+      if (ctx && label.indexOf(ctx) === -1) label = label ? label + ' · ' + ctx : ctx;
+      meta = meta || {};
+      var sid = Number(ctxEl.getAttribute('data-track-sid'));
+      var pid = Number(ctxEl.getAttribute('data-track-pid'));
+      if (sid > 0) meta.sid = sid;
+      if (pid > 0) meta.pid = pid;
+    }
     if (!label && !meta) return;
     event(kind, { label: label || (meta && (meta.to || meta.url)), meta: meta });
     // Ayni yere 0,8 sn icinde 3+ tiklama: sinirli tiklama (bir sey calismiyor).
@@ -219,6 +232,25 @@
     recent.push({ t: now, x: e.clientX, y: e.clientY });
     var near = recent.filter(function (c) { return Math.abs(c.x - e.clientX) < 30 && Math.abs(c.y - e.clientY) < 30; });
     if (near.length === 3) event('rage_click', { label: label || 'tıklama' });
+  }, true);
+
+  // --- SECIMLER ---------------------------------------------------------------
+  // Acilir liste secimleri (yeni sipariste kategori/hizmet, hizmet listesinde
+  // ulke ve alt kategori filtresi...). Tiklama dinleyicisi SELECT'i atliyor;
+  // secilen deger ancak change olayinda belli olur. Dil secimi lang_change
+  // olarak zaten yaziliyor.
+  document.addEventListener('change', function (e) {
+    if (disabled) return;
+    var el = e.target;
+    if (!el || el.tagName !== 'SELECT' || el.id === 'language-selector' || (el.closest && el.closest('#view-admin'))) return;
+    var opt = el.options && el.options[el.selectedIndex];
+    if (!opt) return;
+    var labelEl = el.id ? document.querySelector('label[for="' + el.id + '"]') : null;
+    var field = (el.getAttribute('aria-label') || (labelEl && labelEl.textContent) || el.name || el.id || 'Seçim').replace(/\s+/g, ' ').trim().slice(0, 40);
+    var text = (opt.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+    var meta = { field: el.id || null };
+    if (el.id === 'order-service-select' && /^\d+$/.test(el.value)) meta.sid = Number(el.value);
+    event('select_change', { label: field + ': ' + text, meta: meta });
   }, true);
 
   // --- HATALAR ----------------------------------------------------------------

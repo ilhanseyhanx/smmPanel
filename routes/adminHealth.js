@@ -167,7 +167,10 @@ router.get('/seo', async (req, res) => {
     // (dinamik rotayla ayni kaynaklar); sayfa gezilmez, dis istek atilmaz.
     const blogSayisi = (await dbAsync.get("SELECT COUNT(*) n FROM blog_posts WHERE status = 'published'"))?.n || 0;
     const satisSayisi = (await dbAsync.get("SELECT COUNT(*) n FROM landing_pages WHERE status = 'published'"))?.n || 0;
-    const beklenen = SITEMAP_CEKIRDEK + blogSayisi + satisSayisi + (satisSayisi ? 1 : 0); // +1: /hizmet-sayfalari vitrini
+    // /dijital-urunler: satista urun varsa haritaya girer (server.js ile ayni kosul).
+    const dijital = (await dbAsync.get(`SELECT COUNT(*) n FROM digital_products d JOIN digital_providers p ON p.id = d.provider_id
+                                         WHERE d.status = 1 AND p.status = 1`).catch(() => null))?.n ? 1 : 0;
+    const beklenen = SITEMAP_CEKIRDEK + blogSayisi + satisSayisi + (satisSayisi ? 1 : 0) + dijital; // +1: /hizmet-sayfalari vitrini
 
     // Statik fosil dosya: dinamik rota varken zararsizdir ama hosting
     // degisirse dinamigin onune gecebilir. Panel bu riski surekli gosterir.
@@ -181,6 +184,15 @@ router.get('/seo', async (req, res) => {
     const sinir7g = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' ');
     const inOk = await dbAsync.get("SELECT SUM(n) n, MAX(\"max\") son FROM health_metrics_hourly WHERE metric = 'indexnow_ok' AND bucket >= ?", [sinir7g]);
     const inFail = await dbAsync.get("SELECT SUM(n) n, MAX(\"max\") son FROM health_metrics_hourly WHERE metric = 'indexnow_fail' AND bucket >= ?", [sinir7g]);
+    // Pencereden bagimsiz son basari/basarisizlik ve 30 gunluk toplam: IndexNow
+    // yalnizca blog/satis sayfasi yayinlaninca calisir; 7 gunde yayin yoksa
+    // kartlar 0 gorunur ve bu bozuk sanilirdi (27 Eki 2026).
+    const inTum = await dbAsync.get(`SELECT
+        SUM(CASE WHEN metric = 'indexnow_ok' THEN n ELSE 0 END) ok_n,
+        SUM(CASE WHEN metric = 'indexnow_fail' THEN n ELSE 0 END) fail_n,
+        MAX(CASE WHEN metric = 'indexnow_ok' THEN "max" END) son_ok,
+        MAX(CASE WHEN metric = 'indexnow_fail' THEN "max" END) son_fail
+      FROM health_metrics_hourly WHERE metric IN ('indexnow_ok', 'indexnow_fail')`);
     const inOlaylar = await dbAsync.all("SELECT severity, source, detail, created_at FROM health_events WHERE category = 'indexnow_error' ORDER BY id DESC LIMIT 5");
 
     res.json({
@@ -188,7 +200,7 @@ router.get('/seo', async (req, res) => {
       crawler,
       sitemap: {
         expected_urls: beklenen,
-        breakdown: { core: SITEMAP_CEKIRDEK, blog_published: blogSayisi, landing_published: satisSayisi, hub: satisSayisi ? 1 : 0 },
+        breakdown: { core: SITEMAP_CEKIRDEK, blog_published: blogSayisi, landing_published: satisSayisi, hub: satisSayisi ? 1 : 0, digital: dijital },
         static_file: {
           ...statik,
           // Dinamik rota Express'te statik servisten ONCE tanimli oldugu ve
@@ -202,8 +214,10 @@ router.get('/seo', async (req, res) => {
       indexnow: {
         ok_7d: inOk?.n || 0,
         fail_7d: inFail?.n || 0,
-        last_ok_epoch: inOk?.son || null,
-        last_fail_epoch: inFail?.son || null,
+        ok_30d: inTum?.ok_n || 0,
+        fail_30d: inTum?.fail_n || 0,
+        last_ok_epoch: inTum?.son_ok || inOk?.son || null,
+        last_fail_epoch: inTum?.son_fail || inFail?.son || null,
         recent_errors: inOlaylar
       }
     });

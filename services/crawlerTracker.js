@@ -69,6 +69,9 @@ function yolGrubu(reqPath) {
   if (yol.startsWith('/blog/')) return 'blog-yazisi';
   if (yol === '/services') return 'hizmet-listesi';
   if (yol === '/hizmet-sayfalari') return 'vitrin';
+  if (yol === '/dijital-urunler') return 'dijital-urunler';
+  // Eski egitim adresleri 301 ile bloga gider (26 Eki 2026'da kaldirildi).
+  if (yol === '/egitimler' || yol.startsWith('/egitimler/')) return 'eski-egitim';
   if (yol === '/sitemap.xml' || yol === '/robots.txt' || yol.endsWith('.txt')) return 'seo-dosyasi';
   const kok = yol.slice(1);
   // Kok adresli tek parcali yollar: bilinen SPA rotasi ya da satis sayfasi.

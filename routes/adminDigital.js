@@ -13,7 +13,22 @@ const { dbAsync } = require('../config/database');
 const { validate } = require('../middleware/validate');
 const { toKurus, fromKurus } = require('../utils/money');
 const { encryptSecret, decryptSecret, normalizePlainText, isSafeHttpUrl } = require('../utils/security');
-const { DigitalProviderClient } = require('../services/digitalProvider');
+const { DigitalProviderClient, plain } = require('../services/digitalProvider');
+const fs = require('fs');
+const path = require('path');
+
+// Urun gorseli yalnizca galeriden secilir (scripts/digital-visuals.js uretir).
+// Bos/null: gorsel kaldirilir. Dosya sunucuda yoksa kabul edilmez.
+const IMAGE_RE = /^\/dijital-gorseller\/[a-z0-9-]+\.webp$/;
+function imageValue(value) {
+  if (value === undefined) return undefined;
+  const v = String(value || '').trim();
+  if (!v) return null;
+  if (!IMAGE_RE.test(v) || !fs.existsSync(path.join(__dirname, '..', 'public', v))) {
+    throw Store.httpError(400, 'Görsel galeriden seçilmeli.');
+  }
+  return v;
+}
 const Store = require('../services/digitalStore');
 
 const router = express.Router();
@@ -255,7 +270,8 @@ const productFields = {
   min_quantity: z.coerce.number().int().min(1).max(100000).optional(),
   max_quantity: z.coerce.number().int().min(1).max(100000).optional(),
   status: z.coerce.number().int().min(0).max(1).optional(),
-  sort_order: z.coerce.number().int().min(-100000).max(100000).optional()
+  sort_order: z.coerce.number().int().min(-100000).max(100000).optional(),
+  image_url: z.union([z.string().trim().max(200), z.null()]).optional()
 };
 
 router.get('/products', async (req, res, next) => {
@@ -290,6 +306,7 @@ router.get('/products', async (req, res, next) => {
           category_en: row.category_en,
           description: row.description,
           description_en: row.description_en,
+          image_url: row.image_url || null,
           price,
           cost_rate: row.cost_rate,
           cost_currency: row.cost_currency,
@@ -336,27 +353,28 @@ router.post('/products', validate(z.object({
     const detail = await Store.clientFor(provider).getProduct(source.slug).catch(() => null);
 
     const priceKurus = toKurus(req.body.price);
+    const image = imageValue(req.body.image_url) ?? null;
     const min = req.body.min_quantity ?? source.min;
     const max = Math.max(min, req.body.max_quantity ?? source.max);
     const ins = await dbAsync.run(
       `INSERT INTO digital_products (provider_id, provider_product_id, provider_slug, name, name_en, category, category_en,
          description, description_en, price_kurus, cost_rate, cost_currency, stock, min_quantity, max_quantity,
-         item_format, delivery_time, warranty_hours, status, sort_order, synced_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+         item_format, delivery_time, warranty_hours, status, sort_order, image_url, synced_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
       [provider.id, source.provider_product_id, source.slug,
-        normalizePlainText(req.body.name, 220), normalizePlainText(req.body.name_en || '', 220) || null,
-        normalizePlainText(req.body.category ?? source.category, 120) || null,
-        normalizePlainText(req.body.category_en || '', 120) || null,
-        normalizePlainText(req.body.description ?? (detail?.description || source.description || ''), 5000) || null,
-        normalizePlainText(req.body.description_en || '', 5000) || null,
+        plain(req.body.name, 220), plain(req.body.name_en || '', 220) || null,
+        plain(req.body.category ?? source.category, 120) || null,
+        plain(req.body.category_en || '', 120) || null,
+        plain(req.body.description ?? (detail?.description || source.description || ''), 5000) || null,
+        plain(req.body.description_en || '', 5000) || null,
         priceKurus, detail?.price ?? source.price, provider.currency || 'USD',
         detail?.stock ?? source.stock, min, max,
         source.format || null, source.delivery_time || null, source.warranty_hours || 0,
-        req.body.status ?? 1, req.body.sort_order ?? 0]
+        req.body.status ?? 1, req.body.sort_order ?? 0, image]
     );
     await audit(req, 'digital_product_created', ins.id, { name: req.body.name, price_kurus: priceKurus, provider_product_id: source.provider_product_id });
     res.status(201).json({ message: 'Ürün mağazaya eklendi.', id: ins.id });
-  } catch (err) { next(err); }
+  } catch (err) { sendError(res, err, next); }
 });
 
 router.put('/products/:id', idParam, validate(z.object(productFields).partial()), async (req, res, next) => {
@@ -367,20 +385,22 @@ router.put('/products/:id', idParam, validate(z.object(productFields).partial())
     const min = b.min_quantity ?? current.min_quantity;
     const max = b.max_quantity ?? current.max_quantity;
     if (max < min) return res.status(400).json({ error: 'En fazla adet, en az adetten küçük olamaz.' });
-    const text = (value, fallback, max) => (value === undefined ? fallback : (normalizePlainText(value, max) || null));
+    const text = (value, fallback, max) => (value === undefined ? fallback : (plain(value, max) || null));
+    const image = imageValue(b.image_url);
     await dbAsync.run(
       `UPDATE digital_products SET name = ?, name_en = ?, category = ?, category_en = ?, description = ?, description_en = ?,
-         price_kurus = ?, min_quantity = ?, max_quantity = ?, status = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP
+         price_kurus = ?, min_quantity = ?, max_quantity = ?, status = ?, sort_order = ?, image_url = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [text(b.name, current.name, 220) || current.name, text(b.name_en, current.name_en, 220),
         text(b.category, current.category, 120), text(b.category_en, current.category_en, 120),
         text(b.description, current.description, 5000), text(b.description_en, current.description_en, 5000),
         b.price === undefined ? current.price_kurus : toKurus(b.price), min, max,
-        b.status ?? current.status, b.sort_order ?? current.sort_order, current.id]
+        b.status ?? current.status, b.sort_order ?? current.sort_order,
+        image === undefined ? current.image_url : image, current.id]
     );
     await audit(req, 'digital_product_updated', current.id, { price: b.price, status: b.status });
     res.json({ message: 'Ürün güncellendi.' });
-  } catch (err) { next(err); }
+  } catch (err) { sendError(res, err, next); }
 });
 
 // Siparisi olan urun silinmez (gecmis kayitlar urun adini korur ama rapor

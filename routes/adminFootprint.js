@@ -165,7 +165,7 @@ router.get('/overview', async (req, res, next) => {
     const byKind = Object.fromEntries(kindSessions.map(r => [r.kind, r.n]));
     const browsed = await dbAsync.get(`
       SELECT COUNT(DISTINCT e.session_id) n FROM track_events e WHERE ${evWin}
-        AND (e.kind IN ('service_view', 'service_search', 'order_click') OR (e.kind = 'page_view' AND (e.path LIKE '/services%' OR e.path LIKE '%-satin-al%' OR e.path = '/new-order')))`, evParams);
+        AND (e.kind IN ('service_view', 'service_search', 'order_click', 'digital_buy_open') OR (e.kind = 'page_view' AND (e.path LIKE '/services%' OR e.path LIKE '%-satin-al%' OR e.path = '/new-order' OR e.path = '/dijital-urunler')))`, evParams);
     const funnel = [
       { key: 'visit', label: 'Siteye giren', n: summary.sessions || 0 },
       { key: 'browse', label: 'Hizmetlere bakan', n: browsed.n || 0 },
@@ -189,6 +189,46 @@ router.get('/overview', async (req, res, next) => {
       SELECT e.label, COUNT(*) n, COUNT(DISTINCT e.session_id) sessions
       FROM track_events e WHERE e.kind IN ('click', 'outbound_click') AND e.label IS NOT NULL AND ${evWin}
       GROUP BY e.label ORDER BY n DESC LIMIT 20`, evParams);
+    // Hizmet bazinda ilgi: bilgi penceresi, satir tiklamasi / liste secimi,
+    // siparis denemesi ve verilen siparis. Hizmet kimligi olaya gore farkli
+    // alanda durur (service_view/order_* -> id, tiklama/secim -> sid,
+    // order_created -> service_id).
+    const serviceRows = await dbAsync.all(`
+      SELECT sid, SUM(views) views, SUM(clicks) clicks, SUM(tries) tries, SUM(orders) orders, COUNT(DISTINCT session_id) sessions
+      FROM (
+        SELECT e.session_id,
+          CAST(CASE
+            WHEN e.kind IN ('service_view', 'order_click', 'order_submit') THEN json_extract(e.meta, '$.id')
+            WHEN e.kind = 'order_created' THEN json_extract(e.meta, '$.service_id')
+            ELSE json_extract(e.meta, '$.sid') END AS INTEGER) sid,
+          CASE WHEN e.kind = 'service_view' THEN 1 ELSE 0 END views,
+          CASE WHEN e.kind IN ('click', 'select_change') THEN 1 ELSE 0 END clicks,
+          CASE WHEN e.kind IN ('order_click', 'order_submit') THEN 1 ELSE 0 END tries,
+          CASE WHEN e.kind = 'order_created' THEN 1 ELSE 0 END orders
+        FROM track_events e
+        WHERE e.kind IN ('service_view', 'order_click', 'order_submit', 'order_created', 'click', 'select_change') AND e.meta IS NOT NULL AND ${evWin}
+      ) WHERE sid > 0 GROUP BY sid ORDER BY sessions DESC, views DESC LIMIT 25`, evParams);
+    const serviceNames = serviceRows.length
+      ? await dbAsync.all(`SELECT id, COALESCE(NULLIF(name_tr, ''), name) name FROM services WHERE id IN (${serviceRows.map(() => '?').join(',')})`, serviceRows.map(r => r.sid))
+      : [];
+    const nameOf = new Map(serviceNames.map(r => [Number(r.id), r.name]));
+    const services = serviceRows.map(r => ({ ...r, name: nameOf.get(Number(r.sid)) || `#${r.sid}` }));
+    // Dijital urun ilgisi: satin al penceresi ve satin alma.
+    const digital = await dbAsync.all(`
+      SELECT CAST(COALESCE(json_extract(e.meta, '$.product_id'), json_extract(e.meta, '$.pid')) AS INTEGER) pid,
+             MAX(e.label) name,
+             SUM(CASE WHEN e.kind = 'digital_buy_open' THEN 1 ELSE 0 END) opens,
+             SUM(CASE WHEN e.kind = 'click' THEN 1 ELSE 0 END) clicks,
+             SUM(CASE WHEN e.kind = 'digital_purchase' THEN 1 ELSE 0 END) purchases,
+             COUNT(DISTINCT e.session_id) sessions
+      FROM track_events e
+      WHERE e.kind IN ('digital_buy_open', 'digital_purchase', 'click') AND e.meta IS NOT NULL
+        AND (json_extract(e.meta, '$.product_id') IS NOT NULL OR json_extract(e.meta, '$.pid') IS NOT NULL) AND ${evWin}
+      GROUP BY pid ORDER BY sessions DESC LIMIT 20`, evParams);
+    const digitalNames = digital.length
+      ? await dbAsync.all(`SELECT id, name FROM digital_products WHERE id IN (${digital.map(() => '?').join(',')})`, digital.map(r => r.pid)).catch(() => [])
+      : [];
+    const productName = new Map(digitalNames.map(r => [Number(r.id), r.name]));
     const hours = await dbAsync.all(`SELECT CAST(strftime('%H', s.started_at, '${TZ}') AS INTEGER) h, COUNT(*) n ${base} GROUP BY h`, win);
 
     const money = r => ({ ...r, topup: fromKurus(r.topup_kurus || 0), revenue: fromKurus(r.order_kurus || 0) });
@@ -208,7 +248,8 @@ router.get('/overview', async (req, res, next) => {
       landings: landings.map(r => ({ ...r, bounce_rate: pct(r.bounced, r.sessions), conversion_rate: pct(r.converted, r.sessions) })),
       exits,
       pages: pages.map(p => ({ ...p, avg_sec: leaveMap.get(p.path)?.avg_sec ?? null, avg_scroll: leaveMap.get(p.path)?.avg_scroll ?? null })),
-      funnel, searches, errors, clicks,
+      funnel, searches, errors, clicks, services,
+      digital: digital.map(r => ({ ...r, name: productName.get(Number(r.pid)) || r.name || `#${r.pid}` })),
       hours: Array.from({ length: 24 }, (_, h) => ({ h, n: hours.find(r => r.h === h)?.n || 0 })),
       devices, oses, browsers, countries, cities, langs
     });

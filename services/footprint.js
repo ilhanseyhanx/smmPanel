@@ -38,7 +38,7 @@ const CLIENT_KINDS = new Set([
   'service_search', 'service_view', 'click', 'outbound_click',
   'auth_view', 'register_submit', 'login_submit',
   'order_click', 'order_submit', 'topup_start', 'coupon_submit', 'ticket_submit',
-  'digital_buy_open',
+  'digital_buy_open', 'select_change',
   'api_error', 'js_error', 'rage_click',
   'lang_change', 'consent'
 ]);

@@ -397,3 +397,34 @@ test('admin özeti ve ürün listesi kâr marjını hesaplar', async () => {
   const saglayiciSil = await admin.delete(`/api/admin/digital/providers/${ids.provider}`);
   assert.equal(saglayiciSil.status, 409, 'ürünü olan sağlayıcı silinmemeli');
 });
+
+test('ürün görseli galeriden seçilir, geçersiz görsel reddedilir; & işareti bozulmaz', async () => {
+  const galeri = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'public', 'dijital-gorseller', 'gorseller.json'), 'utf8'));
+  assert.ok(galeri.images.length >= 100, 'galeri boş');
+  for (const img of galeri.images) {
+    assert.ok(fs.existsSync(path.join(__dirname, '..', 'public', img.file)), `${img.file} yok`);
+  }
+
+  const kotu = await admin.put(`/api/admin/digital/products/${ids.outlook}`).send({ image_url: '/uploads/baska.png' });
+  assert.equal(kotu.status, 400);
+  const yok = await admin.put(`/api/admin/digital/products/${ids.outlook}`).send({ image_url: '/dijital-gorseller/olmayan-9.webp' });
+  assert.equal(yok.status, 400);
+
+  const iyi = await admin.put(`/api/admin/digital/products/${ids.outlook}`).send({ image_url: '/dijital-gorseller/outlook-1.webp', name: 'Outlook & Hotmail' });
+  assert.equal(iyi.status, 200, iyi.body.error);
+  const row = await dbAsync.get('SELECT image_url, name FROM digital_products WHERE id = ?', [ids.outlook]);
+  assert.equal(row.image_url, '/dijital-gorseller/outlook-1.webp');
+  assert.equal(row.name, 'Outlook & Hotmail', '& işareti &amp; olarak saklanmamalı');
+
+  const api = await request(app).get('/api/digital/products');
+  assert.equal(api.body.products.find(p => p.id === ids.outlook).image, '/dijital-gorseller/outlook-1.webp');
+  const sayfa = (await request(app).get('/dijital-urunler')).text;
+  assert.match(sayfa, /src="\/dijital-gorseller\/outlook-1\.webp"/);
+  assert.match(sayfa, /Outlook &amp; Hotmail/);
+  assert.ok(!sayfa.includes('&amp;amp;'), 'çift kaçış olmamalı');
+  assert.match(sayfa, /data-track-pid="\d+"/, 'ayak izi bağlamı kartta olmalı');
+
+  const kaldir = await admin.put(`/api/admin/digital/products/${ids.outlook}`).send({ image_url: null });
+  assert.equal(kaldir.status, 200);
+  assert.equal((await dbAsync.get('SELECT image_url FROM digital_products WHERE id = ?', [ids.outlook])).image_url, null);
+});

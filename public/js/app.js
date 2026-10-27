@@ -1659,7 +1659,7 @@ class SmmApp {
     tableBody.innerHTML = topServices.map((s, index) => {
       const isRefill = this.isServiceGuaranteed(s);
       return `
-        <tr>
+        <tr ${this.trackCtxAttrs(s)}>
           <td class="cell-nowrap">${String(index + 1).padStart(2, '0')}</td>
           <td class="cell-service-title" title="${this.escapeHtml(s.name)}"><span class="service-name-clamp">${this.bundleBadgeHtml(s)}${this.escapeHtml(s.name)}</span></td>
           <td class="cell-nowrap price-cell">${s.discount_percent ? this.renderPriceHtml(s) : this.formatServicePrice(s)}</td>
@@ -2274,7 +2274,7 @@ class SmmApp {
     tbody.innerHTML = visibleServices.map(s => {
       const isRefill = this.isServiceGuaranteed(s);
       return `
-        <tr>
+        <tr ${this.trackCtxAttrs(s)}>
           <td class="cell-nowrap">#${s.id}</td>
           <td class="cell-service-title" title="${this.escapeHtml(s.name)}"><span class="service-name-clamp">${this.bundleBadgeHtml(s)}${this.escapeHtml(s.name)}</span></td>
           <td class="cell-nowrap price-cell">${s.discount_percent ? this.renderPriceHtml(s) : this.formatServicePrice(s)}</td>
@@ -3152,8 +3152,27 @@ class SmmApp {
 
       const subject = document.getElementById('chat-ticket-subject');
       const info = document.getElementById('chat-ticket-info');
+      const isAdmin = this.currentUser?.role === 'admin';
       if (subject) subject.innerText = this.localizeTicketSubject(res.ticket.subject);
-      if (info) info.innerText = `#${res.ticket.id} • ${this.localizeTicketStatus(res.ticket.status)}`;
+      // Admin talebi kimin actigini baslikta gorur.
+      if (info) info.innerText = `#${res.ticket.id} • ${this.localizeTicketStatus(res.ticket.status)}${isAdmin && res.ticket.username ? ` • 👤 ${res.ticket.username}` : ''}`;
+      this.activeChatTicketStatus = res.ticket.status;
+      const closed = res.ticket.status === 'closed';
+      const statusBtn = document.getElementById('chat-status-btn');
+      if (statusBtn) {
+        // Kullanici kapali talebi dugmeyle acamaz (yazinca acilir).
+        statusBtn.hidden = closed && !isAdmin;
+        statusBtn.innerHTML = closed
+          ? `<i class="fa-solid fa-rotate-left"></i> <span>${this.ui('Yeniden Aç', 'Reopen')}</span>`
+          : `<i class="fa-solid fa-circle-check"></i> <span>${this.ui('Talebi Kapat', 'Close Ticket')}</span>`;
+      }
+      const closedNote = document.getElementById('chat-closed-note');
+      if (closedNote) {
+        closedNote.hidden = !closed;
+        closedNote.textContent = isAdmin
+          ? 'Bu talep kapatıldı. Yanıt yazarsan müşteriye iletilir ve talep "Yanıtlandı" olur.'
+          : this.ui('Bu talep kapatıldı. Yeni bir mesaj yazarsan talep yeniden açılır.', 'This ticket is closed. Writing a new message will reopen it.');
+      }
 
       const mesajlar = res.messages || [];
       const sonId = mesajlar.length ? mesajlar[mesajlar.length - 1].id : 0;
@@ -3723,11 +3742,32 @@ class SmmApp {
     if (ozet) ozet.innerText = `${sayi(sayfalar.length)} sayfa · ${sayi(data.landing?.published || 0)} yayında · toplam ${sayi(data.landing?.total_views || 0)} görüntülenme`;
   }
 
+  // Genel Bakis donem secimi (Bugun / Dun / 7-30-90 gun / Tumu); secim tarayicida hatirlanir.
+  setDashboardPeriod(period) {
+    this.dashboardPeriod = period;
+    try { localStorage.setItem('adminDashPeriod', period); } catch {}
+    this.loadAdminStats();
+  }
+
   async loadAdminStats() {
     try {
-      const data = await API.getAdminStats();
+      if (!this.dashboardPeriod) {
+        try { this.dashboardPeriod = localStorage.getItem('adminDashPeriod') || 'all'; } catch { this.dashboardPeriod = 'all'; }
+      }
+      document.querySelectorAll('#admin-dashboard-periods [data-period]').forEach(btn => {
+        const active = btn.dataset.period === this.dashboardPeriod;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      const data = await API.getAdminStats(this.dashboardPeriod);
       const lira = value => `₺${Number(value || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       const setStat = (id, value) => { const el = document.getElementById(id); if (el) el.innerText = value; };
+      const allTime = data.period === 'all';
+      const periodText = data.period_label || 'Tüm Zamanlar';
+      setStat('admin-stat-revenue-lbl', allTime ? 'Toplam Ciro (iadeler düşülmüş)' : `Ciro · ${periodText} (iadeler düşülmüş)`);
+      setStat('admin-stat-profit-lbl', allTime ? 'Net Kâr (cebe kalan)' : `Net Kâr · ${periodText}`);
+      setStat('admin-stat-users-lbl', allTime ? 'Müşteri Sayısı' : `Yeni Müşteri · ${periodText}`);
+      setStat('admin-chart-title', `📈 ${allTime ? 'Son 30 Gün' : periodText} — Ciro & Net Kâr${data.chart_unit === 'hour' ? ' (saatlik)' : ''}`);
 
       setStat('admin-stat-revenue', lira(data.stats.total_revenue));
       // Tedarikciye giden para: ustte saglayiciya gercekten odenen doviz,
@@ -3751,7 +3791,7 @@ class SmmApp {
       setStat('admin-stat-orders-partial', data.stats.partial_orders);
       setStat('admin-stat-orders-canceled', data.stats.canceled_orders);
       setStat('admin-stat-orders-failed', data.stats.failed_orders);
-      setStat('admin-stat-users', data.stats.total_users);
+      setStat('admin-stat-users', allTime ? data.stats.total_users : (data.stats.new_users ?? 0));
       const ticketCount = document.getElementById('admin-nav-tickets-count');
       const depositCount = document.getElementById('admin-nav-deposits-count');
       if (ticketCount) ticketCount.textContent = data.stats.pending_tickets || '';
@@ -3802,10 +3842,12 @@ class SmmApp {
         <rect x="${x.toFixed(1)}" y="${rTop.toFixed(1)}" width="${barW.toFixed(1)}" height="${rH.toFixed(1)}" rx="2" fill="rgba(139,92,246,.65)"/>
         <rect x="${(x + barW + 1.5).toFixed(1)}" y="${pTop.toFixed(1)}" width="${barW.toFixed(1)}" height="${pH.toFixed(1)}" rx="2" fill="${d.profit >= 0 ? 'rgba(16,185,129,.85)' : 'rgba(239,68,68,.85)'}"/>
       </g>`;
-      // Her 5 gunde bir tarih etiketi (gg.aa)
-      if (i % 5 === 0 || i === series.length - 1) {
+      // En fazla ~12 eksen etiketi: gunlukte gg.aa, saatlikte ss:00.
+      const step = Math.max(1, Math.ceil(series.length / 12));
+      if (i % step === 0 || i === series.length - 1) {
         const [, month, dayNum] = d.day.split('-');
-        bars += `<text x="${(x + barW).toFixed(1)}" y="${H - 4}" text-anchor="middle" font-size="9" fill="var(--text-dim)">${dayNum}.${month}</text>`;
+        const text = d.day.includes(':') ? d.day : `${dayNum}.${month}`;
+        bars += `<text x="${(x + barW).toFixed(1)}" y="${H - 4}" text-anchor="middle" font-size="9" fill="var(--text-dim)">${text}</text>`;
       }
     });
 
@@ -6852,31 +6894,95 @@ class SmmApp {
     }
   }
 
-  async loadAdminTickets() {
+  // Admin destek listesi: varsayilan "Aktif" (yanit bekleyen + yanitlanan);
+  // yanit bekleyenler en ustte. Kapatilan talepler ayri filtrede durur.
+  async loadAdminTickets(filter) {
+    if (filter) this.adminTicketFilter = filter;
+    const active = this.adminTicketFilter || 'active';
     const tbody = document.getElementById('admin-tickets-tbody');
     if (!tbody) return;
 
     try {
       const res = await API.getTickets();
-      if (!res.tickets || res.tickets.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center">Destek talebi bulunmuyor.</td></tr>`;
+      const all = res.tickets || [];
+      this.adminTicketsCache = all;
+      const counts = {
+        active: all.filter(t => t.status !== 'closed').length,
+        open: all.filter(t => t.status === 'open').length,
+        replied: all.filter(t => t.status === 'replied').length,
+        closed: all.filter(t => t.status === 'closed').length,
+        all: all.length
+      };
+      const badge = document.getElementById('admin-nav-tickets-count');
+      if (badge) badge.textContent = counts.open || '';
+      const bar = document.getElementById('admin-ticket-filters');
+      if (bar) {
+        bar.innerHTML = [['active', 'Aktif'], ['open', 'Yanıt bekleyen'], ['replied', 'Yanıtlanan'], ['closed', 'Kapatılan'], ['all', 'Tümü']]
+          .map(([key, label]) => `<button type="button" class="settings-subtab${key === active ? ' active' : ''}" onclick="app.loadAdminTickets('${key}')">${label} <b>${counts[key]}</b></button>`).join('');
+      }
+
+      const rank = { open: 0, replied: 1, closed: 2 };
+      const list = all
+        .filter(t => active === 'all' || (active === 'active' ? t.status !== 'closed' : t.status === active))
+        .sort((a, b) => (rank[a.status] ?? 3) - (rank[b.status] ?? 3)
+          || String(b.last_message_at || b.created_at).localeCompare(String(a.last_message_at || a.created_at)));
+      if (!list.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center">${active === 'closed' ? 'Kapatılan talep yok.' : 'Bu filtrede destek talebi yok.'}</td></tr>`;
         return;
       }
 
-      tbody.innerHTML = res.tickets.map(t => `
-        <tr>
+      const when = value => value ? new Date(value).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+      tbody.innerHTML = list.map(t => `
+        <tr class="${t.status === 'open' ? 'ticket-row-waiting' : ''}">
           <td>#${t.id}</td>
-          <td><strong>Müşteri #${t.user_id}</strong></td>
-          <td style="font-weight: 600;">${this.escapeHtml(t.subject)}</td>
-          <td><span class="badge ${t.status === 'replied' ? 'badge-completed' : (t.status === 'closed' ? 'badge-canceled' : 'badge-pending')}">${this.escapeHtml(t.status)}</span></td>
-          <td style="font-size: 0.85rem;">${new Date(t.created_at).toLocaleDateString('tr-TR')}</td>
-          <td style="text-align: right;">
-            <button class="btn btn-cyan btn-sm" onclick="app.openTicketChatModal(${t.id})"><i class="fa-solid fa-reply"></i> Yanıtla & Sohbet</button>
-          </td>
+          <td><button type="button" class="ticket-user-link" onclick="app.openAdminUserDetail(${Number(t.user_id)})" title="Kullanıcı detayını aç"><i class="fa-solid fa-user"></i> ${this.escapeHtml(t.username || `#${t.user_id}`)}</button>
+            ${t.email ? `<br><small style="color: var(--text-dim);">${this.escapeHtml(t.email)}</small>` : ''}</td>
+          <td style="font-weight: 600;">${this.escapeHtml(t.subject)}<br><small style="color: var(--text-dim); font-weight: 500;">${Number(t.message_count || 0)} mesaj</small></td>
+          <td><span class="badge ${t.status === 'replied' ? 'badge-completed' : (t.status === 'closed' ? 'badge-canceled' : 'badge-pending')}">${t.status === 'open' ? 'Yanıt bekliyor' : (t.status === 'replied' ? 'Yanıtlandı' : (t.status === 'closed' ? 'Kapatıldı' : this.escapeHtml(t.status)))}</span></td>
+          <td style="font-size: 0.85rem;">${when(t.last_message_at)}<br><small style="color: var(--text-dim);">${t.last_sender === 'admin' ? 'Sen yanıtladın' : 'Müşteri yazdı'}</small></td>
+          <td style="font-size: 0.85rem;">${when(t.created_at)}</td>
+          <td style="text-align: right;"><div class="ticket-actions">
+            <button class="btn btn-cyan btn-sm" onclick="app.openTicketChatModal(${t.id})"><i class="fa-solid fa-reply"></i> Yanıtla</button>
+            ${t.status === 'closed'
+              ? `<button class="btn btn-outline btn-sm" onclick="app.setAdminTicketStatus(${t.id}, 'open')" title="Talebi yeniden aç"><i class="fa-solid fa-rotate-left"></i> Aç</button>`
+              : `<button class="btn btn-outline btn-sm" onclick="app.setAdminTicketStatus(${t.id}, 'closed')" title="Talebi kapat"><i class="fa-solid fa-circle-check"></i> Kapat</button>`}
+          </div></td>
         </tr>
       `).join('');
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="6" class="text-center">Biletler yüklenemedi.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center">Biletler yüklenemedi.</td></tr>`;
+    }
+  }
+
+  async setAdminTicketStatus(ticketId, status) {
+    try {
+      const res = await API.setTicketStatus(ticketId, status);
+      showToast(res.message, 'success');
+      await this.loadAdminTickets();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  // Sohbet penceresindeki "Talebi Kapat / Yeniden Aç" dugmesi. Kullanici
+  // yalnizca kapatabilir; yazinca talep zaten yeniden acilir.
+  async toggleActiveTicketStatus() {
+    const id = this.activeChatTicketId;
+    if (!id) return;
+    const next = this.activeChatTicketStatus === 'closed' ? 'open' : 'closed';
+    if (next === 'closed' && this.currentUser?.role !== 'admin') {
+      const ok = await confirmDialog(this.ui('Talebi kapatmak istiyor musun? Sonradan yazarsan yeniden açılır.', 'Close this ticket? Writing again will reopen it.'),
+        { confirmText: this.ui('Kapat', 'Close') });
+      if (!ok) return;
+    }
+    try {
+      const res = await API.setTicketStatus(id, next);
+      showToast(this.locale === 'en' && res.message_en ? res.message_en : res.message, 'success');
+      await this.refreshTicketChat(false);
+      if (this.currentUser?.role === 'admin') this.loadAdminTickets();
+      else this.loadUserTickets();
+    } catch (err) {
+      showToast(err.message, 'error');
     }
   }
 
@@ -8970,9 +9076,15 @@ print(sonuc.get("error") or sonuc.get("order"))`;
     this.showAuthPage('register');
   }
 
+  // Ayak izi baglami: satirdaki "Bilgi / Sipariş Ver" tiklamasi hangi hizmete
+  // ait oldugu bilgisiyle kaydedilir (bkz. public/js/track.js data-track-ctx).
+  trackCtxAttrs(s) {
+    return `data-track-sid="${Number(s.id)}" data-track-ctx="#${Number(s.id)} ${this.escapeHtml(String(s.name || '').slice(0, 80))}"`;
+  }
+
   lpServiceRowHtml(s) {
     const isRefill = this.isServiceGuaranteed(s);
-    return `<tr>
+    return `<tr ${this.trackCtxAttrs(s)}>
       <td class="cell-nowrap">#${s.id}</td>
       <td class="cell-service-title" title="${this.escapeHtml(s.name)}"><span class="service-name-clamp">${this.bundleBadgeHtml(s)}${this.escapeHtml(s.name)}</span></td>
       <td class="cell-nowrap price-cell">${s.discount_percent ? this.renderPriceHtml(s) : this.formatServicePrice(s)}</td>
@@ -10217,16 +10329,19 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       '<button type="button" class="settings-subtab' + (this.healthSeoPencere === p ? " active" : "") +
       '" onclick="app.loadHealthSeo(\'' + p + '\')">' + (p === "24h" ? "Son 24 Saat" : "Son 7 Gün") + "</button>").join("");
 
-    // Ana motorlarin son gorulmesi: kart seridi. 3 gunden eski = uyari.
+    // Ana motorlarin son gorulmesi + bu penceredeki istek sayisi. 3 gunden eski = uyari.
+    const pencereAdi = this.healthSeoPencere === "7d" ? "7 günde" : "24 saatte";
     const motorlar = ["googlebot", "bingbot", "yandexbot"].map(ad => {
       const kayit = (c.engines_last_seen || []).find(r => r.bot === ad);
+      const istek = Number((c.bots || []).find(b => b.bot === ad)?.hits || 0);
       const son = kayit ? new Date(String(kayit.last_bucket).replace(" ", "T") + "Z").getTime() : null;
       const eskiMs = son ? Date.now() - son : null;
       const durum = !son ? "unknown" : (eskiMs > 3 * 86400000 ? "warning" : "healthy");
       return this.hkart({
         label: ad, status: durum,
         value: son ? this.hgoreli(new Date(son).toISOString()) : "Hiç gelmedi",
-        sub: durum === "warning" ? "3 günden uzun süredir uğramadı" : (son ? "son ziyaret" : "30 günlük kayıtta yok")
+        sub: (durum === "warning" ? "3 günden uzun süredir uğramadı" : (son ? "son ziyaret" : "30 günlük kayıtta yok")) +
+          " · " + pencereAdi + " " + istek.toLocaleString("tr-TR") + " istek"
       });
     }).join("");
 
@@ -10235,8 +10350,15 @@ print(sonuc.get("error") or sonuc.get("order"))`;
       (b.not_found_hits ? '<span class="is-warning">' + b.not_found_hits + "</span>" : this.hsayi(0)) +
       "</td><td>" + this.htarih(b.last_bucket) + "</td></tr>").join("");
 
+    // Grup anahtarlari services/crawlerTracker.js yolGrubu ile ayni.
+    const grupAdi = {
+      "ana-sayfa": "Ana sayfa", "blog-listesi": "Blog listesi", "blog-yazisi": "Blog yazıları",
+      "hizmet-listesi": "Hizmetler", "vitrin": "Hizmet sayfaları vitrini", "seo-dosyasi": "sitemap / robots / llms",
+      "sabit-sayfa": "Sabit sayfalar (hakkımızda, API…)", "satis-sayfasi": "Satış sayfaları",
+      "dijital-urunler": "Dijital ürünler", "eski-egitim": "Eski eğitim adresleri (301 → blog)", "diger": "Diğer"
+    };
     const grupSatirlari = (c.path_groups || []).map(g =>
-      "<tr><td>" + this.hesc(g.group) + "</td><td>" + this.hsayi(g.hits) + "</td></tr>").join("");
+      "<tr><td>" + this.hesc(grupAdi[g.group] || g.group) + "</td><td>" + this.hsayi(g.hits) + "</td></tr>").join("");
 
     const kirikSatirlari = (c.not_found || []).map(k =>
       "<tr><td><code>" + this.hesc(k.path) + "</code></td><td>" + this.hsayi(k.hits) +
@@ -10273,17 +10395,18 @@ print(sonuc.get("error") or sonuc.get("order"))`;
         : "") +
       '<h3 class="health-h3" style="margin-top: 20px;">Sitemap Tutarlılığı</h3>' +
       '<div class="health-grid">' +
-        this.hkart({ label: "Beklenen adres", status: "healthy", value: String(sm.expected_urls ?? "—"), sub: (b.core || 0) + " çekirdek + " + (b.blog_published || 0) + " blog + " + (b.landing_published || 0) + " satış + " + (b.hub || 0) + " vitrin" }) +
+        this.hkart({ label: "Beklenen adres", status: "healthy", value: String(sm.expected_urls ?? "—"), sub: (b.core || 0) + " çekirdek + " + (b.blog_published || 0) + " blog + " + (b.landing_published || 0) + " satış + " + (b.hub || 0) + " vitrin + " + (b.digital || 0) + " dijital" }) +
         this.hkart({ label: "Statik sitemap.xml", status: statik.risk ? "warning" : (statik.exists ? "healthy" : "healthy"), value: statik.exists ? (statik.url_count ?? "?") + " adres" : "Dosya yok", sub: statik.exists ? "public/ içinde duruyor" : "risk yok" }) +
       "</div>" + smRisk +
       '<p class="health-note">' + this.hesc(sm.note || "") + "</p>" +
-      '<h3 class="health-h3" style="margin-top: 20px;">IndexNow Bildirimleri (7 gün)</h3>' +
+      '<h3 class="health-h3" style="margin-top: 20px;">IndexNow Bildirimleri</h3>' +
+      '<p class="health-note">IndexNow yalnızca blog yazısı veya satış sayfası yayınlanınca Bing/Yandex\'e haber verir; o hafta yayın yoksa 7 günlük sayılar 0 olur, bu normaldir.</p>' +
       '<div class="health-grid">' +
-        this.hkart({ label: "Durum", status: inDurum, value: this.hdurum(inDurum).label, sub: "başarı/başarısızlık oranına göre" }) +
-        this.hkart({ label: "Başarılı", status: "healthy", value: String(inw.ok_7d || 0), sub: "son başarı: " + (inw.last_ok_epoch ? "" : "—") }) +
-        this.hkart({ label: "Başarısız", status: inw.fail_7d ? "warning" : "healthy", value: String(inw.fail_7d || 0), sub: "" }) +
+        this.hkart({ label: "Durum", status: inDurum, value: this.hdurum(inDurum).label, sub: "son 7 günün başarı/başarısızlık oranına göre" }) +
+        this.hkart({ label: "Başarılı (7 gün)", status: "healthy", value: String(inw.ok_7d || 0), sub: "30 günde " + (inw.ok_30d || 0) + " başarılı bildirim" }) +
+        this.hkart({ label: "Başarısız (7 gün)", status: inw.fail_7d ? "warning" : "healthy", value: String(inw.fail_7d || 0), sub: "30 günde " + (inw.fail_30d || 0) + " başarısız" }) +
+        this.hkart({ label: "Son başarılı bildirim", status: inw.last_ok_epoch ? "healthy" : "unknown", value: inw.last_ok_epoch ? this.hgoreli(new Date(Number(inw.last_ok_epoch) * 1000).toISOString()) : "Kayıt yok", sub: "son 30 gün içinde" }) +
       "</div>" +
-      (inw.last_ok_epoch ? '<p class="health-note">Son başarılı bildirim: ' + this.hepoch(inw.last_ok_epoch) + "</p>" : "") +
       inHatalar +
       '<p class="health-foot">' + this.hesc(c.semantics || "") + "</p>";
   }
@@ -10799,23 +10922,17 @@ print(sonuc.get("error") or sonuc.get("order"))`;
   }
 
   // ===================== KENAR ÇUBUĞU GRUPLARI (ADMIN) =====================
-  // Menu maddeleri basliklar altinda toplanir; baslik tiklaninca grup acilir/
-  // kapanir. Acik gruplar localStorage'da tutulur; aktif sekmenin grubu her
-  // zaman aciktir. Kapali grubun basliginda icindeki rozetlerin toplami gorunur.
-  adminNavGroupState() {
-    try { return JSON.parse(localStorage.getItem('adminNavGroups') || '{}') || {}; } catch { return {}; }
-  }
-
-  setAdminNavGroupOpen(key, open, persist = true) {
-    const group = document.querySelector(`#view-admin .admin-nav-group[data-nav-group="${key}"]`);
-    if (!group) return;
-    group.classList.toggle('open', open);
-    group.querySelector('.admin-nav-toggle')?.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (persist) {
-      const state = this.adminNavGroupState();
-      state[key] = open ? 1 : 0;
-      try { localStorage.setItem('adminNavGroups', JSON.stringify(state)); } catch {}
-    }
+  // Akordeon: ayni anda tek grup acik. Sekmeye gecilince yalnizca o sekmenin
+  // grubu acilir, digerleri kapanir; baslik tiklaninca o grup acilir ve
+  // digerleri kapanir. (Eskiden acik gruplar localStorage'da birikiyor, her
+  // sekme degisiminde menu asagi dogru uzuyordu.) Kapali grubun basliginda
+  // icindeki rozetlerin toplami gorunur.
+  setAdminNavGroupOpen(key, open) {
+    document.querySelectorAll('#view-admin .admin-nav-group').forEach(group => {
+      const isOpen = group.dataset.navGroup === key ? open : false;
+      group.classList.toggle('open', isOpen);
+      group.querySelector('.admin-nav-toggle')?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    });
     this.updateAdminNavGroupBadges();
   }
 
@@ -10825,16 +10942,13 @@ print(sonuc.get("error") or sonuc.get("order"))`;
     this.setAdminNavGroupOpen(key, !group.classList.contains('open'));
   }
 
-  // Aktif sekmenin grubu acilir; diger gruplar kayitli tercihlerine gore kalir.
+  // Yalnizca aktif sekmenin grubu acik kalir.
   syncAdminNavGroups(activeTab) {
     const groups = document.querySelectorAll('#view-admin .admin-nav-group');
     if (!groups.length) return;
-    const saved = this.adminNavGroupState();
-    const state = Object.keys(saved).length ? saved : { operations: 1 };
+    try { localStorage.removeItem('adminNavGroups'); } catch {}
     groups.forEach(group => {
-      const key = group.dataset.navGroup;
-      const holdsActive = Boolean(group.querySelector(`[data-admin-tab="${activeTab}"]`));
-      const open = holdsActive || state[key] === 1;
+      const open = Boolean(group.querySelector(`[data-admin-tab="${activeTab}"]`));
       group.classList.toggle('open', open);
       group.querySelector('.admin-nav-toggle')?.setAttribute('aria-expanded', open ? 'true' : 'false');
     });

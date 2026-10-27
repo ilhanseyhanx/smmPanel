@@ -202,9 +202,10 @@ const API = {
   createTicket: (subject, message) => API.request('/tickets', { method: 'POST', body: JSON.stringify({ subject, message }) }),
   getTicketDetails: (id) => API.request(`/tickets/${id}`),
   replyTicket: (id, message) => API.request(`/tickets/${id}/reply`, { method: 'POST', body: JSON.stringify({ message }) }),
+  setTicketStatus: (id, status) => API.request(`/tickets/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
 
   // Admin
-  getAdminStats: () => API.request('/admin/stats'),
+  getAdminStats: (period = 'all') => API.request(`/admin/stats?period=${encodeURIComponent(period)}`),
 
   // Sistem Sagligi (Faz 1) - salt okunur uclar.
   getHealthOverview: () => API.request('/admin/health/overview'),

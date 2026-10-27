@@ -126,7 +126,11 @@ Object.assign(SmmApp.prototype, {
       const marginHtml = margin === null ? '—'
         : `<span style="color: ${margin <= 0 ? 'var(--danger)' : margin < 15 ? '#b45309' : '#15803d'}; font-weight: 800;">%${margin.toLocaleString('tr-TR')}</span>`;
       const stock = p.stock === null ? '—' : Number(p.stock) <= 0 ? '<span class="badge badge-canceled">Tükendi</span>' : Number(p.stock).toLocaleString('tr-TR');
+      const thumb = p.image_url
+        ? `<img src="${this.escapeHtml(p.image_url)}" alt="" class="dga-list-thumb" loading="lazy" width="80" height="50">`
+        : `<button type="button" class="dga-list-thumb is-empty" onclick="app.editAdminDigitalProduct(${Number(p.id)})" title="Görsel seç"><i class="fa-regular fa-image"></i></button>`;
       return `<tr>
+        <td>${thumb}</td>
         <td><strong>${this.escapeHtml(p.name)}</strong>${p.name_en ? ` <span class="badge badge-processing" title="${this.escapeHtml(p.name_en)}">EN</span>` : ''}<br>
           <small style="color: var(--text-dim);">${this.escapeHtml(p.category || '—')} · ${this.escapeHtml(p.provider_name)} #${this.escapeHtml(p.provider_product_id)}</small></td>
         <td>${this.dgaTL(p.price)}</td>
@@ -162,7 +166,7 @@ Object.assign(SmmApp.prototype, {
       </div>
       ${products.length ? `<div class="glass-card" style="padding: 0;">
         <div class="table-responsive"><table class="custom-table">
-          <thead><tr><th>Ürün</th><th>Satış</th><th>Maliyet</th><th>Kâr</th><th>Stok</th><th>Adet</th><th>Satış / Ciro</th><th>Durum</th><th>İşlemler</th></tr></thead>
+          <thead><tr><th>Görsel</th><th>Ürün</th><th>Satış</th><th>Maliyet</th><th>Kâr</th><th>Stok</th><th>Adet</th><th>Satış / Ciro</th><th>Durum</th><th>İşlemler</th></tr></thead>
           <tbody>${rows}</tbody>
         </table></div>
       </div>` : `<div class="glass-card" style="text-align: center; padding: 40px 20px;">
@@ -193,6 +197,13 @@ Object.assign(SmmApp.prototype, {
         <div class="form-group"><label>Ürün Adı (EN) <span class="course-hint">boşsa TR gösterilir</span></label><input class="form-control" name="name_en" maxlength="220" value="${v('name_en')}"></div>
         <div class="form-group"><label>Kategori (TR)</label><input class="form-control" name="category" maxlength="120" value="${v('category')}"></div>
         <div class="form-group"><label>Kategori (EN)</label><input class="form-control" name="category_en" maxlength="120" value="${v('category_en')}"></div>
+        <div class="form-group span-2 dga-image-field">
+          <label>Görsel <span class="course-hint">kartta ve satın alma ekranında görünür; ürüne uyanlar en üstte</span></label>
+          <input type="hidden" name="image_url" value="${v('image_url')}">
+          <div class="dga-image-current" data-dga-image-current></div>
+          <input type="search" class="form-control" data-dga-image-search placeholder="Galeride ara (ör. gmail, vpn, lisans)">
+          <div class="dga-image-grid" data-dga-image-grid></div>
+        </div>
         <div class="form-group span-2"><label>Açıklama (TR)</label><textarea class="form-control" name="description" rows="3" maxlength="5000">${v('description')}</textarea></div>
         <div class="form-group span-2"><label>Açıklama (EN)</label><textarea class="form-control" name="description_en" rows="2" maxlength="5000">${v('description_en')}</textarea></div>
         <div class="form-group"><label>Satış Fiyatı (₺ / 1 adet)</label><input class="form-control" name="price" type="number" step="0.01" min="0.01" required value="${v('price')}"></div>
@@ -225,6 +236,7 @@ Object.assign(SmmApp.prototype, {
     });
     form.price.addEventListener('input', refreshNote);
     refreshNote();
+    this.dgaBindImagePicker(form);
     form.addEventListener('submit', async event => {
       event.preventDefault();
       const btn = form.querySelector('button[type="submit"]');
@@ -237,7 +249,8 @@ Object.assign(SmmApp.prototype, {
         description: form.description.value,
         description_en: form.description_en.value,
         price: Number(form.price.value),
-        status: form.status.checked ? 1 : 0
+        status: form.status.checked ? 1 : 0,
+        image_url: form.image_url.value || null
       };
       if (form.min_quantity.value) data.min_quantity = Number(form.min_quantity.value);
       if (form.max_quantity.value) data.max_quantity = Number(form.max_quantity.value);
@@ -251,9 +264,67 @@ Object.assign(SmmApp.prototype, {
     });
   },
 
-  editAdminDigitalProduct(id) {
+  // --- GORSEL GALERISI --------------------------------------------------------
+  // public/dijital-gorseller/gorseller.json (scripts/digital-visuals.js uretir).
+  async dgaLoadGallery() {
+    if (this.dgaGallery) return this.dgaGallery;
+    try {
+      const res = await fetch('/dijital-gorseller/gorseller.json', { cache: 'no-cache' });
+      this.dgaGallery = res.ok ? ((await res.json()).images || []) : [];
+    } catch {
+      this.dgaGallery = [];
+    }
+    return this.dgaGallery;
+  },
+
+  dgaFold(value) {
+    return String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/ı/g, 'i').toLowerCase();
+  },
+
+  // Urun adi + kategoriye uyan galeri gorselleri (marka sirasiyla).
+  dgaSuggestedImages(text) {
+    const hay = ` ${this.dgaFold(text)} `;
+    return (this.dgaGallery || []).filter(img => (img.keywords || []).some(k => hay.includes(this.dgaFold(k))));
+  },
+
+  dgaBindImagePicker(form) {
+    const field = form.querySelector('.dga-image-field');
+    if (!field) return;
+    const grid = field.querySelector('[data-dga-image-grid]');
+    const current = field.querySelector('[data-dga-image-current]');
+    const search = field.querySelector('[data-dga-image-search]');
+    const thumb = img => `<button type="button" class="dga-thumb${form.image_url.value === img.file ? ' is-selected' : ''}" data-file="${this.escapeHtml(img.file)}" title="${this.escapeHtml(`${img.label} · ${img.variant_label}`)}">
+        <img src="${this.escapeHtml(img.file)}" alt="" loading="lazy" width="160" height="100"><span>${this.escapeHtml(img.label)}</span></button>`;
+    const draw = () => {
+      const all = this.dgaGallery || [];
+      const selected = all.find(img => img.file === form.image_url.value);
+      current.innerHTML = form.image_url.value
+        ? `<img src="${this.escapeHtml(form.image_url.value)}" alt="" width="160" height="100"><div><strong>${this.escapeHtml(selected ? `${selected.label} · ${selected.variant_label}` : form.image_url.value)}</strong><br><button type="button" class="btn btn-outline btn-sm" data-dga-image-clear><i class="fa-solid fa-xmark"></i> Görseli kaldır</button></div>`
+        : '<span class="dga-image-none"><i class="fa-regular fa-image"></i> Görsel seçilmedi — kartta düz zemin görünür.</span>';
+      const q = this.dgaFold(search.value).trim();
+      if (q) {
+        const hits = all.filter(img => this.dgaFold(`${img.label} ${img.brand} ${(img.keywords || []).join(' ')}`).includes(q));
+        grid.innerHTML = hits.length ? hits.map(thumb).join('') : '<p class="course-hint">Eşleşen görsel yok.</p>';
+        return;
+      }
+      const suggested = this.dgaSuggestedImages(`${form.name.value} ${form.category.value}`);
+      const rest = all.filter(img => !suggested.includes(img));
+      grid.innerHTML = (suggested.length ? `<p class="dga-image-group">Önerilen</p>${suggested.map(thumb).join('')}<p class="dga-image-group">Tüm galeri</p>` : '') + rest.map(thumb).join('');
+    };
+    field.addEventListener('click', event => {
+      const pick = event.target.closest('.dga-thumb');
+      if (pick) { form.image_url.value = pick.dataset.file; draw(); return; }
+      if (event.target.closest('[data-dga-image-clear]')) { form.image_url.value = ''; draw(); }
+    });
+    search.addEventListener('input', draw);
+    form.category.addEventListener('change', draw);
+    draw();
+  },
+
+  async editAdminDigitalProduct(id) {
     const p = (this.dgaProductsData || []).find(item => Number(item.id) === Number(id));
     if (!p) return;
+    await this.dgaLoadGallery();
     const usdTry = Number(this.dgaOverview?.usd_try) || 0;
     const overlay = this.dgaModal(`Ürünü Düzenle — #${Number(p.id)}`,
       this.dgaProductForm(p, { usdTry, cost: p.cost_rate, costCurrency: p.cost_currency, isNew: false }));
@@ -371,17 +442,21 @@ Object.assign(SmmApp.prototype, {
     tbody.querySelectorAll('[data-dga-add]').forEach(btn => btn.addEventListener('click', () => this.openAdminDigitalAdd(btn.dataset.dgaAdd)));
   },
 
-  openAdminDigitalAdd(providerProductId) {
+  async openAdminDigitalAdd(providerProductId) {
     const data = this.dgaCatalog || { products: [] };
     const p = data.products.find(item => item.provider_product_id === providerProductId);
     if (!p) return;
     const usdTry = Number(data.usd_try) || 0;
     const currency = data.provider?.currency || 'USD';
     const costTry = p.price === null ? null : (currency === 'TRY' ? p.price : p.price * usdTry);
+    // Yeni urunde urune en uygun galeri gorseli secili gelir (degistirilebilir).
+    await this.dgaLoadGallery();
+    const suggested = this.dgaSuggestedImages(`${p.name} ${p.category}`)[0];
     const values = {
       name: p.name, category: p.category, description: p.description,
       price: costTry ? (costTry * 1.5).toFixed(2) : '',
-      min_quantity: p.min, max_quantity: p.max, status: 1
+      min_quantity: p.min, max_quantity: p.max, status: 1,
+      image_url: suggested ? suggested.file : ''
     };
     const overlay = this.dgaModal(`Mağazaya Ekle — ${this.escapeHtml(p.name)}`,
       this.dgaProductForm(values, { usdTry, cost: p.price, costCurrency: currency, isNew: true }));

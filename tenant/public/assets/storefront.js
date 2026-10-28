@@ -187,7 +187,11 @@
     { key: 'pinterest', label: 'Pinterest', icon: 'fa-brands fa-pinterest-p', color: '#e60023', re: /pinterest/ },
     { key: 'soundcloud', label: 'SoundCloud', icon: 'fa-brands fa-soundcloud', color: '#ff5500', re: /soundcloud/ },
     { key: 'reddit', label: 'Reddit', icon: 'fa-brands fa-reddit-alien', color: '#ff4500', re: /reddit/ },
-    { key: 'web', label: 'Web Trafiği', icon: 'fa-solid fa-globe', color: '#0ea5e9', re: /trafik|traffic|website/ }
+    { key: 'whatsapp', label: 'WhatsApp', icon: 'fa-brands fa-whatsapp', color: '#25d366', re: /whatsapp/ },
+    { key: 'kick', label: 'Kick', icon: 'fa-solid fa-play', color: '#1fa80f', re: /\bkick\b/ },
+    { key: 'web', label: 'Web Trafiği', icon: 'fa-solid fa-globe', color: '#0ea5e9', re: /trafi[kğ]|traffic|web ?site/ },
+    { key: 'games', label: 'Oyun', icon: 'fa-solid fa-gamepad', color: '#f97316', re: /pubg|mobile legends|free ?fire|valorant|steam|oyun/ },
+    { key: 'license', label: 'Lisans & Abonelik', icon: 'fa-solid fa-key', color: '#64748b', re: /windows|office|kaspersky|lisans|antivir|amazon prime|netflix|disney/ }
   ];
 
   // Turkce kucuk harf "Instagram"i "ınstagram" yapar; ı -> i ile eslesme kacmaz.
@@ -225,7 +229,7 @@
     $('#sf-stats').innerHTML = stats.map(([value, label]) => `<div><strong>${escapeHtml(value)}</strong><span>${escapeHtml(label)}</span></div>`).join('');
     $('#sf-stats').hidden = false;
 
-    const cards = [...groups.values()].sort((a, b) => b.count - a.count).slice(0, 8);
+    const cards = [...groups.values()].sort((a, b) => b.count - a.count).slice(0, 12);
     $('#sf-platforms-block').hidden = !cards.length;
     $('#sf-platform-grid').innerHTML = cards.map(({ platform, count, min }) => `
       <a class="sf-platform" href="/services" data-platform="${platform.key}" style="--brand:${platform.color}">

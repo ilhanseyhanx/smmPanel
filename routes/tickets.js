@@ -5,12 +5,14 @@ const { authenticateToken } = require('../middleware/auth');
 const { normalizePlainText } = require('../utils/security');
 const telegram = require('../services/telegramNotifier');
 
-// Talep listesinde son hareket: son mesajin zamani, kimden geldigi ve mesaj
-// sayisi (admin listesi "kim bekliyor" sorusunu buradan cevaplar).
+// Talep listesinde son hareket: son mesajin zamani, kimden geldigi, kisa
+// onizlemesi ve mesaj sayisi (admin listesi "kim bekliyor" sorusunu buradan
+// cevaplar; kullanici listesi son mesaji kartta gosterir).
 const TICKET_ACTIVITY = `
   (SELECT COUNT(*) FROM ticket_messages m WHERE m.ticket_id = t.id) message_count,
   (SELECT MAX(m.created_at) FROM ticket_messages m WHERE m.ticket_id = t.id) last_message_at,
-  (SELECT m.sender_role FROM ticket_messages m WHERE m.ticket_id = t.id ORDER BY m.id DESC LIMIT 1) last_sender`;
+  (SELECT m.sender_role FROM ticket_messages m WHERE m.ticket_id = t.id ORDER BY m.id DESC LIMIT 1) last_sender,
+  (SELECT substr(m.message, 1, 160) FROM ticket_messages m WHERE m.ticket_id = t.id ORDER BY m.id DESC LIMIT 1) last_message`;
 
 // GET TICKETS (User gets own, Admin gets all)
 router.get('/', authenticateToken, async (req, res) => {

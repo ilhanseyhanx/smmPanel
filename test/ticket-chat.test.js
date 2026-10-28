@@ -75,6 +75,23 @@ test('adminin cevabı müşteri tarafında ANINDA okunabilir', async () => {
   assert.equal(mesajlar.length, 2, 'admin cevabı müşteri tarafında görünmüyor');
   assert.equal(mesajlar[1].sender_role, 'admin');
   assert.match(mesajlar[1].message, /kontrol ediyorum/);
+
+  // Destek Merkezi kartı: durum, son mesajın sahibi ve önizlemesi.
+  const liste = (await musteriAgent.get('/api/tickets')).body.tickets;
+  const kart = liste.find(t => t.id === ticketId);
+  assert.equal(kart.status, 'replied');
+  assert.equal(kart.last_sender, 'admin');
+  assert.equal(kart.last_message, 'Merhaba, siparişinizi kontrol ediyorum.');
+  assert.equal(kart.message_count, 2);
+});
+
+test('destek sayfası kart listesini ve hızlı talep düğmelerini içerir', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  const sayfa = html.slice(html.indexOf('id="view-tickets"'), html.indexOf('<!-- 6.5.'));
+  assert.match(sayfa, /id="tickets-list"/);
+  assert.match(sayfa, /data-tk-filter="replied"/);
+  assert.match(sayfa, /showNewTicketModal\('Telafi \/ Düşüş Bildirimi'\)/);
+  assert.equal((html.match(/name="ticket-topic"/g) || []).length, 4, 'yeni talep penceresinde 4 konu seçeneği');
 });
 
 test('müşterinin cevabı admin tarafında ANINDA okunabilir', async () => {

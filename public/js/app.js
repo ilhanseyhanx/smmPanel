@@ -494,6 +494,19 @@ class SmmApp {
       // (ör. "#", "©") çeviriye kendisi ekler, aksi halde iki kez çıkar.
       '#102 • Açık': '102 • Open',
 
+      // --- Destek Merkezi (/tickets) ---
+      'Destek Merkezi': 'Support Center', 'Yeni Talep Oluştur': 'Create New Ticket',
+      'Sipariş, ödeme ya da hesabınla ilgili bir sorun mu var? Talep aç; yanıtımız bu sayfaya ve bildirimlerine düşer.':
+        'Having trouble with an order, a payment or your account? Open a ticket; our reply shows up here and in your notifications.',
+      'Yanıtımızı bekliyor': 'Waiting for our reply', 'Yanıtlandı': 'Replied', 'Okuman gereken yanıt': 'Replies to read',
+      'Çözüldü': 'Resolved', 'Kapanan talepler': 'Closed tickets', 'Tümü': 'All',
+      'Hızlı talep': 'Quick ticket', 'Sipariş sorunu': 'Order issue', 'Telafi / düşüş': 'Refill / drop',
+      'Bakiye / ödeme': 'Balance / payment', 'Diğer sorular': 'Other questions', 'Daha hızlı çözüm için': 'For a faster fix',
+      'Sipariş numarasını yaz; Siparişlerim sayfasında görünür.': 'Include the order number; you can find it on My Orders.',
+      'Bağlantının doğru ve hesabın herkese açık olduğundan emin ol.': 'Make sure the link is correct and the account is public.',
+      'Havale bildiriminde gönderen adını eksiksiz gir.': 'Enter the full sender name in bank transfer notices.',
+      'Lütfen yaşadığınız sorunu detaylıca açıklayın...': 'Please describe your issue in detail...',
+
       // --- Neo-brutalist açılış sayfası ---------------------------------
       // Not: <br> ile bölünen başlıklar ayrı metin düğümleri oluşturur,
       // bu yüzden her satır ayrı bir anahtar olarak çevrilir.
@@ -3075,40 +3088,106 @@ class SmmApp {
 
   // --- SUPPORT TICKETS LOGIC ---
   async loadUserTickets() {
-    const tbody = document.getElementById('tickets-tbody');
+    const list = document.getElementById('tickets-list');
+    if (!list) return;
     try {
       const res = await API.getTickets();
-      if (!res.tickets || res.tickets.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-center">${this.ui('Açık destek talebiniz bulunmuyor.', 'You have no open support tickets.')}</td></tr>`;
-        return;
-      }
-
-      tbody.innerHTML = res.tickets.map(t => `
-        <tr>
-          <td>#${t.id}</td>
-          <td style="font-weight: 600;">${this.escapeHtml(this.localizeTicketSubject(t.subject))}</td>
-          <td><span class="badge ${t.status === 'replied' ? 'badge-completed' : (t.status === 'closed' ? 'badge-canceled' : 'badge-pending')}">${this.escapeHtml(this.localizeTicketStatus(t.status))}</span></td>
-          <td style="font-size: 0.85rem;">${new Date(t.created_at).toLocaleDateString(this.locale === 'en' ? 'en-US' : 'tr-TR')}</td>
-          <td>
-            <button class="btn btn-outline btn-sm" onclick="app.openTicketChatModal(${t.id})">
-              <i class="fa-solid fa-comments"></i> ${this.ui('Sohbet Et', 'Open Chat')}
-            </button>
-          </td>
-        </tr>
-      `).join('');
+      this.userTickets = res.tickets || [];
+      this.renderUserTickets();
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="5" class="text-center">${this.ui('Biletler alınamadı.', 'Tickets could not be loaded.')}</td></tr>`;
+      list.innerHTML = `<div class="tk-empty"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><strong>${this.ui('Talepler alınamadı.', 'Tickets could not be loaded.')}</strong></div>`;
     }
   }
 
-  showNewTicketModal() {
+  setTicketFilter(filter) {
+    this.ticketFilter = filter;
+    document.querySelectorAll('[data-tk-filter]').forEach(btn => {
+      const active = btn.dataset.tkFilter === filter;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', String(active));
+    });
+    this.renderUserTickets();
+  }
+
+  ticketTimeAgo(value) {
+    const d = this.parseDbDate(value);
+    if (!d) return '';
+    const dk = Math.floor(Math.max(0, Date.now() - d.getTime()) / 60000);
+    if (dk < 1) return this.ui('az önce', 'just now');
+    if (dk < 60) return this.ui(`${dk} dk önce`, `${dk} min ago`);
+    const sa = Math.floor(dk / 60);
+    if (sa < 24) return this.ui(`${sa} saat önce`, `${sa} hr ago`);
+    const gun = Math.floor(sa / 24);
+    if (gun < 30) return this.ui(`${gun} gün önce`, `${gun} days ago`);
+    return d.toLocaleDateString(this.locale === 'en' ? 'en-US' : 'tr-TR');
+  }
+
+  // Kart listesi: ust sayaclar, filtre ve "yeni yanit" isareti (son mesaj
+  // destekten geldiyse kullanicinin okuması gereken bir yanit var demektir).
+  renderUserTickets() {
+    const list = document.getElementById('tickets-list');
+    if (!list) return;
+    const tickets = this.userTickets || [];
+    const filter = this.ticketFilter || 'all';
+    for (const status of ['open', 'replied', 'closed']) {
+      const el = document.getElementById(`tk-count-${status}`);
+      if (el) el.textContent = tickets.filter(t => t.status === status).length;
+    }
+    const shown = filter === 'all' ? tickets : tickets.filter(t => t.status === filter);
+    if (!shown.length) {
+      list.innerHTML = tickets.length
+        ? `<div class="tk-empty tk-empty-sm"><strong>${this.ui('Bu filtrede talep yok.', 'No tickets in this filter.')}</strong></div>`
+        : `<div class="tk-empty">
+            <i class="fa-solid fa-headset" aria-hidden="true"></i>
+            <strong>${this.ui('Henüz destek talebin yok', 'You have no support tickets yet')}</strong>
+            <p>${this.ui('Bir sorun yaşarsan talep aç; ekibimiz bu sayfadan yanıtlar.', 'If something goes wrong, open a ticket and our team will reply here.')}</p>
+            <button type="button" class="tk-new" onclick="app.showNewTicketModal()"><i class="fa-solid fa-plus" aria-hidden="true"></i> ${this.ui('Yeni Talep Oluştur', 'Create New Ticket')}</button>
+          </div>`;
+      return;
+    }
+    const badge = { replied: 'badge-completed', closed: 'badge-canceled', open: 'badge-pending' };
+    list.innerHTML = shown.map(t => {
+      const fresh = t.status === 'replied' && t.last_sender === 'admin';
+      const from = t.last_sender === 'admin' ? this.ui('Destek', 'Support') : this.ui('Sen', 'You');
+      const snippet = t.last_message ? `<p class="tk-snippet"><b>${from}:</b> ${this.escapeHtml(t.last_message)}</p>` : '';
+      const count = Number(t.message_count) || 0;
+      return `
+        <article class="tk-item tk-s-${this.escapeHtml(t.status)}${fresh ? ' is-fresh' : ''}">
+          <div class="tk-item-head">
+            <span class="tk-id">#${t.id}</span>
+            <span class="badge ${badge[t.status] || 'badge-pending'}">${this.escapeHtml(this.localizeTicketStatus(t.status))}</span>
+            ${fresh ? `<span class="tk-fresh">${this.ui('Yeni yanıt', 'New reply')}</span>` : ''}
+          </div>
+          <h3 class="tk-subject">${this.escapeHtml(this.localizeTicketSubject(t.subject))}</h3>
+          ${snippet}
+          <div class="tk-item-foot">
+            <span class="tk-meta">
+              <span><i class="fa-regular fa-clock" aria-hidden="true"></i> ${this.escapeHtml(this.ticketTimeAgo(t.last_message_at || t.created_at))}</span>
+              <span><i class="fa-regular fa-comments" aria-hidden="true"></i> ${this.ui(`${count} mesaj`, `${count} ${count === 1 ? 'message' : 'messages'}`)}</span>
+            </span>
+            <button type="button" class="tk-open" onclick="app.openTicketChatModal(${t.id})">
+              ${fresh ? this.ui('Yanıtı Oku', 'Read Reply') : this.ui('Sohbeti Aç', 'Open Chat')} <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+            </button>
+          </div>
+        </article>`;
+    }).join('');
+  }
+
+  // Hizli talep dugmeleri konuyu onceden secer.
+  showNewTicketModal(topic) {
+    if (topic) {
+      const radio = [...document.querySelectorAll('input[name="ticket-topic"]')].find(r => r.value === topic);
+      if (radio) radio.checked = true;
+    }
     document.getElementById('modal-create-ticket').classList.add('active');
+    setTimeout(() => document.getElementById('ticket-message-input')?.focus(), 50);
   }
 
   async handleCreateTicket(e) {
     e.preventDefault();
-    const subject = document.getElementById('ticket-subject-select').value;
-    const orderId = document.getElementById('ticket-order-id-input').value;
+    const subject = document.querySelector('input[name="ticket-topic"]:checked')?.value || 'Diğer Sorular';
+    // Ornek metin "#1042" oldugu icin kullanici # ile de yazabilir; tek # kalsin.
+    const orderId = document.getElementById('ticket-order-id-input').value.trim().replace(/^#+/, '');
     const message = document.getElementById('ticket-message-input').value;
 
     const fullSubject = orderId ? `${subject} (#${orderId})` : subject;
@@ -3118,6 +3197,7 @@ class SmmApp {
       showToast(res.message, 'success');
       this.closeModal('modal-create-ticket');
       document.getElementById('ticket-message-input').value = '';
+      document.getElementById('ticket-order-id-input').value = '';
       await this.loadUserTickets();
     } catch (err) {
       showToast(`Hata: ${err.message}`, 'error');

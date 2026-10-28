@@ -43,7 +43,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/style.css?v=20261028b">
+  <link rel="stylesheet" href="/css/style.css?v=20261028c">
 </head>
 <body>
 
@@ -913,42 +913,65 @@
 
     <!-- 6. SUPPORT TICKETS VIEW -->
     <section id="view-tickets" class="app-view" style="display: none;">
-      <div class="main-content" style="max-width: 900px;">
-        <div class="flex-between mb-20">
-          <h1 style="font-size: 1.8rem;">🎧 Destek Taleplerim</h1>
-          <button class="btn btn-primary btn-sm" onclick="app.showNewTicketModal()">
-            <i class="fa-solid fa-plus"></i> Yeni Bilet Oluştur
+      <div class="main-content tk-page">
+        <div class="tk-hero">
+          <div>
+            <h1>Destek Merkezi</h1>
+            <p class="tk-lead">Sipariş, ödeme ya da hesabınla ilgili bir sorun mu var? Talep aç; yanıtımız bu sayfaya ve bildirimlerine düşer.</p>
+          </div>
+          <button type="button" class="tk-new" onclick="app.showNewTicketModal()">
+            <i class="fa-solid fa-plus" aria-hidden="true"></i> Yeni Talep Oluştur
           </button>
         </div>
 
-        <!-- TELEGRAM DIRECT CONTACT CARD -->
-        <div class="glass-card mb-20" style="background: linear-gradient(135deg, rgba(0, 136, 204, 0.15), rgba(0, 176, 255, 0.1)); border: 1px solid rgba(0, 136, 204, 0.4); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
-          <div>
-            <h3 style="font-size: 1.1rem; color: #fff; margin-bottom: 4px;"><i class="fa-brands fa-telegram" style="color: #0088cc; font-size: 1.3rem;" aria-hidden="true"></i> Telegram Canlı Destek Hattı</h3>
-            <p style="font-size: 0.85rem; color: var(--text-muted);">Acil sipariş takibi veya sorularınız için Telegram temsilcimizle 7/24 birebir doğrudan sohbet edin.</p>
-          </div>
-          <a id="tickets-telegram-link" href="https://t.me/SmmPanelDestek" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="background: linear-gradient(135deg, #0088cc, #00b0ff); border: none; text-decoration: none; padding: 10px 20px; font-weight: 700;">
-            <i class="fa-brands fa-telegram" style="font-size: 1.1rem;" aria-hidden="true"></i> Telegram'dan Yaz
-          </a>
+        <div class="tk-stats">
+          <div class="tk-stat tk-stat-open"><small>Açık</small><strong id="tk-count-open">0</strong><span>Yanıtımızı bekliyor</span></div>
+          <div class="tk-stat tk-stat-replied"><small>Yanıtlandı</small><strong id="tk-count-replied">0</strong><span>Okuman gereken yanıt</span></div>
+          <div class="tk-stat tk-stat-closed"><small>Çözüldü</small><strong id="tk-count-closed">0</strong><span>Kapanan talepler</span></div>
         </div>
 
-        <div class="glass-card">
-          <div class="table-responsive">
-            <table class="custom-table">
-              <thead>
-                <tr>
-                  <th scope="col">ID</th>
-                  <th scope="col">Konu</th>
-                  <th scope="col">Durum</th>
-                  <th scope="col">Tarih</th>
-                  <th scope="col">İşlem</th>
-                </tr>
-              </thead>
-              <tbody id="tickets-tbody">
-                <!-- Dynamic Tickets Rows -->
-              </tbody>
-            </table>
+        <div class="tk-layout">
+          <div class="tk-main">
+            <div class="tk-filters" role="group" aria-label="Talep filtresi">
+              <button type="button" class="tk-filter active" data-tk-filter="all" aria-pressed="true" onclick="app.setTicketFilter('all')">Tümü</button>
+              <button type="button" class="tk-filter" data-tk-filter="open" aria-pressed="false" onclick="app.setTicketFilter('open')">Açık</button>
+              <button type="button" class="tk-filter" data-tk-filter="replied" aria-pressed="false" onclick="app.setTicketFilter('replied')">Yanıtlandı</button>
+              <button type="button" class="tk-filter" data-tk-filter="closed" aria-pressed="false" onclick="app.setTicketFilter('closed')">Kapalı</button>
+            </div>
+            <div id="tickets-list" class="tk-list" aria-live="polite"></div>
           </div>
+
+          <aside class="tk-side">
+            <div class="tk-card tk-telegram">
+              <h3><i class="fa-brands fa-telegram" aria-hidden="true"></i> Telegram Canlı Destek Hattı</h3>
+              <p>Acil sipariş takibi veya sorularınız için Telegram temsilcimizle 7/24 birebir doğrudan sohbet edin.</p>
+              <a id="tickets-telegram-link" href="https://t.me/SmmPanelDestek" target="_blank" rel="noopener noreferrer" class="tk-telegram-btn">
+                <i class="fa-brands fa-telegram" aria-hidden="true"></i> Telegram'dan Yaz
+              </a>
+            </div>
+            <div class="tk-card">
+              <h3>Hızlı talep</h3>
+              <div class="tk-topics">
+                <button type="button" onclick="app.showNewTicketModal('Sipariş Hatası / İptal Talebi')"><i class="fa-solid fa-box" aria-hidden="true"></i> <span>Sipariş sorunu</span></button>
+                <button type="button" onclick="app.showNewTicketModal('Telafi / Düşüş Bildirimi')"><i class="fa-solid fa-rotate" aria-hidden="true"></i> <span>Telafi / düşüş</span></button>
+                <button type="button" onclick="app.showNewTicketModal('Bakiye / Ödeme Sorunu')"><i class="fa-solid fa-wallet" aria-hidden="true"></i> <span>Bakiye / ödeme</span></button>
+                <button type="button" onclick="app.showNewTicketModal('Diğer Sorular')"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i> <span>Diğer sorular</span></button>
+              </div>
+            </div>
+            <div class="tk-card tk-tips">
+              <h3>Daha hızlı çözüm için</h3>
+              <ul>
+                <li>Sipariş numarasını yaz; Siparişlerim sayfasında görünür.</li>
+                <li>Bağlantının doğru ve hesabın herkese açık olduğundan emin ol.</li>
+                <li>Havale bildiriminde gönderen adını eksiksiz gir.</li>
+              </ul>
+              <div class="tk-links">
+                <a href="/orders" onclick="app.navigate('orders'); return false;">Siparişlerim</a>
+                <a href="/add-funds" onclick="app.navigate('add-funds'); return false;">Bakiye Yükle</a>
+                <a href="/refund" onclick="app.navigate('refund'); return false;">İade Politikası</a>
+              </div>
+            </div>
+          </aside>
         </div>
       </div>
     </section>
@@ -4596,28 +4619,26 @@ Canceled     iptal edildi</pre>
 
   <!-- CREATE TICKET MODAL -->
   <div class="modal-backdrop" id="modal-create-ticket">
-    <div class="modal-body glass-card">
+    <div class="modal-body glass-card tk-modal">
       <div class="flex-between mb-20">
         <h3><i class="fa-solid fa-headset"></i> Yeni Destek Bileti Oluştur</h3>
         <button aria-label="Kapat" onclick="app.closeModal('modal-create-ticket')" style="background: none; border: none; color: var(--text-muted); cursor: pointer;"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <form onsubmit="app.handleCreateTicket(event)">
-        <div class="form-group">
-          <label for="ticket-subject-select" class="form-label">Konu / Destek Türü</label>
-          <select id="ticket-subject-select" aria-label="Destek konusu" class="form-control" required>
-            <option value="Sipariş Hatası / İptal Talebi">📦 Sipariş Hatası / İptal Talebi</option>
-            <option value="Telafi / Düşüş Bildirimi">🛡️ Telafi / Düşüş Bildirimi</option>
-            <option value="Bakiye / Ödeme Sorunu">💳 Bakiye / Ödeme Sorunu</option>
-            <option value="Diğer Sorular">💬 Diğer Sorular</option>
-          </select>
-        </div>
-        <div class="form-group">
+        <fieldset class="form-group tk-topic-pick">
+          <legend class="form-label">Konu / Destek Türü</legend>
+          <label class="tk-topic-opt"><input type="radio" name="ticket-topic" value="Sipariş Hatası / İptal Talebi" checked><i class="fa-solid fa-box" aria-hidden="true"></i><span>Sipariş Hatası / İptal Talebi</span></label>
+          <label class="tk-topic-opt"><input type="radio" name="ticket-topic" value="Telafi / Düşüş Bildirimi"><i class="fa-solid fa-rotate" aria-hidden="true"></i><span>Telafi / Düşüş Bildirimi</span></label>
+          <label class="tk-topic-opt"><input type="radio" name="ticket-topic" value="Bakiye / Ödeme Sorunu"><i class="fa-solid fa-wallet" aria-hidden="true"></i><span>Bakiye / Ödeme Sorunu</span></label>
+          <label class="tk-topic-opt"><input type="radio" name="ticket-topic" value="Diğer Sorular"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i><span>Diğer Sorular</span></label>
+        </fieldset>
+        <div class="form-group" id="ticket-order-id-group">
           <label for="ticket-order-id-input" class="form-label">Sipariş ID (İsteğe Bağlı)</label>
-          <input type="text" id="ticket-order-id-input" class="form-control" placeholder="Örn: #1042">
+          <input type="text" id="ticket-order-id-input" class="form-control" inputmode="numeric" placeholder="Örn: #1042">
         </div>
         <div class="form-group">
           <label for="ticket-message-input" class="form-label">Mesajınız</label>
-          <textarea id="ticket-message-input" class="form-control" rows="4" placeholder="Lütfen yaşadığınız sorunu detaylıca açıklayın..." required></textarea>
+          <textarea id="ticket-message-input" class="form-control" rows="5" maxlength="5000" placeholder="Lütfen yaşadığınız sorunu detaylıca açıklayın..." required></textarea>
         </div>
         <button type="submit" class="btn btn-primary" style="width: 100%;">
           <i class="fa-solid fa-paper-plane"></i> Bileti Gönder
@@ -5167,6 +5188,6 @@ Canceled     iptal edildi</pre>
   <!-- Ziyaretci ayak izi: api.js ve app.js'ten once yuklenir (window.JT). -->
   <script src="/js/track.js?v=20261027e" defer></script>
   <script src="/js/api.js?v=20261028a" defer></script>
-  <script src="/js/app.js?v=20261028c" defer></script>
+  <script src="/js/app.js?v=20261028d" defer></script>
 </body>
 </html>

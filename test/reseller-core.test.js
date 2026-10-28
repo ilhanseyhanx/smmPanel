@@ -200,8 +200,10 @@ test('bayi adresi Jet sitesini değil bayinin vitrinini açar (marka sızmaz)', 
     assert.doesNotMatch(res.text, iz, `bayi sitesinde Jet izi var: ${iz}`);
   }
   // Ana sitenin SEO / statik uclari bayi adresinde calismaz.
+  // Bayinin kendi site haritasi var; Jet'in adresleri ona sizmaz.
   const sitemap = await vitrin().get('/sitemap.xml');
-  assert.doesNotMatch(sitemap.text, /jetsmmpanel|urlset/i);
+  assert.doesNotMatch(sitemap.text, /jetsmmpanel|blog-|hizmet-sayfalari/i);
+  assert.match(sitemap.text, /<loc>http:\/\/kanka\.bayi\.test\/services<\/loc>/);
   const css = await vitrin().get('/css/style.css');
   assert.doesNotMatch(css.text, /--accent-cyan/, 'ana sitenin stil dosyası bayi adresinden servis ediliyor');
   const robots = await vitrin().get('/robots.txt');

@@ -247,6 +247,24 @@ a { color: var(--primary); text-decoration: none; }
 .sf-docs-intro .sf-dl { margin-bottom: 12px; }
 .sf-docs-action .sf-table td:first-child { white-space: nowrap; width: 1%; }
 
+/* Blog ve satis sayfalari (Pro) */
+.sf-blog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 18px; }
+.sf-card.sf-blog-card { display: flex; flex-direction: column; padding: 0; overflow: hidden; color: var(--text); min-width: 0; }
+.sf-blog-card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: var(--surface-2); }
+.sf-blog-card span { display: grid; gap: 6px; padding: 16px 18px 18px; }
+.sf-blog-card b { font-size: 1.05rem; line-height: 1.35; overflow-wrap: anywhere; }
+.sf-blog-card small { color: var(--muted); font-size: 0.8rem; }
+.sf-blog-card em { font-style: normal; color: var(--muted); font-size: 0.9rem; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.sf-blog-card:hover b { color: var(--primary); }
+.sf-post { overflow-wrap: anywhere; }
+.sf-post h3 { font-size: 1rem; margin: 18px 0 6px; }
+.sf-post-date { margin-top: -6px; font-size: 0.86rem; }
+.sf-post-cover { width: 100%; max-height: 420px; object-fit: cover; border-radius: 12px; margin: 6px 0 18px; display: block; }
+.sf-post-cta { max-width: 820px; margin: 18px auto 0; }
+.sf-cta-box { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); }
+.sf-cta-box div { display: grid; gap: 4px; min-width: 0; }
+.sf-cta-box b { font-size: 1.05rem; overflow-wrap: anywhere; }
+
 /* Pencere */
 .sf-modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: rgba(15, 23, 42, .55); overflow-y: auto; }
 .sf-modal-box { position: relative; width: min(520px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; box-shadow: var(--shadow); }

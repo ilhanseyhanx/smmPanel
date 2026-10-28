@@ -10,6 +10,7 @@
     orders: { path: '/admin/orders', title: 'Siparişler' },
     digital: { path: '/admin/digital', title: 'Dijital Ürünler' },
     providers: { path: '/admin/providers', title: 'Sağlayıcılarım' },
+    content: { path: '/admin/content', title: 'Blog & Sayfalar' },
     payments: { path: '/admin/payments', title: 'Ödemeler' },
     paysettings: { path: '/admin/payment-settings', title: 'Ödeme Ayarları' },
     site: { path: '/admin/site', title: 'Site Ayarları' },
@@ -1166,6 +1167,82 @@
     }
   }
 
+  // ------------------------------------------------------------- blog & satis sayfalari (Pro)
+  async function loadContent() {
+    const d = await api('/content');
+    state.content = d;
+    state.contentTab = state.contentTab || 'blog';
+    $('#pn-content-lock').hidden = d.pro;
+    $('#pn-content-body').hidden = !d.pro;
+    if (d.pro) renderContent();
+  }
+
+  function siteOrigin() {
+    const domain = state.me?.tenant?.domains?.find(x => x.status === 'active')?.domain;
+    return `https://${domain || state.me?.tenant?.subdomain || location.host}`;
+  }
+
+  function renderContent() {
+    const tab = state.contentTab;
+    $$('[data-content-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.contentTab === tab));
+    const rows = state.content.posts.filter(p => p.type === tab);
+    const prefix = tab === 'blog' ? '/blog/' : '/hizmet/';
+    $('#pn-content-rows').innerHTML = rows.length ? rows.map(p => `<tr>
+      <td><strong>${escapeHtml(p.title)}</strong>${p.excerpt ? `<span class="pn-sub">${escapeHtml(p.excerpt.slice(0, 90))}</span>` : ''}</td>
+      <td>${p.status === 'published' ? `<a href="${escapeHtml(siteOrigin() + prefix + p.slug)}" target="_blank" rel="noopener">${escapeHtml(prefix + p.slug)}</a>` : escapeHtml(prefix + p.slug)}</td>
+      <td>${p.status === 'published' ? '<span class="sf-badge sf-badge-completed">Yayında</span>' : '<span class="sf-badge sf-badge-pending">Taslak</span>'}</td>
+      <td>${formatDate(p.published_at || p.created_at)}</td>
+      <td class="pn-actions"><button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-content-edit="${p.id}">Düzenle</button>
+        <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-content-delete="${p.id}" title="Sil"><i class="fa-solid fa-trash" aria-hidden="true"></i></button></td>
+    </tr>`).join('') : `<tr><td colspan="5" class="sf-muted">${tab === 'blog' ? 'Henüz blog yazın yok.' : 'Henüz satış sayfan yok.'}</td></tr>`;
+  }
+
+  async function editContent(id) {
+    const tab = state.contentTab;
+    const post = id ? state.content.posts.find(p => p.id === id) : { type: tab, title: '', slug: '', excerpt: '', body: '', cover_url: '', service_id: null, status: 'draft' };
+    if (!post) return;
+    let serviceOptions = '';
+    if (post.type === 'page') {
+      const [svc, own] = await Promise.all([state.services ? state.services : api('/services'), api('/own').catch(() => ({ services: [] }))]);
+      state.services = svc;
+      const options = [
+        ...svc.services.filter(s => s.visible).map(s => [s.id, `#${s.id} ${s.custom_name || s.name}`]),
+        ...own.services.filter(s => s.enabled).map(s => [s.id, `#${s.id} ${s.name} (kendi sağlayıcın)`])
+      ];
+      serviceOptions = `<label>Bağlı servis <small>(sayfada "Sipariş ver" kutusu çıkar)</small><select name="service_id" class="sf-input"><option value="">Servis yok</option>
+        ${options.map(([value, label]) => `<option value="${value}"${Number(post.service_id) === value ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></label>`;
+    }
+    openModal(id ? 'Düzenle' : (post.type === 'blog' ? 'Yeni blog yazısı' : 'Yeni satış sayfası'), `
+      <form class="sf-form" id="pn-content-form" novalidate>
+        <label>Başlık<input name="title" class="sf-input" maxlength="160" value="${escapeHtml(post.title)}" required></label>
+        <label>Adres <small>(${post.type === 'blog' ? '/blog/' : '/hizmet/'}… boş bırakırsan başlıktan oluşur)</small><input name="slug" class="sf-input" maxlength="80" value="${escapeHtml(post.slug)}" placeholder="instagram-takipci-satin-al"></label>
+        <label>Kısa açıklama <small>(arama motorlarında görünür, en fazla 300 karakter)</small><input name="excerpt" class="sf-input" maxlength="300" value="${escapeHtml(post.excerpt || '')}"></label>
+        <label>Kapak görseli <small>(isteğe bağlı, https:// adresi)</small><input name="cover_url" class="sf-input" maxlength="500" value="${escapeHtml(post.cover_url || '')}"></label>
+        ${serviceOptions}
+        <label>Metin <small>## ara başlık · ### küçük başlık · - madde · boş satır yeni paragraf</small><textarea name="body" class="sf-input" rows="14" maxlength="30000">${escapeHtml(post.body || '')}</textarea></label>
+        <label>Durum<select name="status" class="sf-input"><option value="published"${post.status === 'published' ? ' selected' : ''}>Yayında</option><option value="draft"${post.status === 'draft' ? ' selected' : ''}>Taslak</option></select></label>
+        <p class="sf-form-error" role="alert"></p>
+        <button type="submit" class="sf-btn sf-btn-primary">Kaydet</button>
+      </form>`, { wide: true });
+    const form = $('#pn-content-form');
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const body = {
+        type: post.type, title: form.title.value.trim(), slug: form.slug.value.trim(), excerpt: form.excerpt.value.trim(),
+        cover_url: form.cover_url.value.trim(), body: form.body.value, status: form.status.value,
+        service_id: form.service_id && form.service_id.value ? Number(form.service_id.value) : null
+      };
+      try {
+        const res = await api(id ? `/content/${id}` : '/content', { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+        closeModal();
+        toast(res.message);
+        await loadContent();
+      } catch (err) {
+        $('.sf-form-error', form).textContent = err.message;
+      }
+    });
+  }
+
   // ------------------------------------------------------------- e-posta & API
   const MAIL_KIND = {
     welcome: 'Hoş geldin', payment: 'Bakiye yüklendi', order: 'Sipariş bitti', test: 'Test',
@@ -1575,6 +1652,11 @@
     branding_changed: 'Logo / simge değişti',
     page_reset: 'Yasal sayfa otomatiğe döndü',
     mail_settings_changed: 'E-posta ayarları değişti',
+    own_provider_added: 'Sağlayıcı bağlandı',
+    own_provider_removed: 'Sağlayıcı kaldırıldı',
+    own_services_imported: 'Sağlayıcıdan servis eklendi',
+    own_order: 'Kendi sağlayıcı siparişi',
+    content_saved: 'Blog / satış sayfası kaydedildi',
     customer_password_set: 'Müşteriye yeni şifre verildi',
     api_settings_changed: 'Müşteri API ayarı değişti',
     api_key_created: 'Müşteri API anahtarı oluşturdu',
@@ -1666,6 +1748,7 @@
       if (view === 'orders') await loadOrders();
       if (view === 'digital') await loadDigital();
       if (view === 'providers') await loadOwn();
+      if (view === 'content') await loadContent();
       if (view === 'payments') await loadPayments();
       if (view === 'paysettings') await loadPaySettings();
       if (view === 'pages') await loadPagesView();
@@ -1793,6 +1876,19 @@
       const themeUse = t.closest('[data-theme-use]');
       if (themeUse) { useTheme(themeUse.dataset.themeUse); return; }
       if (t.closest('[data-sub-cancel]')) { subscriptionAction('cancel'); return; }
+      const contentTab = t.closest('[data-content-tab]');
+      if (contentTab) { state.contentTab = contentTab.dataset.contentTab; renderContent(); return; }
+      if (t.closest('#pn-content-new')) { editContent(null); return; }
+      const contentEdit = t.closest('[data-content-edit]');
+      if (contentEdit) { editContent(Number(contentEdit.dataset.contentEdit)); return; }
+      const contentDelete = t.closest('[data-content-delete]');
+      if (contentDelete) {
+        confirmBox('Sil', 'Bu içerik sitenden kaldırılacak.', 'Sil').then(async ok => {
+          if (!ok) return;
+          try { toast((await api(`/content/${contentDelete.dataset.contentDelete}`, { method: 'DELETE' })).message); await loadContent(); } catch (err) { toast(err.message, 'error'); }
+        });
+        return;
+      }
       const ownImport = t.closest('[data-own-import]');
       if (ownImport) { importOwnServices(Number(ownImport.dataset.ownImport)); return; }
       const ownRefresh = t.closest('[data-own-refresh]');

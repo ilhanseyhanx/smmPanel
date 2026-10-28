@@ -29,6 +29,7 @@
         <a href="/" data-nav="home" data-auth="guest">Ana Sayfa</a>
         <a href="/services" data-nav="services">Servisler</a>
         <a href="/dijital" data-nav="digital" data-digital-nav hidden>Dijital Ürünler</a>
+        <a href="/blog" data-nav="blog" data-blog-nav hidden>Blog</a>
         <a href="/order" data-nav="order" data-auth="user">Yeni Sipariş</a>
         <a href="/bakiye" data-nav="funds" data-auth="user">Bakiye Yükle</a>
         <a href="/orders" data-nav="orders" data-auth="user">Siparişlerim</a>
@@ -114,6 +115,18 @@
       </div>
       <div class="sf-chips" id="sf-digital-cats" hidden></div>
       <div class="sf-dg-grid" id="sf-digital-list"><p class="sf-muted">Yükleniyor…</p></div>
+    </section>
+
+    <!-- BLOG (Pro; sunucuda basilir) -->
+    <section class="sf-view" data-view="blog" hidden>
+      <div class="sf-page-head"><h1>Blog</h1></div>
+      <div class="sf-blog-grid" id="sf-blog-list">%%PRERENDER_BLOG%%</div>
+    </section>
+
+    <!-- BLOG YAZISI / SATIS SAYFASI (Pro; sunucuda basilir) -->
+    <section class="sf-view" data-view="post" hidden>
+      <article class="sf-card sf-legal sf-post" id="sf-post">%%PRERENDER_POST%%</article>
+      <div class="sf-post-cta" id="sf-post-cta"></div>
     </section>
 
     <!-- DIJITAL SIPARISLERIM -->

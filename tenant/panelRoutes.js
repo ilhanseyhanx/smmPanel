@@ -29,6 +29,7 @@ const tenantBranding = require('../services/tenantBranding');
 const demoData = require('./demoData');
 const tenantMail = require('../services/tenantMail');
 const tenantOwn = require('../services/tenantOwn');
+const tenantContent = require('../services/tenantContent');
 const { digitalSettings, tenantDigitalCatalog } = require('../services/tenantDigital');
 const tenantDomains = require('../services/tenantDomains');
 const { signOwnerSession, setOwnerCookie, clearOwnerCookie, requireOwner } = require('./panelSession');
@@ -777,6 +778,61 @@ router.get('/own/orders', async (req, res, next) => {
   try {
     const page = Math.max(1, Number.parseInt(req.query.page || '1', 10) || 1);
     res.json(await tenantOwn.panelOwnOrders(req.tenant.id, page));
+  } catch (err) { next(err); }
+});
+
+// ------------------------------------------------- blog ve satis sayfalari (Pro)
+const postSchema = z.object({
+  type: z.enum(['blog', 'page']),
+  title: z.string().trim().min(3).max(160),
+  slug: z.string().trim().max(80).optional().default(''),
+  excerpt: z.string().trim().max(300).optional().default(''),
+  body: z.string().max(30000).optional().default(''),
+  cover_url: z.string().trim().max(500).optional().default(''),
+  service_id: z.coerce.number().int().positive().nullable().optional(),
+  status: z.enum(['draft', 'published'])
+});
+
+function postInput(body) {
+  return {
+    type: body.type,
+    title: normalizePlainText(body.title, 160),
+    slug: String(body.slug || '').trim().toLowerCase(),
+    excerpt: normalizePlainText(body.excerpt, 300),
+    body: String(body.body || '').replace(/\r\n/g, '\n').slice(0, 30000),
+    cover_url: body.cover_url || '',
+    service_id: body.service_id || null,
+    status: body.status
+  };
+}
+
+router.get('/content', async (req, res, next) => {
+  try {
+    const pro = isProTenant(req.tenant);
+    res.json({ pro, posts: pro ? await tenantContent.allPosts(req.tenant.id) : [] });
+  } catch (err) { next(err); }
+});
+
+router.post('/content', validate(postSchema), async (req, res, next) => {
+  try {
+    const id = await tenantContent.savePost(req.tenant, null, postInput(req.body));
+    await ownerActivity(req, 'content_saved', { type: req.body.type, title: req.body.title, status: req.body.status });
+    res.status(201).json({ message: req.body.status === 'published' ? 'Yayınlandı.' : 'Taslak kaydedildi.', id });
+  } catch (err) { next(err); }
+});
+
+router.put('/content/:id', validate(postSchema), async (req, res, next) => {
+  try {
+    await tenantContent.savePost(req.tenant, idParam(req.params.id), postInput(req.body));
+    await ownerActivity(req, 'content_saved', { type: req.body.type, title: req.body.title, status: req.body.status });
+    res.json({ message: 'Kaydedildi.' });
+  } catch (err) { next(err); }
+});
+
+router.delete('/content/:id', async (req, res, next) => {
+  try {
+    await tenantContent.deletePost(req.tenant.id, idParam(req.params.id));
+    res.json({ message: 'Silindi.' });
   } catch (err) { next(err); }
 });
 

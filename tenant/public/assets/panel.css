@@ -203,3 +203,5 @@
 .pn-own-providers li { align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .pn-own-providers li:last-child { border-bottom: 0; }
 .pn-own-import-list { max-height: 50vh; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+
+.pn-content-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }

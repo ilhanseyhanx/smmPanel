@@ -45,6 +45,7 @@
         <a href="/admin/orders" data-go="orders"><i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i><span>Siparişler</span></a>
         <a href="/admin/digital" data-go="digital"><i class="fa-solid fa-key" aria-hidden="true"></i><span>Dijital Ürünler</span></a>
         <a href="/admin/providers" data-go="providers"><i class="fa-solid fa-plug" aria-hidden="true"></i><span>Sağlayıcılarım</span><b class="pn-pro-tag">PRO</b></a>
+        <a href="/admin/content" data-go="content"><i class="fa-solid fa-newspaper" aria-hidden="true"></i><span>Blog & Sayfalar</span><b class="pn-pro-tag">PRO</b></a>
         <a href="/admin/payments" data-go="payments"><i class="fa-solid fa-money-bill-transfer" aria-hidden="true"></i><span>Ödemeler</span><b class="pn-nav-count" id="pn-pay-count" hidden></b></a>
         <a href="/admin/payment-settings" data-go="paysettings"><i class="fa-solid fa-credit-card" aria-hidden="true"></i><span>Ödeme Ayarları</span></a>
         <a href="/admin/domain" data-go="domain"><i class="fa-solid fa-globe" aria-hidden="true"></i><span>Alan Adı</span></a>
@@ -364,6 +365,30 @@
             </table>
           </div>
           <div class="pn-pager" id="pn-own-pager"></div>
+        </div>
+      </section>
+
+      <!-- BLOG & SATIS SAYFALARI (Pro) -->
+      <section class="pn-view" data-view="content" hidden>
+        <div class="sf-card pn-pro-lock" id="pn-content-lock" hidden>
+          <h2 class="pn-card-title">Blog ve satış sayfaları Pro pakette</h2>
+          <p class="sf-muted">Pro pakette sitende blog yazıları ve servis bazlı satış sayfaları (örn. /hizmet/instagram-takipci) yayınlayıp arama motorlarından müşteri çekebilirsin.</p>
+          <a class="sf-btn sf-btn-primary" href="/admin/subscription" data-go="subscription">Paketleri gör</a>
+        </div>
+        <div id="pn-content-body" hidden>
+          <div class="pn-content-head">
+            <div class="sf-tabs pn-tabs" role="tablist" style="margin:0;">
+              <button type="button" class="active" data-content-tab="blog">Blog yazıları</button>
+              <button type="button" data-content-tab="page">Satış sayfaları</button>
+            </div>
+            <button type="button" class="sf-btn sf-btn-primary" id="pn-content-new"><i class="fa-solid fa-plus" aria-hidden="true"></i> Yeni</button>
+          </div>
+          <div class="sf-card sf-table-wrap">
+            <table class="sf-table pn-table">
+              <thead><tr><th>Başlık</th><th>Adres</th><th>Durum</th><th>Tarih</th><th></th></tr></thead>
+              <tbody id="pn-content-rows"></tbody>
+            </table>
+          </div>
         </div>
       </section>
 

@@ -1055,6 +1055,22 @@ async function runMigrations() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS tenant_posts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      type TEXT NOT NULL CHECK(type IN ('blog', 'page')),
+      slug TEXT NOT NULL,
+      title TEXT NOT NULL,
+      excerpt TEXT,
+      body TEXT NOT NULL DEFAULT '',
+      cover_url TEXT,
+      service_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'published')),
+      published_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(tenant_id, type, slug)
+    );
     CREATE INDEX IF NOT EXISTS idx_tenant_own_orders_customer ON tenant_own_orders(tenant_id, customer_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_tenant_own_orders_open ON tenant_own_orders(status, provider_id);
   `);

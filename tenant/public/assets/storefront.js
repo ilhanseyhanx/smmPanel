@@ -8,8 +8,12 @@
   const ROUTES = { '/': 'home', '/services': 'services', '/order': 'order', '/orders': 'orders', '/account': 'account', '/bakiye': 'funds', '/sifre-sifirla': 'reset', '/dijital': 'digital', '/dijital/siparislerim': 'dorders', '/api-dokumani': 'apidocs' };
 
   // Yasal sayfalar /sayfa/<slug> adresinde acilir.
+  // Yasal sayfalar /sayfa/<slug>, blog yazilari /blog/<slug>, satis sayfalari /hizmet/<slug>.
   function routeOf(path) {
-    return path.startsWith('/sayfa/') ? 'page' : (ROUTES[path] || 'home');
+    if (path.startsWith('/sayfa/')) return 'page';
+    if (/^\/(blog|hizmet)\/[^/]+\/?$/.test(path)) return 'post';
+    if (/^\/blog\/?$/.test(path)) return 'blog';
+    return ROUTES[path] || 'home';
   }
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -836,6 +840,43 @@
       </div>`).join('')}`;
   }
 
+  // ------------------------------------------------------------- blog ve satis sayfalari (Pro)
+  function trDay(value) {
+    const date = new Date(String(value || '').replace(' ', 'T') + 'Z');
+    return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+
+  async function loadBlog() {
+    const box = $('#sf-blog-list');
+    try {
+      const data = await api('/blog');
+      box.innerHTML = data.posts.length ? data.posts.map(p => `<a class="sf-card sf-blog-card" href="/blog/${encodeURIComponent(p.slug)}" data-nav="post">${p.cover_url ? `<img src="${escapeHtml(p.cover_url)}" alt="" loading="lazy">` : ''}<span><b>${escapeHtml(p.title)}</b><small>${escapeHtml(trDay(p.published_at))}</small><em>${escapeHtml(p.excerpt)}</em></span></a>`).join('')
+        : '<p class="sf-muted">Henüz yazı yok.</p>';
+    } catch (err) {
+      box.innerHTML = `<p class="sf-muted">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  async function loadPost(path) {
+    const box = $('#sf-post');
+    const cta = $('#sf-post-cta');
+    cta.innerHTML = '';
+    const [, kind, slug] = path.match(/^\/(blog|hizmet)\/([^/]+)/) || [];
+    try {
+      const data = await api(`/${kind}/${encodeURIComponent(decodeURIComponent(slug))}`);
+      const post = data.post || data.page;
+      document.title = `${post.title} · ${state.site?.name || ''}`;
+      box.innerHTML = `<h1>${escapeHtml(post.title)}</h1>${kind === 'blog' ? `<p class="sf-muted sf-post-date">${escapeHtml(trDay(post.published_at))}</p>` : ''}${post.cover_url ? `<img class="sf-post-cover" src="${escapeHtml(post.cover_url)}" alt="">` : ''}${formatLegal(post.body)}`;
+      const s = data.service;
+      if (s) {
+        cta.innerHTML = `<div class="sf-card sf-cta-box"><div><b>${escapeHtml(s.name)}</b><span class="sf-muted">${money(s.rate)} / ${s.pricing_model === 'per_item' ? 'adet' : '1000 adet'} · en az ${Number(s.min).toLocaleString('tr-TR')}</span></div>
+          <button type="button" class="sf-btn sf-btn-primary sf-btn-lg" data-order-service="${s.id}">Sipariş ver</button></div>`;
+      }
+    } catch (err) {
+      box.innerHTML = `<h1>Bulunamadı</h1><p class="sf-muted">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
   // ------------------------------------------------------------- yasal sayfalar
   // Duz metin: "## " baslik, "- " madde, bos satir paragraf. Once kacis, sonra bicim.
   function formatLegal(text) {
@@ -846,7 +887,8 @@
       const flushList = () => { if (list.length) { out.push(`<ul>${list.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`); list = []; } };
       const flushPara = () => { if (para.length) { out.push(`<p>${para.map(escapeHtml).join('<br>')}</p>`); para = []; } };
       block.split('\n').map(line => line.trim()).filter(Boolean).forEach(line => {
-        if (line.startsWith('## ')) { flushPara(); flushList(); out.push(`<h2>${escapeHtml(line.slice(3))}</h2>`); }
+        if (line.startsWith('### ')) { flushPara(); flushList(); out.push(`<h3>${escapeHtml(line.slice(4))}</h3>`); }
+        else if (line.startsWith('## ')) { flushPara(); flushList(); out.push(`<h2>${escapeHtml(line.slice(3))}</h2>`); }
         else if (line.startsWith('- ')) { flushPara(); list.push(line.slice(2)); }
         else { flushList(); para.push(line); }
       });
@@ -872,6 +914,7 @@
     try {
       const data = await api('/pages');
       $('#sf-footer-links').innerHTML = data.pages.map(p => `<a href="/sayfa/${encodeURIComponent(p.slug)}" data-nav="page">${escapeHtml(p.title)}</a>`).join('')
+        + (state.site?.landing_pages || []).map(p => `<a href="/hizmet/${encodeURIComponent(p.slug)}" data-nav="post">${escapeHtml(p.title)}</a>`).join('')
         + (state.site?.api ? '<a href="/api-dokumani" data-nav="apidocs">API</a>' : '');
     } catch { /* alt bilgi bagintisiz da calisir */ }
   }
@@ -881,7 +924,7 @@
     if (USER_VIEWS.has(view) && !state.customer) view = 'home';
     if (view === 'home' && state.customer) view = 'order';
     $$('.sf-view').forEach(section => { section.hidden = section.dataset.view !== view; });
-    const navKey = view === 'dorders' ? 'digital' : view;
+    const navKey = view === 'dorders' ? 'digital' : (view === 'post' && location.pathname.startsWith('/blog') ? 'blog' : view);
     $$('.sf-nav a').forEach(link => link.classList.toggle('active', link.dataset.nav === navKey));
     closeModal();
     window.scrollTo(0, 0);
@@ -890,6 +933,8 @@
     try {
       if (view === 'funds') await loadFunds();
       if (view === 'page') await loadPage(decodeURIComponent(location.pathname.slice('/sayfa/'.length)));
+      if (view === 'blog') await loadBlog();
+      if (view === 'post') await loadPost(location.pathname);
       if (view === 'services') { await loadServices(); renderServices(); }
       if (view === 'order') {
         await loadServices();
@@ -980,6 +1025,7 @@
       state.site = site;
       setCustomer(site.customer);
       setDigitalNav(Boolean(site.digital));
+      $('[data-blog-nav]').forEach(el => { el.hidden = !site.blog; });
       const note = site.settings?.announcement;
       if (note) { const bar = $('#sf-announcement'); bar.textContent = note; bar.hidden = false; }
       const contact = [site.settings?.support_email, site.settings?.telegram].filter(Boolean).map(escapeHtml).join(' · ');

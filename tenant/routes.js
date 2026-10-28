@@ -14,6 +14,7 @@ const { requestRefill } = require('../services/refills');
 const { tenantCatalog, logTenantActivity } = require('../services/resellers');
 const { placeTenantOrder } = require('./orders');
 const tenantOwn = require('../services/tenantOwn');
+const tenantContent = require('../services/tenantContent');
 const tenantMail = require('../services/tenantMail');
 const securityMonitor = require('../services/securityMonitor');
 const { tenantSettings } = require('./resolve');
@@ -96,6 +97,9 @@ router.get('/site', async (req, res, next) => {
       },
       customer: customer && !customer.banned ? publicCustomer(customer) : null,
       api: apiEnabled(req.tenant),
+      // Pro: blog menusu ve alt bilgideki satis sayfasi baglantilari.
+      blog: (await tenantContent.publishedPosts(req.tenant, 'blog', 1)).length > 0,
+      landing_pages: (await tenantContent.publishedPosts(req.tenant, 'page', 12)).map(p => ({ slug: p.slug, title: p.title })),
       // Menude "Dijital Urunler" yalnizca satista urun varsa gorunur.
       digital: digitalSettings(req.tenant).enabled && (await tenantDigitalCatalog(req.tenant)).length > 0
     });
@@ -361,6 +365,43 @@ router.get('/orders', requireCustomer, async (req, res, next) => {
       }));
     const merged = own.length ? [...jet, ...own].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))) : jet;
     res.json({ orders: merged, page });
+  } catch (err) { next(err); }
+});
+
+// Pro: blog ve satis sayfalari (services/tenantContent.js).
+router.get('/blog', async (req, res, next) => {
+  try {
+    res.json({ posts: await tenantContent.publishedPosts(req.tenant, 'blog') });
+  } catch (err) { next(err); }
+});
+
+router.get('/blog/:slug', async (req, res, next) => {
+  try {
+    const post = await tenantContent.publishedPost(req.tenant, 'blog', req.params.slug);
+    if (!post) return res.status(404).json({ error: 'Yazı bulunamadı.', error_en: 'Post not found.' });
+    res.json({ post });
+  } catch (err) { next(err); }
+});
+
+// Satis sayfasinin bagli servisi: fiyat ve miktar siniri vitrindekiyle ayni.
+async function landingService(tenant, serviceId) {
+  if (!serviceId) return null;
+  if (tenantOwn.isOwnId(serviceId)) {
+    const own = (await tenantOwn.ownCatalog(tenant)).find(s => s.id === Number(serviceId));
+    return own ? { id: own.id, name: own.name, rate: own.rate, pricing_model: 'per_1000', min: own.min, max: own.max } : null;
+  }
+  const row = (await tenantCatalog(tenant)).find(s => s.id === Number(serviceId));
+  return row ? {
+    id: row.id, name: row.custom_name || row.name_tr || row.name, rate: fromKurus(row.price.rateKurus),
+    pricing_model: row.pricing_model === 'per_item' ? 'per_item' : 'per_1000', min: row.min_quantity, max: row.max_quantity
+  } : null;
+}
+
+router.get('/hizmet/:slug', async (req, res, next) => {
+  try {
+    const page = await tenantContent.publishedPost(req.tenant, 'page', req.params.slug);
+    if (!page) return res.status(404).json({ error: 'Sayfa bulunamadı.', error_en: 'Page not found.' });
+    res.json({ page, service: await landingService(req.tenant, page.service_id) });
   } catch (err) { next(err); }
 });
 

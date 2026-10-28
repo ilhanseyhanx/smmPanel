@@ -80,14 +80,54 @@ function jetUrl() {
   return String(process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
 }
 
+// Pro icerigi (blog, satis sayfasi) sunucuda basilir: dogru gorunum acik
+// gelir, baslik ve aciklama icerige gore yazilir (botlar JS beklemez).
+// page = { view: 'blog' | 'post', title, description, html }
+function applyPrerender(html, page, tenant) {
+  if (!page) return html.replace('%%PRERENDER_BLOG%%', '').replace('%%PRERENDER_POST%%', '');
+  const description = escapeHtml(String(page.description || '').slice(0, 300));
+  return html
+    .replace('<title>%%SITE_NAME%%</title>', `<title>${escapeHtml(page.title)} · ${escapeHtml(tenant.name)}</title>`)
+    .replaceAll('content="%%DESCRIPTION%%"', `content="${description}"`)
+    .replace('<section class="sf-view" data-view="home">', '<section class="sf-view" data-view="home" hidden>')
+    .replace(`<section class="sf-view" data-view="${page.view}" hidden>`, `<section class="sf-view" data-view="${page.view}">`)
+    .replace(page.view === 'blog' ? '%%PRERENDER_BLOG%%' : '%%PRERENDER_POST%%', page.html)
+    .replace('%%PRERENDER_BLOG%%', '').replace('%%PRERENDER_POST%%', '');
+}
+
+function trDay(value) {
+  const date = new Date(String(value || '').replace(' ', 'T') + 'Z');
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Istanbul' });
+}
+
+async function contentPage(tenant, reqPath) {
+  const tenantContent = require('../services/tenantContent');
+  if (/^\/blog\/?$/.test(reqPath)) {
+    const posts = await tenantContent.publishedPosts(tenant, 'blog');
+    if (!posts.length) return null;
+    return {
+      view: 'blog', title: 'Blog', description: `${tenant.name} blog yazıları`,
+      html: posts.map(p => `<a class="sf-card sf-blog-card" href="/blog/${escapeHtml(p.slug)}" data-nav="post">${p.cover_url ? `<img src="${escapeHtml(p.cover_url)}" alt="" loading="lazy">` : ''}<span><b>${escapeHtml(p.title)}</b><small>${escapeHtml(trDay(p.published_at))}</small><em>${escapeHtml(p.excerpt)}</em></span></a>`).join('')
+    };
+  }
+  const match = /^\/(blog|hizmet)\/([a-z0-9-]{1,80})\/?$/.exec(reqPath);
+  if (!match) return undefined;
+  const post = await tenantContent.publishedPost(tenant, match[1] === 'blog' ? 'blog' : 'page', match[2]);
+  if (!post) return null;
+  return {
+    view: 'post', title: post.title, description: post.excerpt,
+    html: `<h1>${escapeHtml(post.title)}</h1>${match[1] === 'blog' ? `<p class="sf-muted sf-post-date">${escapeHtml(trDay(post.published_at))}</p>` : ''}${post.cover_url ? `<img class="sf-post-cover" src="${escapeHtml(post.cover_url)}" alt="">` : ''}${tenantContent.formatBody(post.body)}`
+  };
+}
+
 // previewTheme: ?tema= ile gosterilen tema (kaydedilmez, dizine eklenmez).
 // host: istegin adresi (demo seridi diger demo sitelere bu koke baglanir).
-function renderStorefront(tenant, { previewTheme = null, host = '' } = {}) {
+function renderStorefront(tenant, { previewTheme = null, host = '', page = null } = {}) {
   const settings = tenantSettings(tenant);
   const theme = themeOf(previewTheme || tenant.theme);
   const primary = safeColor(settings.primary_color, theme.accent);
   const font = `'${theme.font}', system-ui, -apple-system, 'Segoe UI', sans-serif`;
-  return template()
+  return applyPrerender(template(), page, tenant)
     .replaceAll('%%SITE_NAME%%', escapeHtml(tenant.name))
     .replaceAll('%%THEME%%', theme.key)
     .replaceAll('%%LAYOUT%%', theme.layout)
@@ -169,8 +209,27 @@ function buildTenantApp() {
 
   app.get('/robots.txt', (req, res) => {
     res.type('text/plain').send(req.tenant.status === 'active' && !tenantSettings(req.tenant).demo
-      ? 'User-agent: *\nAllow: /\nDisallow: /admin\n'
+      ? `User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: ${req.protocol}://${req.get('host')}/sitemap.xml\n`
       : 'User-agent: *\nDisallow: /\n');
+  });
+
+  // Bayinin site haritasi: ana sayfa, servisler, dijital urunler, yasal
+  // sayfalar ve (Pro) blog yazilari ile satis sayfalari.
+  app.get('/sitemap.xml', async (req, res, next) => {
+    try {
+      if (req.tenant.status !== 'active' || tenantSettings(req.tenant).demo) return res.status(404).end();
+      const tenantContent = require('../services/tenantContent');
+      const base = `${req.protocol}://${req.get('host')}`;
+      const urls = ['/', '/services'];
+      const { digitalSettings, tenantDigitalCatalog } = require('../services/tenantDigital');
+      if (digitalSettings(req.tenant).enabled && (await tenantDigitalCatalog(req.tenant)).length) urls.push('/dijital');
+      const blog = await tenantContent.publishedPosts(req.tenant, 'blog', 1000);
+      if (blog.length) urls.push('/blog', ...blog.map(p => `/blog/${p.slug}`));
+      urls.push(...(await tenantContent.publishedPosts(req.tenant, 'page', 1000)).map(p => `/hizmet/${p.slug}`));
+      const { listPages } = require('./legalPages');
+      urls.push(...(await listPages(req.tenant, String(req.get('host') || '').replace(/:\d+$/, ''))).map(p => `/sayfa/${p.slug}`));
+      res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(u => `  <url><loc>${escapeHtml(base + u)}</loc></url>`).join('\n')}\n</urlset>\n`);
+    } catch (err) { next(err); }
   });
 
   // Dijital urun kart gorselleri (Jet'in galerisi; marka icermez).
@@ -216,13 +275,18 @@ function buildTenantApp() {
   });
 
   // Vitrin tek sayfa uygulamasidir: bilinmeyen her adres ayni HTML'i alir.
-  app.get(/.*/, (req, res) => {
-    res.setHeader('Cache-Control', 'no-cache');
-    if (req.tenant.status !== 'active') {
-      return res.status(503).type('html').send(unavailablePage(req.tenant));
-    }
-    const tema = String(req.query.tema || '');
-    res.type('html').send(renderStorefront(req.tenant, { previewTheme: THEME_KEYS.includes(tema) ? tema : null, host: req.headers.host }));
+  app.get(/.*/, async (req, res, next) => {
+    try {
+      res.setHeader('Cache-Control', 'no-cache');
+      if (req.tenant.status !== 'active') {
+        return res.status(503).type('html').send(unavailablePage(req.tenant));
+      }
+      const tema = String(req.query.tema || '');
+      // null: blog/satis sayfasi adresi ama icerik yok -> 404 (vitrin "bulunamadi" der).
+      const page = await contentPage(req.tenant, req.path);
+      if (page === null) res.status(404);
+      res.type('html').send(renderStorefront(req.tenant, { previewTheme: THEME_KEYS.includes(tema) ? tema : null, host: req.headers.host, page: page || null }));
+    } catch (err) { next(err); }
   });
 
   app.use(errorHandler);

@@ -205,3 +205,5 @@
 .pn-own-import-list { max-height: 50vh; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
 
 .pn-content-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.pn-own-providers .pn-sub { display: block; overflow-wrap: anywhere; }
+@media (min-width: 901px) { .pn-sidebar { overflow-y: auto; } }

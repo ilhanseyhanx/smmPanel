@@ -1071,6 +1071,46 @@ async function runMigrations() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(tenant_id, type, slug)
     );
+    CREATE TABLE IF NOT EXISTS tenant_own_products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Diğer',
+      description TEXT,
+      usage_note TEXT,
+      item_format TEXT,
+      image_url TEXT,
+      price_kurus INTEGER NOT NULL,
+      min_quantity INTEGER NOT NULL DEFAULT 1,
+      max_quantity INTEGER NOT NULL DEFAULT 100,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS tenant_own_product_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL REFERENCES tenant_own_products(id) ON DELETE CASCADE,
+      item_encrypted TEXT NOT NULL,
+      sold_order_id INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_tenant_own_items_stock ON tenant_own_product_items(product_id, sold_order_id, id);
+    CREATE TABLE IF NOT EXISTS tenant_own_digital_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL,
+      customer_id INTEGER NOT NULL,
+      product_id INTEGER,
+      product_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      charge_kurus INTEGER NOT NULL,
+      refunded_kurus INTEGER NOT NULL DEFAULT 0,
+      items_encrypted TEXT,
+      usage_note TEXT,
+      status TEXT NOT NULL DEFAULT 'completed',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_tenant_own_digital_orders ON tenant_own_digital_orders(tenant_id, customer_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_tenant_own_orders_customer ON tenant_own_orders(tenant_id, customer_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_tenant_own_orders_open ON tenant_own_orders(status, provider_id);
   `);

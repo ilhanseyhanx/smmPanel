@@ -14,6 +14,7 @@ const { digitalSettings, tenantDigitalCatalog, tenantDigitalItem, publicProduct 
 const { logTenantActivity } = require('../services/resellers');
 const securityMonitor = require('../services/securityMonitor');
 const tenantMail = require('../services/tenantMail');
+const tenantOwnDigital = require('../services/tenantOwnDigital');
 const { requireCustomer } = require('./session');
 const { requireActiveTenant } = require('./routes');
 
@@ -29,13 +30,18 @@ router.get('/products', async (req, res, next) => {
   try {
     const ds = digitalSettings(req.tenant);
     const catalog = ds.enabled ? await tenantDigitalCatalog(req.tenant) : [];
-    res.json({ enabled: ds.enabled, products: catalog.map(publicProduct) });
+    // Pro: bayinin kendi stoklu urunleri ayni vitrinde.
+    const own = ds.enabled ? await tenantOwnDigital.ownProducts(req.tenant) : [];
+    res.json({ enabled: ds.enabled, products: [...catalog.map(publicProduct), ...own] });
   } catch (err) { next(err); }
 });
 
 router.post('/orders', requireActiveTenant, requireCustomer, validate(buySchema), async (req, res, next) => {
   try {
     if (!digitalSettings(req.tenant).enabled) return res.status(404).json({ error: 'Dijital ürünler bu sitede satışta değil.' });
+    if (tenantOwnDigital.isOwnId(req.body.product_id)) {
+      return res.status(201).json(await tenantOwnDigital.purchase(req.tenant, req.customer, { productId: req.body.product_id, quantity: req.body.quantity }));
+    }
     const item = await tenantDigitalItem(req.tenant, req.body.product_id);
     if (!item) return res.status(404).json({ error: 'Ürün bulunamadı veya satışta değil.', error_en: 'Product not found or not for sale.' });
     const owner = await dbAsync.get('SELECT id, username, banned FROM users WHERE id = ?', [req.tenant.owner_user_id]);
@@ -76,12 +82,16 @@ router.get('/orders', requireCustomer, async (req, res, next) => {
       'SELECT * FROM digital_orders WHERE tenant_id = ? AND tenant_customer_id = ? ORDER BY id DESC LIMIT 50',
       [req.tenant.id, req.customer.id]
     );
-    res.json({ orders: rows.map(digitalStore.tenantPublicOrder) });
+    const own = await tenantOwnDigital.customerOrders(req.tenant.id, req.customer.id);
+    const orders = [...rows.map(digitalStore.tenantPublicOrder), ...own].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    res.json({ orders });
   } catch (err) { next(err); }
 });
 
 router.get('/orders/:id', requireCustomer, async (req, res, next) => {
   try {
+    const own = await tenantOwnDigital.customerOrder(req.tenant.id, req.customer.id, Number(req.params.id));
+    if (own) return res.json(own);
     const order = await dbAsync.get(
       'SELECT * FROM digital_orders WHERE id = ? AND tenant_id = ? AND tenant_customer_id = ?',
       [Number(req.params.id) || 0, req.tenant.id, req.customer.id]

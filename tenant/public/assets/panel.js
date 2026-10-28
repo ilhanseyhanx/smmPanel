@@ -1001,6 +1001,92 @@
     $$('[data-dg-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.dgTab === tab));
     $$('[data-dg-panel]').forEach(panel => { panel.hidden = panel.dataset.dgPanel !== tab; });
     if (tab === 'orders') loadDigitalOrders().catch(err => toast(err.message, 'error'));
+    if (tab === 'own') loadOwnDigital().catch(err => toast(err.message, 'error'));
+  }
+
+  // Pro: kendi stoklu dijital urunleri.
+  async function loadOwnDigital() {
+    const d = await api('/digital/own');
+    state.dgOwn = d;
+    $('#pn-dgown-lock').hidden = d.pro;
+    $('#pn-dgown-body').hidden = !d.pro;
+    if (!d.pro) return;
+    $('#pn-dgown-rows').innerHTML = d.products.length ? d.products.map(p => `<tr>
+      <td><div class="pn-dg-name">${p.image ? `<img class="pn-dg-thumb" src="${escapeHtml(p.image)}" alt="" loading="lazy">` : '<span class="pn-dg-thumb"><i class="fa-solid fa-box-open" aria-hidden="true"></i></span>'}
+        <div><strong>${escapeHtml(p.name)}</strong><span class="pn-sub">${escapeHtml(p.category)}${p.format ? ` · ${escapeHtml(p.format)}` : ''}</span></div></div></td>
+      <td class="pn-num">${money(p.price)}</td>
+      <td>${p.stock > 0 ? num(p.stock) : '<span class="sf-badge sf-badge-canceled">Tükendi</span>'}</td>
+      <td>${num(p.sold)}</td>
+      <td>${p.enabled ? '<span class="sf-badge sf-badge-completed">Satışta</span>' : '<span class="sf-badge sf-badge-pending">Satışta değil</span>'}</td>
+      <td class="pn-actions"><button type="button" class="sf-btn sf-btn-primary sf-btn-sm" data-dgown-stock="${p.local_id}">Stok ekle</button>
+        <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-dgown-edit="${p.local_id}">Düzenle</button>
+        <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-dgown-delete="${p.local_id}" title="Sil"><i class="fa-solid fa-trash" aria-hidden="true"></i></button></td>
+    </tr>`).join('') : '<tr><td colspan="6" class="sf-muted">Henüz kendi ürünün yok.</td></tr>';
+  }
+
+  function editOwnDigital(localId) {
+    const p = localId ? state.dgOwn.products.find(x => x.local_id === localId) : { name: '', category: '', description: '', usage_note: '', format: '', image: '', price: '', min: 1, max: 100, enabled: true };
+    if (!p) return;
+    openModal(localId ? p.name : 'Yeni dijital ürün', `
+      <form class="sf-form" id="pn-dgown-form" novalidate>
+        <label>Ürün adı<input name="name" class="sf-input" maxlength="160" value="${escapeHtml(p.name)}" required></label>
+        <div class="pn-form-row"><label>Kategori<input name="category" class="sf-input" maxlength="80" value="${escapeHtml(p.category)}" placeholder="E-posta"></label>
+          <label>Fiyat (₺ / adet)<input name="price" type="number" min="0.01" step="0.01" class="sf-input" value="${p.price}"></label></div>
+        <label>Teslim biçimi <small>(müşteriye gösterilir, örn. email|şifre)</small><input name="item_format" class="sf-input" maxlength="120" value="${escapeHtml(p.format)}"></label>
+        <label>Açıklama<textarea name="description" class="sf-input" rows="3" maxlength="2000">${escapeHtml(p.description)}</textarea></label>
+        <label>Kullanım talimatı <small>(teslimatla birlikte gösterilir)</small><textarea name="usage_note" class="sf-input" rows="2" maxlength="1000">${escapeHtml(p.usage_note)}</textarea></label>
+        <label>Görsel <small>(isteğe bağlı, https:// adresi)</small><input name="image_url" class="sf-input" maxlength="500" value="${escapeHtml(p.image || '')}"></label>
+        <div class="pn-form-row"><label>En az adet<input name="min_quantity" type="number" min="1" class="sf-input" value="${p.min}"></label>
+          <label>En çok adet<input name="max_quantity" type="number" min="1" class="sf-input" value="${p.max}"></label></div>
+        <label class="pn-radio"><input type="checkbox" name="enabled" ${p.enabled ? 'checked' : ''}> Sitede satışta</label>
+        <p class="sf-form-error" role="alert"></p>
+        <button type="submit" class="sf-btn sf-btn-primary">Kaydet</button>
+      </form>`, { wide: true });
+    const form = $('#pn-dgown-form');
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const body = {
+        name: form.name.value.trim(), category: form.category.value.trim(), price: Number(form.price.value), item_format: form.item_format.value.trim(),
+        description: form.description.value.trim(), usage_note: form.usage_note.value.trim(), image_url: form.image_url.value.trim(),
+        min_quantity: Number(form.min_quantity.value) || 1, max_quantity: Number(form.max_quantity.value) || 100, enabled: form.enabled.checked
+      };
+      try {
+        const res = await api(localId ? `/digital/own/${localId}` : '/digital/own', { method: localId ? 'PUT' : 'POST', body: JSON.stringify(body) });
+        closeModal();
+        toast(res.message);
+        await loadOwnDigital();
+      } catch (err) {
+        $('.sf-form-error', form).textContent = err.message;
+      }
+    });
+  }
+
+  function addOwnStock(localId) {
+    const p = state.dgOwn.products.find(x => x.local_id === localId);
+    if (!p) return;
+    openModal(`Stok ekle · ${p.name}`, `
+      <form class="sf-form" id="pn-dgown-stock-form" novalidate>
+        <p class="sf-muted" style="margin:0;">Her satır bir teslimat${p.format ? ` (${escapeHtml(p.format)})` : ''}. Satır sayısı kadar stok eklenir; bilgiler şifreli saklanır ve yalnızca alan müşteriye gösterilir.</p>
+        <textarea name="items" class="sf-input" rows="12" placeholder="ornek1@mail.com|Sifre123&#10;ornek2@mail.com|Sifre456"></textarea>
+        <p class="sf-muted sf-small" id="pn-dgown-count" style="margin:0;">0 satır</p>
+        <p class="sf-form-error" role="alert"></p>
+        <button type="submit" class="sf-btn sf-btn-primary">Stoka ekle</button>
+      </form>`, { wide: true });
+    const form = $('#pn-dgown-stock-form');
+    form.items.addEventListener('input', () => {
+      $('#pn-dgown-count').textContent = `${form.items.value.split(/\r?\n/).filter(line => line.trim()).length} satır`;
+    });
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      try {
+        const res = await api(`/digital/own/${localId}/stock`, { method: 'POST', body: JSON.stringify({ items: form.items.value }) });
+        closeModal();
+        toast(res.message);
+        await loadOwnDigital();
+      } catch (err) {
+        $('.sf-form-error', form).textContent = err.message;
+      }
+    });
   }
 
   // ------------------------------------------------------------- kendi saglayicilar (Pro)
@@ -1653,6 +1739,8 @@
     page_reset: 'Yasal sayfa otomatiğe döndü',
     mail_settings_changed: 'E-posta ayarları değişti',
     own_provider_added: 'Sağlayıcı bağlandı',
+    own_product_saved: 'Kendi dijital ürünü eklendi',
+    own_stock_added: 'Dijital ürüne stok eklendi',
     own_provider_removed: 'Sağlayıcı kaldırıldı',
     own_services_imported: 'Sağlayıcıdan servis eklendi',
     own_order: 'Kendi sağlayıcı siparişi',
@@ -1876,6 +1964,19 @@
       const themeUse = t.closest('[data-theme-use]');
       if (themeUse) { useTheme(themeUse.dataset.themeUse); return; }
       if (t.closest('[data-sub-cancel]')) { subscriptionAction('cancel'); return; }
+      if (t.closest('#pn-dgown-new')) { editOwnDigital(null); return; }
+      const dgOwnEdit = t.closest('[data-dgown-edit]');
+      if (dgOwnEdit) { editOwnDigital(Number(dgOwnEdit.dataset.dgownEdit)); return; }
+      const dgOwnStock = t.closest('[data-dgown-stock]');
+      if (dgOwnStock) { addOwnStock(Number(dgOwnStock.dataset.dgownStock)); return; }
+      const dgOwnDelete = t.closest('[data-dgown-delete]');
+      if (dgOwnDelete) {
+        confirmBox('Ürünü sil', 'Ürün ve satılmamış stoku silinecek; geçmiş satışlar kayıtlarda kalır.', 'Sil').then(async ok => {
+          if (!ok) return;
+          try { toast((await api(`/digital/own/${dgOwnDelete.dataset.dgownDelete}`, { method: 'DELETE' })).message); await loadOwnDigital(); } catch (err) { toast(err.message, 'error'); }
+        });
+        return;
+      }
       const contentTab = t.closest('[data-content-tab]');
       if (contentTab) { state.contentTab = contentTab.dataset.contentTab; renderContent(); return; }
       if (t.closest('#pn-content-new')) { editContent(null); return; }

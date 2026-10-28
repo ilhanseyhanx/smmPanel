@@ -304,7 +304,7 @@ async function realDepositKurus(userId) {
 // Jet tarafinda kalir. Admin silmesi ve abonelik silme isleyicisi kullanir.
 async function deleteTenantData(tenantId) {
   await withTransaction(async tx => {
-    for (const table of ['tenant_balance_logs', 'tenant_activity_logs', 'tenant_service_prices', 'tenant_digital_prices', 'tenant_payments', 'tenant_mail_settings', 'tenant_mail_log', 'tenant_own_orders', 'tenant_own_services', 'tenant_providers', 'tenant_posts',
+    for (const table of ['tenant_balance_logs', 'tenant_activity_logs', 'tenant_service_prices', 'tenant_digital_prices', 'tenant_payments', 'tenant_mail_settings', 'tenant_mail_log', 'tenant_own_orders', 'tenant_own_services', 'tenant_providers', 'tenant_posts', 'tenant_own_digital_orders', 'tenant_own_product_items', 'tenant_own_products',
       'tenant_payment_settings', 'tenant_pages', 'tenant_domains', 'tenant_customers']) {
       await tx.run(`DELETE FROM ${table} WHERE tenant_id = ?`, [tenantId]);
     }

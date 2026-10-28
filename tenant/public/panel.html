@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="/assets/storefront.css?v=20261028b">
-  <link rel="stylesheet" href="/assets/panel.css?v=20261028c">
+  <link rel="stylesheet" href="/assets/storefront.css?v=20261028c">
+  <link rel="stylesheet" href="/assets/panel.css?v=20261028d">
   <style>:root { --primary: %%PRIMARY%%; }</style>
 </head>
 <body class="pn-body">
@@ -175,6 +175,24 @@
         <div class="sf-tabs pn-tabs" role="tablist">
           <button type="button" class="active" data-dg-tab="products">Ürünler</button>
           <button type="button" data-dg-tab="orders">Satışlar</button>
+          <button type="button" data-dg-tab="own">Kendi ürünlerin <b class="pn-pro-tag">PRO</b></button>
+        </div>
+        <div data-dg-panel="own" hidden>
+          <div class="sf-card pn-pro-lock" id="pn-dgown-lock" hidden>
+            <h2 class="pn-card-title">Kendi dijital ürünlerin Pro pakette</h2>
+            <p class="sf-muted">Pro pakette kendi hesap, lisans ya da kod stokunu yükleyip satarsın; teslimat anında ve otomatik.</p>
+            <a class="sf-btn sf-btn-primary" href="/admin/subscription" data-go="subscription">Paketleri gör</a>
+          </div>
+          <div id="pn-dgown-body" hidden>
+            <div class="pn-content-head"><p class="sf-muted" style="margin:0;">Stoku satır satır yüklersin (her satır bir teslimat). Para müşterinin bakiyesinden düşer, ücret yok.</p>
+              <button type="button" class="sf-btn sf-btn-primary" id="pn-dgown-new"><i class="fa-solid fa-plus" aria-hidden="true"></i> Yeni ürün</button></div>
+            <div class="sf-card sf-table-wrap">
+              <table class="sf-table pn-table">
+                <thead><tr><th>Ürün</th><th>Fiyat</th><th>Stok</th><th>Satılan</th><th>Durum</th><th></th></tr></thead>
+                <tbody id="pn-dgown-rows"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
         <div data-dg-panel="products">
           <div class="pn-filters"><input type="search" id="pn-dg-search" class="sf-input" placeholder="Ürün ara..." aria-label="Ürün ara"></div>
@@ -457,6 +475,6 @@
   </div>
 
   <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
-  <script src="/assets/panel.js?v=20261028c" defer></script>
+  <script src="/assets/panel.js?v=20261028d" defer></script>
 </body>
 </html>

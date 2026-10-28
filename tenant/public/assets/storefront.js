@@ -1025,7 +1025,7 @@
       state.site = site;
       setCustomer(site.customer);
       setDigitalNav(Boolean(site.digital));
-      $('[data-blog-nav]').forEach(el => { el.hidden = !site.blog; });
+      $$('[data-blog-nav]').forEach(el => { el.hidden = !site.blog; });
       const note = site.settings?.announcement;
       if (note) { const bar = $('#sf-announcement'); bar.textContent = note; bar.hidden = false; }
       const contact = [site.settings?.support_email, site.settings?.telegram].filter(Boolean).map(escapeHtml).join(' · ');

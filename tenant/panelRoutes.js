@@ -30,6 +30,7 @@ const demoData = require('./demoData');
 const tenantMail = require('../services/tenantMail');
 const tenantOwn = require('../services/tenantOwn');
 const tenantContent = require('../services/tenantContent');
+const tenantOwnDigital = require('../services/tenantOwnDigital');
 const { digitalSettings, tenantDigitalCatalog } = require('../services/tenantDigital');
 const tenantDomains = require('../services/tenantDomains');
 const { signOwnerSession, setOwnerCookie, clearOwnerCookie, requireOwner } = require('./panelSession');
@@ -999,17 +1000,72 @@ router.get('/digital/orders', async (req, res, next) => {
         `SELECT o.*, c.username AS customer FROM digital_orders o LEFT JOIN tenant_customers c ON c.id = o.tenant_customer_id
           WHERE o.tenant_id = ? ORDER BY o.id DESC LIMIT ? OFFSET ?`, [req.tenant.id, limit, (page - 1) * limit])
     ]);
+    const jet = rows.map(o => ({
+      id: o.id, customer: o.customer, product_name: o.product_name, quantity: o.quantity, status: o.status,
+      paid: fromKurus(o.tenant_charge_kurus - o.tenant_refunded_kurus),
+      refunded: fromKurus(o.tenant_refunded_kurus),
+      cost: fromKurus(o.charge_kurus - o.refunded_kurus),
+      profit: fromKurus((o.tenant_charge_kurus - o.tenant_refunded_kurus) - (o.charge_kurus - o.refunded_kurus)),
+      created_at: o.created_at
+    }));
+    // Pro: kendi urun satislari ilk sayfada (maliyet yok, kar = odenen).
+    const own = page === 1 ? await tenantOwnDigital.panelOrders(req.tenant.id) : [];
     res.json({
-      page, pages: Math.max(1, Math.ceil(total.n / limit)), total: total.n,
-      orders: rows.map(o => ({
-        id: o.id, customer: o.customer, product_name: o.product_name, quantity: o.quantity, status: o.status,
-        paid: fromKurus(o.tenant_charge_kurus - o.tenant_refunded_kurus),
-        refunded: fromKurus(o.tenant_refunded_kurus),
-        cost: fromKurus(o.charge_kurus - o.refunded_kurus),
-        profit: fromKurus((o.tenant_charge_kurus - o.tenant_refunded_kurus) - (o.charge_kurus - o.refunded_kurus)),
-        created_at: o.created_at
-      }))
+      page, pages: Math.max(1, Math.ceil(total.n / limit)), total: total.n + own.length,
+      orders: own.length ? [...jet, ...own].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))) : jet
     });
+  } catch (err) { next(err); }
+});
+
+// ------------------------------------------- kendi dijital urunleri (Pro)
+const ownProductSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+  category: z.string().trim().max(80).optional().default(''),
+  description: z.string().trim().max(2000).optional().default(''),
+  usage_note: z.string().trim().max(1000).optional().default(''),
+  item_format: z.string().trim().max(120).optional().default(''),
+  image_url: z.string().trim().max(500).optional().default(''),
+  price: z.coerce.number().finite().positive().max(1_000_000),
+  min_quantity: z.coerce.number().int().min(1).max(10_000).default(1),
+  max_quantity: z.coerce.number().int().min(1).max(10_000).default(100),
+  enabled: z.boolean().default(true)
+});
+const stockSchema = z.object({ items: z.string().min(1).max(2_000_000) });
+
+router.get('/digital/own', async (req, res, next) => {
+  try {
+    const pro = isProTenant(req.tenant);
+    res.json({ pro, products: pro ? await tenantOwnDigital.panelProducts(req.tenant.id) : [] });
+  } catch (err) { next(err); }
+});
+
+router.post('/digital/own', validate(ownProductSchema), async (req, res, next) => {
+  try {
+    await tenantOwnDigital.saveProduct(req.tenant, null, req.body);
+    await ownerActivity(req, 'own_product_saved', { product: req.body.name, price: req.body.price });
+    res.status(201).json({ message: 'Ürün eklendi; şimdi stok yükle.' });
+  } catch (err) { next(err); }
+});
+
+router.put('/digital/own/:id', validate(ownProductSchema), async (req, res, next) => {
+  try {
+    await tenantOwnDigital.saveProduct(req.tenant, idParam(req.params.id), req.body);
+    res.json({ message: 'Ürün güncellendi.' });
+  } catch (err) { next(err); }
+});
+
+router.post('/digital/own/:id/stock', validate(stockSchema), async (req, res, next) => {
+  try {
+    const added = await tenantOwnDigital.addStock(req.tenant, idParam(req.params.id), req.body.items);
+    await ownerActivity(req, 'own_stock_added', { product_id: idParam(req.params.id), count: added });
+    res.json({ message: `${added} adet stok eklendi.`, added });
+  } catch (err) { next(err); }
+});
+
+router.delete('/digital/own/:id', async (req, res, next) => {
+  try {
+    await tenantOwnDigital.deleteProduct(req.tenant, idParam(req.params.id));
+    res.json({ message: 'Ürün ve satılmamış stoku silindi.' });
   } catch (err) { next(err); }
 });
 

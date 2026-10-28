@@ -101,7 +101,8 @@ router.get('/site', async (req, res, next) => {
       blog: (await tenantContent.publishedPosts(req.tenant, 'blog', 1)).length > 0,
       landing_pages: (await tenantContent.publishedPosts(req.tenant, 'page', 12)).map(p => ({ slug: p.slug, title: p.title })),
       // Menude "Dijital Urunler" yalnizca satista urun varsa gorunur.
-      digital: digitalSettings(req.tenant).enabled && (await tenantDigitalCatalog(req.tenant)).length > 0
+      digital: digitalSettings(req.tenant).enabled && ((await tenantDigitalCatalog(req.tenant)).length > 0
+        || (await require('../services/tenantOwnDigital').ownProducts(req.tenant)).length > 0)
     });
   } catch (err) { next(err); }
 });

@@ -1,0 +1,148 @@
+===============================================================================
+  JET SMM PANEL - YAYIN TAKVİMİ KASIM 2026 (3 GÜNDE 1 YAZI)
+  Hazırlanma: 28 Ekim 2026  |  Dayanak: SEO-ANALIZ-2026-10-28.md
+  Önceki takvim: Yazılar-Ekim.txt (1-13 yayında; 14 ve 15 iptal)
+===============================================================================
+
+TOPLAM: 10 yeni blog yazısı, 1-28 Kasım arası 3 günde bir.
+Önce aşağıdaki "KASIM ÖNCESİ" düzeltmeleri yapılır; yazılardan daha hızlı
+sonuç verirler.
+
+HER YAYINDAN SONRA
+  [ ] Adresi tarayıcıda aç, açıldığını gör
+  [ ] Google Search Console > URL İnceleme > "Dizine eklenmeyi iste"
+  (Bing'e IndexNow ile otomatik gider.)
+
+YAZI KURALLARI (her yazı için)
+  - Soru biçimli ara başlıklar; her başlığın altında önce 40-60 kelimelik
+    doğrudan cevap.
+  - Servis linki değil, satış sayfası linki (/instagram-takipci-satin-al gibi).
+  - Başka yazıdan kopya blok yok; her yazı kendi cümleleriyle.
+  - Satın alma konusunda dürüst risk notu; uydurma rakam veya kaynak yok.
+  - Marka adı "Jet SMM Panel". TR + EN.
+
+
+===============================================================================
+  KASIM ÖNCESİ (29-31 Ekim) - DÜZELTMELER
+===============================================================================
+
+ A) Boş satış sayfaları (katalogda servis yok, ama gösterim alıyor)
+    - soundcloud-dinlenme-satin-al ...... 93 gösterim. SoundCloud servisi
+                                           eklenecek mi? Eklenmeyecekse taslağa.
+    - instagram-kanal-uye-satin-al ...... servis eklenecek mi, yoksa taslağa?
+    - instagram-canli-yayin-izleyici .... servis eklenecek mi, yoksa taslağa?
+    - instagram-hikaye-izlenme-satin-al . "Instagram Hikaye Görüntülenme"
+                                           kategorisine yeniden bağlanacak.
+
+ B) İlk sayfada olup tıklanmayan 6 sayfanın başlık/açıklaması yenilenecek
+    twitch-izleyici, instagram-kaydetme, canli-yayin-izleyici,
+    twitter-goruntulenme, pinterest-kaydetme, youtube-smm-panel
+
+ C) Mevcut yazılar güncellenecek
+    - smm-panel-bayilik-nasil-yapilir: bayi paneli (599/999 TL) anlatılacak,
+      /bayilik sayfasına link verilecek.
+    - tiktok-algoritmasi-nasil-calisir, instagram-hikaye-izlenme-artirma-
+      taktikleri, influencer-olmak-icin-kac-takipci-gerekir: yeni aramaların
+      cevabı eklenecek.
+
+
+===============================================================================
+  SIRA
+===============================================================================
+
+ 1) 1 KASIM -------------------------------------------------- BLOG (BAYİLİK)
+    smm-bayilik-paneli-nedir
+    "SMM Bayilik Paneli Nedir? Kendi SMM Panelini Açmanın 3 Yolu"
+    Hedef: bayilik paneli, smm bayilik paneli, smm panel satılık,
+           smm panel kurma, beğeni paneli kurma, smm bayici
+    Link : /bayilik, /smm-panel-api, blog/smm-panel-bayilik-nasil-yapilir
+
+ 2) 4 KASIM -------------------------------------------------- BLOG (BAYİLİK)
+    twitter-bayilik-paneli
+    "Twitter (X) Bayilik Paneli: X Servisleriyle Bayi Olmanın Yolları"
+    Hedef: twitter bayilik paneli (91 gösterim, 8,9. sıra), twitter panel
+           satın al, twitter ilan paneli satın al
+    Link : /bayilik, /twitter-smm-panel, /twitter-takipci-satin-al
+
+ 3) 7 KASIM ----------------------------------------------------------- BLOG
+    instagram-takipci-paneli
+    "Instagram Takipçi Paneli Nasıl Kullanılır? Panel Seçerken 6 Kontrol"
+    Hedef: instagram takipçi paneli, smm panel instagram, instagram panel,
+           instagram takipçi paneli satın al, şifresiz takipçi paneli
+    Link : /instagram-takipci-satin-al (49. sıra, ana destek),
+           /instagram-smm-panel, /turk-takipci-satin-al
+
+ 4) 10 KASIM ---------------------------------------------------------- BLOG
+    twitter-takipci-paneli
+    "Twitter (X) Takipçi Paneli: Paket Seçerken Bilmeniz Gerekenler"
+    Hedef: twitter panel, twitter takipçi paneli, 50000 twitter takipçi
+           satın al, 2000 twitter türk takipçi satın al
+    Link : /twitter-takipci-satin-al (12,9. sıra -> ilk 10 hedefi),
+           /twitter-smm-panel, /twitter-goruntulenme-satin-al
+
+ 5) 13 KASIM ---------------------------------------------------------- BLOG
+    tiktok-takipci-paneli
+    "TikTok Takipçi Paneli: TikTok SMM Panelinde Hangi Servis Ne İşe Yarar?"
+    Hedef: tiktok panel, tiktok smm panel, smm panel tiktok, tiktok takipçi
+           paneli, tiktok beğeni paneli, tiktok bayilik paneli
+    Link : /tiktok-smm-panel, /tiktok-takipci-satin-al, /tiktok-begeni-satin-al
+
+ 6) 16 KASIM ---------------------------------------------------------- BLOG
+    instagram-kaydetme-nedir
+    "Instagram Kaydetme (Save) Neden Önemli? Kaydetme Sayısı Erişimi Nasıl
+     Etkiler"
+    Hedef: instagram kaydetme satın al, instagram otomatik kaydetme satın al
+    Link : /instagram-kaydetme-satin-al (7,6. sıra, tıklama yok),
+           /sosyal-medya-etkilesim-paketi
+
+ 7) 19 KASIM ---------------------------------------------------------- BLOG
+    canli-yayin-izleyici-rehberi
+    "Canlı Yayın İzleyici Sayısı: Twitch, Kick, YouTube ve TikTok'ta Ne İşe
+     Yarar?"
+    Hedef: twitch izleyici satın al, canlı yayın izleyici satın al,
+           kick izleyici, youtube canlı yayın izleyici
+    Link : /canli-yayin-izleyici-satin-al, /twitch-izleyici-satin-al,
+           /youtube-canli-yayin-izleyici-satin-al, /kick-takipci-satin-al
+
+ 8) 22 KASIM ---------------------------------------------------------- BLOG
+    youtube-abone-servisleri
+    "YouTube Otomatik Abone: Abone Servisleri Nasıl Çalışır, Kanala Etkisi
+     Ne?"
+    Hedef: youtube otomatik abone satın al (23,3. sıra), youtube smm panel,
+           youtube bayilik paneli
+    Link : /youtube-abone-satin-al, /youtube-smm-panel
+
+ 9) 25 KASIM ---------------------------------------------------------- BLOG
+    pinterest-kaydetme-rehberi
+    "Pinterest'te Kaydetme (Save): Pin'ler Nasıl Öne Çıkar?"
+    Hedef: pinterest kaydetme satın al (53 gösterim)
+    Link : /pinterest-kaydetme-satin-al, /pinterest-takipci-satin-al
+
+10) 28 KASIM ---------------------------------------------------------- BLOG
+    whatsapp-kanali-buyutme
+    "WhatsApp Kanalı Nasıl Büyütülür? Kanal Takipçisi ve Emoji Tepkileri"
+    Hedef: whatsapp smm panel, whatsapp tepki satın al, whatsapp kanal
+           takipçi (rakibi az, yeni konu)
+    Link : /whatsapp-kanal-uye-satin-al (9,7. sıra)
+
+
+===============================================================================
+  SIRA DEĞİŞTİRMEK İSTERSEN
+===============================================================================
+
+  1 ve 2 önce kalmalı: bayi paneli yeni ürün ve gelir getiren tek küme.
+  3, 4 ve 5 aynı formatta (platform takipçi paneli); arka arkaya gitmeleri
+  iç linkleme açısından iyi. 6-10 serbestçe yer değiştirebilir.
+
+
+===============================================================================
+  TAKİP (Ülke = Türkiye)
+===============================================================================
+
+                                      28 Ekim        28 Kasım hedefi
+  Haftalık gösterim ................. ~190           300+
+  Haftalık tıklama .................. ~4,7           10+
+  /instagram-takipci-satin-al ....... 49. sıra       30'un altı
+  /twitter-takipci-satin-al ......... 12,9. sıra     ilk 10
+  "twitter bayilik paneli" .......... 8,9 / 0 tık    ilk 5 / tıklama
+===============================================================================

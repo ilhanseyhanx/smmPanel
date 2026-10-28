@@ -61,7 +61,7 @@ YAZI KURALLARI (her yazı için)
     Hedef: smm panel kurma, smm panel satılık, beğeni paneli kurma,
            twitter panel scripti, smm panel scripti
     Link : /bayilik, /smm-panel-api, blog/smm-panel-bayilik-nasil-yapilir
-TASLAK YAZILDI (28 Eki) - siteye taslak olarak eklenmeyi bekliyor
+SİTEDE TASLAK (28 Eki) - tarihi gelince "Yayınla"
     NOT (28 Eki): "bayilik paneli" aramaları artık güncellenen
     smm-panel-bayilik-nasil-yapilir yazısında; bu yazı aynı konuyu tekrar
     etmesin diye "kurma / script" tarafına kaydırıldı.
@@ -72,7 +72,7 @@ TASLAK YAZILDI (28 Eki) - siteye taslak olarak eklenmeyi bekliyor
     Hedef: twitter bayilik paneli (91 gösterim, 8,9. sıra), twitter panel
            satın al, twitter ilan paneli satın al
     Link : /bayilik, /twitter-smm-panel, /twitter-takipci-satin-al
-TASLAK YAZILDI (28 Eki) - siteye taslak olarak eklenmeyi bekliyor
+SİTEDE TASLAK (28 Eki) - tarihi gelince "Yayınla"
 
  3) 7 KASIM ----------------------------------------------------------- BLOG
     instagram-takipci-paneli
@@ -83,7 +83,7 @@ TASLAK YAZILDI (28 Eki) - siteye taslak olarak eklenmeyi bekliyor
            instagram takipçi paneli satın al, şifresiz takipçi paneli
     Link : /instagram-takipci-satin-al (49. sıra, ana destek),
            /instagram-smm-panel, /turk-takipci-satin-al
-TASLAK YAZILDI (28 Eki) - siteye taslak olarak eklenmeyi bekliyor
+SİTEDE TASLAK (28 Eki) - tarihi gelince "Yayınla"
 
  4) 10 KASIM ---------------------------------------------------------- BLOG
     twitter-takipci-paneli
@@ -92,7 +92,7 @@ TASLAK YAZILDI (28 Eki) - siteye taslak olarak eklenmeyi bekliyor
            satın al, 2000 twitter türk takipçi satın al
     Link : /twitter-takipci-satin-al (12,9. sıra -> ilk 10 hedefi),
            /twitter-smm-panel, /twitter-goruntulenme-satin-al
-TASLAK YAZILDI (28 Eki) - siteye taslak olarak eklenmeyi bekliyor
+SİTEDE TASLAK (28 Eki) - tarihi gelince "Yayınla"
 
  5) 13 KASIM ---------------------------------------------------------- BLOG
     tiktok-takipci-paneli
@@ -100,7 +100,7 @@ TASLAK YAZILDI (28 Eki) - siteye taslak olarak eklenmeyi bekliyor
     Hedef: tiktok panel, tiktok smm panel, smm panel tiktok, tiktok takipçi
            paneli, tiktok beğeni paneli, tiktok bayilik paneli
     Link : /tiktok-smm-panel, /tiktok-takipci-satin-al, /tiktok-begeni-satin-al
-TASLAK YAZILDI (28 Eki) - siteye taslak olarak eklenmeyi bekliyor
+SİTEDE TASLAK (28 Eki) - tarihi gelince "Yayınla"
 
  6) 16 KASIM ---------------------------------------------------------- BLOG
     instagram-kaydetme-nedir

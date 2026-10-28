@@ -359,12 +359,26 @@ test('bayi yasal sayfayı düzenler ve şablona geri döndürebilir', async () =
   assert.match(sablon.body.body, /Bakiyeye otomatik iade/);
 });
 
-test('bayi müşterisi şifresini e-postadaki bağlantıyla sıfırlar; eski oturum kapanır', async () => {
+test('bayi müşterisi şifresini e-postadaki bağlantıyla sıfırlar; e-posta yalnızca bayinin SMTP\'sinden gider', async () => {
   const mailer = require('../services/mailer');
+  const nodemailer = require('nodemailer');
+  const { encryptSecret } = require('../utils/security');
   const gercek = mailer.sendMail;
+  const gercekTransport = nodemailer.createTransport;
+  const jettenGiden = [];
   const giden = [];
-  mailer.sendMail = async mail => { giden.push(mail); return true; };
+  mailer.sendMail = async mail => { jettenGiden.push(mail); return true; };
+  nodemailer.createTransport = options => ({ sendMail: async mail => { giden.push({ ...mail, transport: options }); return {}; } });
   try {
+    // SMTP yokken: Jet'in sunucusundan musteriye e-posta gitmez.
+    const smtpsiz = await site().post('/api/auth/forgot').send({ email: 'odeyen_musteri@musteri.com' });
+    assert.equal(smtpsiz.status, 409);
+    assert.match(smtpsiz.body.error, /site yöneticisine ulaş: destek@odeme\.com/);
+    assert.equal(jettenGiden.length, 0);
+    await dbAsync.run(
+      `INSERT INTO tenant_mail_settings (tenant_id, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass_encrypted, smtp_from)
+       VALUES (?, '93.184.215.14', 587, 0, 'destek@odeme.com', ?, 'destek@odeme.com')`, [tenantId, encryptSecret('smtp-sifresi')]);
+
     const kimse = await site().post('/api/auth/forgot').send({ email: 'yok@musteri.com' });
     assert.equal(kimse.status, 200);
     assert.equal(giden.length, 0, 'kayıtsız adrese e-posta gitmez');
@@ -372,7 +386,10 @@ test('bayi müşterisi şifresini e-postadaki bağlantıyla sıfırlar; eski otu
     assert.equal(istek.status, 200);
     assert.equal(istek.body.message, kimse.body.message, 'yanıt kayıtlı olup olmadığını sızdırmaz');
     assert.equal(giden.length, 1);
-    assert.equal(giden[0].fromName, 'Ödeme SMM');
+    assert.equal(jettenGiden.length, 0, 'Jet SMTP kullanılmaz');
+    assert.equal(giden[0].from, '"Ödeme SMM" <destek@odeme.com>');
+    assert.equal(giden[0].transport.tls.servername, '93.184.215.14');
+    assert.equal(giden[0].transport.auth.pass, 'smtp-sifresi');
     assert.equal(giden[0].replyTo, 'destek@odeme.com');
     assert.doesNotMatch(giden[0].text + giden[0].subject, /jet/i, 'e-posta metninde Jet geçmez');
     const token = giden[0].text.match(/token=([a-f0-9]+)/)[1];
@@ -388,6 +405,7 @@ test('bayi müşterisi şifresini e-postadaki bağlantıyla sıfırlar; eski otu
     musteri = { ...giris, id: musteri.id };
   } finally {
     mailer.sendMail = gercek;
+    nodemailer.createTransport = gercekTransport;
   }
 });
 

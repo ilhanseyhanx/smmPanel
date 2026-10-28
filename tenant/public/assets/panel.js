@@ -688,6 +688,7 @@
         <button type="button" class="sf-btn sf-btn-primary sf-btn-sm" data-cust-balance="${c.id}" data-action="add" data-name="${escapeHtml(c.username)}">+ Bakiye</button>
         <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-cust-balance="${c.id}" data-action="subtract" data-name="${escapeHtml(c.username)}">- Bakiye</button>
         <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-cust-detail="${c.id}">Detay</button>
+        <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-cust-password="${c.id}" data-name="${escapeHtml(c.username)}" title="Yeni şifre belirle"><i class="fa-solid fa-key" aria-hidden="true"></i></button>
         <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-cust-ban="${c.id}" data-banned="${c.banned ? '1' : '0'}" data-name="${escapeHtml(c.username)}" title="${c.banned ? 'Banı kaldır' : 'Banla'}"><i class="fa-solid ${c.banned ? 'fa-unlock' : 'fa-ban'}" aria-hidden="true"></i></button>
       </td></tr>`).join('') : `<tr><td colspan="8" class="sf-muted">${q ? 'Aramaya uyan müşteri yok.' : 'Henüz müşteriniz yok.'}</td></tr>`;
   }
@@ -703,6 +704,38 @@
     } catch (err) {
       toast(err.message, 'error');
     }
+  }
+
+  // Musteriye yeni sifre: e-posta (SMTP) kurulu degilse sifre sifirlamanin yolu.
+  function setCustomerPassword(id, name) {
+    const random = () => {
+      const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const bytes = crypto.getRandomValues(new Uint8Array(12));
+      return Array.from(bytes, b => chars[b % chars.length]).join('');
+    };
+    openModal(`${name} için yeni şifre`, `
+      <form class="sf-form" id="pn-cust-pass-form" novalidate>
+        <p class="sf-muted" style="margin:0;">Şifreyi müşterine kendin ilet. Müşterinin açık oturumları kapanır.</p>
+        <label>Yeni şifre <small>(en az 10 karakter)</small>
+          <span class="pn-color-row"><input name="password" class="sf-input" minlength="10" maxlength="128" value="${random()}" autocomplete="off"><button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" id="pn-pass-random">Yenile</button></span>
+        </label>
+        <p class="sf-form-error" role="alert"></p>
+        <button type="submit" class="sf-btn sf-btn-primary">Kaydet</button>
+      </form>`);
+    const form = $('#pn-cust-pass-form');
+    $('#pn-pass-random').addEventListener('click', () => { form.password.value = random(); });
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const password = form.password.value;
+      if (password.length < 10) { $('.sf-form-error', form).textContent = 'Şifre en az 10 karakter olmalı.'; return; }
+      try {
+        const res = await api(`/customers/${id}/password`, { method: 'POST', body: JSON.stringify({ password }) });
+        closeModal();
+        toast(res.message);
+      } catch (err) {
+        $('.sf-form-error', form).textContent = err.message;
+      }
+    });
   }
 
   async function toggleBan(id, banned, name) {
@@ -921,8 +954,10 @@
     smtp.password.value = '';
     smtp.password.placeholder = d.smtp.has_password ? 'Kayıtlı; değiştirmek için yaz' : '';
     const state = $('#pn-smtp-state');
-    state.textContent = d.smtp.active ? 'Kendi SMTP\'n' : 'Ortak sunucu';
+    state.textContent = d.smtp.active ? 'Kurulu' : 'Kurulu değil';
     state.className = `sf-badge sf-badge-${d.smtp.active ? 'completed' : 'pending'}`;
+    $('#pn-mail-warning').hidden = d.smtp.active;
+    $('#pn-smtp-test').disabled = !d.smtp.active;
     $('#pn-smtp-clear').hidden = !d.smtp.active;
     state.dataset.ownerEmail = d.owner_email || '';
     $('#pn-mail-log').innerHTML = d.log.length ? d.log.map(l => {
@@ -999,7 +1034,7 @@
   }
 
   async function clearSmtp() {
-    if (!(await confirmBox('SMTP\'yi kaldır', 'Müşteri e-postaları yeniden ortak sunucudan, site adınla gönderilecek.', 'Kaldır'))) return;
+    if (!(await confirmBox('SMTP\'yi kaldır', 'Kaldırınca müşterilerine hiçbir e-posta (şifre sıfırlama dahil) gönderilmez.', 'Kaldır'))) return;
     try {
       const res = await api('/mail', { method: 'PUT', body: JSON.stringify({ smtp: null }) });
       renderMail(res);
@@ -1308,6 +1343,7 @@
     branding_changed: 'Logo / simge değişti',
     page_reset: 'Yasal sayfa otomatiğe döndü',
     mail_settings_changed: 'E-posta ayarları değişti',
+    customer_password_set: 'Müşteriye yeni şifre verildi',
     api_settings_changed: 'Müşteri API ayarı değişti',
     api_key_created: 'Müşteri API anahtarı oluşturdu',
     password_reset_requested: 'Müşteri şifre sıfırlama istedi',
@@ -1499,6 +1535,8 @@
       if (bal) { changeBalance(Number(bal.dataset.custBalance), bal.dataset.action, bal.dataset.name); return; }
       const det = t.closest('[data-cust-detail]');
       if (det) { customerDetail(Number(det.dataset.custDetail)); return; }
+      const pass = t.closest('[data-cust-password]');
+      if (pass) { setCustomerPassword(Number(pass.dataset.custPassword), pass.dataset.name); return; }
       const ban = t.closest('[data-cust-ban]');
       if (ban) { toggleBan(Number(ban.dataset.custBan), ban.dataset.banned !== '1', ban.dataset.name); return; }
       const page = t.closest('[data-page]');

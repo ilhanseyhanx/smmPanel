@@ -4,8 +4,10 @@
 //  Musteriye (bayinin adiyla): hos geldin, bakiye yuklendi, siparis bitti.
 //  Bayiye (Jet hesabinin e-postasina, Jet'ten): yeni havale bildirimi,
 //  Jet bakiyesi yetmedigi icin alinamayan siparis.
-// Bayi kendi SMTP'sini girdiyse musteri e-postalari onun adresinden gider;
-// girmediyse Jet SMTP'si bayinin site adini gonderen adi olarak kullanir.
+// KURAL: bayinin musterisine Jet'in sunucusundan e-posta GITMEZ. Musteri
+// e-postalari (sifre sifirlama dahil) yalnizca bayi kendi SMTP'sini girdiyse
+// onun adresinden gider; girmediyse gonderilmez ve kayda "atlandi" duser.
+// Bayiye giden e-postalar (Jet hesabina) Jet SMTP'siyle gider.
 // Gonderim hicbir zaman cagiranin akisini bozmaz: hata tenant_mail_log'a
 // yazilir. Demo bayi e-posta gondermez.
 const dns = require('dns').promises;
@@ -94,13 +96,12 @@ async function sendCustomerMail(tenant, { kind, to, subject, text }) {
   if (settings.demo || !to) return false;
   try {
     const row = await settingsRow(tenant.id);
-    if (smtpReady(row)) {
-      const transport = await customTransport(row);
-      await transport.sendMail({ from: mailer.withName(row.smtp_from, tenant.name), to, subject, text, ...(settings.support_email ? { replyTo: settings.support_email } : {}) });
-    } else {
-      const sent = await mailer.sendMail({ to, subject, text, fromName: tenant.name, replyTo: settings.support_email || undefined });
-      if (!sent) { await logMail(tenant.id, kind, to, subject, 'skipped', 'E-posta servisi yapılandırılmamış.'); return false; }
+    if (!smtpReady(row)) {
+      await logMail(tenant.id, kind, to, subject, 'skipped', 'Kendi e-posta (SMTP) ayarın olmadığı için gönderilmedi.');
+      return false;
     }
+    const transport = await customTransport(row);
+    await transport.sendMail({ from: mailer.withName(row.smtp_from, tenant.name), to, subject, text, ...(settings.support_email ? { replyTo: settings.support_email } : {}) });
     await logMail(tenant.id, kind, to, subject, 'sent');
     return true;
   } catch (err) {
@@ -278,24 +279,26 @@ async function saveMailSettings(tenantId, { notify, smtp }) {
   return mailSettings(tenantId);
 }
 
+/** Musteriye e-posta gonderilebilir mi (bayinin kendi SMTP'si kayitli mi)? */
+async function customerMailReady(tenantId) {
+  return smtpReady(await settingsRow(tenantId));
+}
+
 /** Paneldeki "Test e-postasi gonder": hata mesaji bayiye gosterilir. */
 async function sendTestMail(tenant, to) {
   const row = await settingsRow(tenant.id);
+  if (!smtpReady(row)) throw Object.assign(new Error('Önce SMTP bilgilerini kaydet; müşteri e-postaları yalnızca senin adresinden gider.'), { status: 400 });
   const subject = `${tenant.name} test e-postası`;
   const text = `Bu bir test e-postasıdır. Müşterilerine giden e-postalar bu adresten ve "${tenant.name}" adıyla gönderilecek.`;
   try {
-    if (smtpReady(row)) {
-      const transport = await customTransport(row);
-      await transport.sendMail({ from: mailer.withName(row.smtp_from, tenant.name), to, subject, text });
-    } else if (!(await mailer.sendMail({ to, subject, text, fromName: tenant.name }))) {
-      throw new Error('E-posta servisi yapılandırılmamış.');
-    }
+    const transport = await customTransport(row);
+    await transport.sendMail({ from: mailer.withName(row.smtp_from, tenant.name), to, subject, text });
   } catch (err) {
     await logMail(tenant.id, 'test', to, subject, 'failed', err.message);
     throw Object.assign(new Error(`Gönderilemedi: ${err.message}`), { status: 400 });
   }
   await logMail(tenant.id, 'test', to, subject, 'sent');
-  return { custom: smtpReady(row) };
+  return { custom: true };
 }
 
 // Cagiranlar beklemez; hata yalnizca kayda duser.
@@ -304,7 +307,7 @@ function fireAndForget(promise) {
 }
 
 module.exports = {
-  mailSettings, saveMailSettings, sendTestMail, safeSmtpTarget, SMTP_PORTS,
+  mailSettings, saveMailSettings, sendTestMail, safeSmtpTarget, SMTP_PORTS, customerMailReady,
   customerWelcome, paymentCompleted, orderFinished, ownerBankNotice, ownerBalanceLow,
   sendCustomerMail, fireAndForget
 };

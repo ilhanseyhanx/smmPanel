@@ -6,7 +6,6 @@
 const crypto = require('crypto');
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const mailer = require('../services/mailer');
 const { z } = require('zod');
 const { dbAsync } = require('../config/database');
 const { validate, bilingual } = require('../middleware/validate');
@@ -167,6 +166,16 @@ const hashToken = token => crypto.createHash('sha256').update(String(token)).dig
 
 router.post('/auth/forgot', requireActiveTenant, validate(forgotSchema), async (req, res, next) => {
   try {
+    const settings = tenantSettings(req.tenant);
+    // Bayinin kendi SMTP'si yoksa e-posta gonderilmez (Jet'in sunucusundan
+    // musteriye e-posta gitmez); yanit her e-posta icin aynidir.
+    if (!(await tenantMail.customerMailReady(req.tenant.id))) {
+      const contact = [settings.support_email, settings.telegram].filter(Boolean).join(' · ');
+      return res.status(409).json({
+        error: `Bu site şu anda e-posta gönderemiyor. Şifreni sıfırlamak için site yöneticisine ulaş${contact ? `: ${contact}` : '.'}`,
+        error_en: 'This site cannot send email right now. Please contact the site administrator to reset your password.'
+      });
+    }
     const generic = { message: 'Bu e-posta kayıtlıysa şifre sıfırlama bağlantısı gönderildi.', message_en: 'If this email is registered, a reset link has been sent.' };
     const customer = await dbAsync.get('SELECT * FROM tenant_customers WHERE tenant_id = ? AND email = ?', [req.tenant.id, req.body.email]);
     if (!customer || customer.banned) return res.json(generic);
@@ -175,19 +184,13 @@ router.post('/auth/forgot', requireActiveTenant, validate(forgotSchema), async (
       "UPDATE tenant_customers SET reset_token_hash = ?, reset_expires_at = datetime('now', '+1 hour') WHERE id = ?",
       [hashToken(token), customer.id]
     );
-    const settings = tenantSettings(req.tenant);
     const link = `${req.protocol}://${req.get('host')}/sifre-sifirla?token=${token}`;
-    try {
-      await mailer.sendMail({
-        to: customer.email,
-        subject: `${req.tenant.name} şifre sıfırlama`,
-        fromName: req.tenant.name,
-        replyTo: settings.support_email || undefined,
-        text: `Merhaba ${customer.username},\n\n${req.tenant.name} hesabının şifresini sıfırlamak için bu bağlantıyı aç (1 saat geçerli):\n${link}\n\nBu isteği sen yapmadıysan bu e-postayı yok sayabilirsin; şifren değişmez.`
-      });
-    } catch (err) {
-      console.error('Bayi sifre sifirlama e-postasi:', err.message);
-    }
+    await tenantMail.sendCustomerMail(req.tenant, {
+      kind: 'password_reset',
+      to: customer.email,
+      subject: `${req.tenant.name} şifre sıfırlama`,
+      text: `Merhaba ${customer.username},\n\n${req.tenant.name} hesabının şifresini sıfırlamak için bu bağlantıyı aç (1 saat geçerli):\n${link}\n\nBu isteği sen yapmadıysan bu e-postayı yok sayabilirsin; şifren değişmez.\n\n— ${req.tenant.name}`
+    });
     await logTenantActivity(dbAsync, {
       tenantId: req.tenant.id, actorType: 'customer', actorId: customer.id, action: 'password_reset_requested', ip: clientIp(req)
     });

@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="/assets/storefront.css?v=20261028b">
-  <link rel="stylesheet" href="/assets/panel.css?v=20261028b">
+  <link rel="stylesheet" href="/assets/panel.css?v=20261028c">
   <style>:root { --primary: %%PRIMARY%%; }</style>
 </head>
 <body class="pn-body">
@@ -329,6 +329,7 @@
           <div class="pn-stack">
             <form class="sf-card sf-form" id="pn-notify-form" novalidate>
               <h2 class="pn-card-title">Müşterilerine giden e-postalar</h2>
+              <p class="pn-alert pn-alert-warn" id="pn-mail-warning" style="margin:0;" hidden>Müşterilerine e-posta yalnızca senin e-posta adresinden gider. Aşağıdan SMTP bilgilerini girene kadar hiçbir e-posta (şifre sıfırlama dahil) gönderilmez; şifresini unutan müşterine Müşteriler sayfasından yeni şifre verebilirsin.</p>
               <label class="pn-radio"><input type="checkbox" name="welcome"> Hoş geldin <small class="sf-muted">· kayıt olunca</small></label>
               <label class="pn-radio"><input type="checkbox" name="payment"> Bakiye yüklendi <small class="sf-muted">· ödeme onaylanınca</small></label>
               <label class="pn-radio"><input type="checkbox" name="order"> Sipariş bitti <small class="sf-muted">· tamamlandı, kısmi ya da iptal (iade tutarıyla)</small></label>
@@ -337,7 +338,7 @@
             </form>
             <form class="sf-card sf-form" id="pn-smtp-form" novalidate>
               <div class="pn-pay-head"><h2 class="pn-card-title" style="margin:0;">Gönderen adres (SMTP)</h2><span class="sf-badge" id="pn-smtp-state"></span></div>
-              <p class="sf-muted pn-help" style="margin:0;">Boş bırakırsan e-postalar site adınla ortak e-posta sunucusundan gider. Kendi alan adından gitsin istersen e-posta sağlayıcının (Gmail, Yandex, Zoho, hosting) SMTP bilgilerini gir.</p>
+              <p class="sf-muted pn-help" style="margin:0;">E-posta sağlayıcının (Gmail, Yandex, Zoho, hosting) SMTP bilgilerini gir; müşteri e-postaları site adınla bu adresten gider.</p>
               <div class="pn-form-row">
                 <label>Sunucu<input name="host" class="sf-input" maxlength="253" placeholder="smtp.yandex.com" autocomplete="off"></label>
                 <label>Port<select name="port" class="sf-input"><option value="587">587 (STARTTLS)</option><option value="465">465 (SSL)</option><option value="2525">2525</option><option value="25">25</option></select></label>
@@ -387,6 +388,6 @@
   </div>
 
   <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
-  <script src="/assets/panel.js?v=20261028b" defer></script>
+  <script src="/assets/panel.js?v=20261028c" defer></script>
 </body>
 </html>

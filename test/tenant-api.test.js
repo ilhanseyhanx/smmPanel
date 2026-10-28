@@ -34,8 +34,11 @@ SmmProviderClient.prototype.addOrder = async () => ({ order: ++saglayiciNo });
 SmmProviderClient.prototype.requestRefill = async () => ({ refill: 91 });
 SmmProviderClient.prototype.cancelOrders = async ids => ids.map(id => ({ order: id, cancel: 1 }));
 
+// Jet SMTP'si (yalnizca bayiye giden e-postalar) ve bayinin kendi SMTP'si
+// (musteriye giden e-postalar, smtp: true) ayni listeye duser.
 const giden = [];
 mailer.sendMail = async options => { giden.push(options); return true; };
+require('nodemailer').createTransport = transport => ({ sendMail: async mail => { giden.push({ ...mail, smtp: true, transport }); return {}; } });
 const bekle = () => new Promise(resolve => setTimeout(resolve, 60));
 
 function site(host = HOST, agent = request.agent(app)) {
@@ -82,11 +85,22 @@ test.after(async () => {
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-test('kayıt olan müşteriye bayinin adıyla hoş geldin e-postası gider', async () => {
+test('bayinin SMTP\'si yokken müşteriye e-posta gitmez; kurunca hoş geldin bayinin adresinden gider', async () => {
   await bekle();
-  const hosgeldin = giden.find(m => m.to === 'api@musteri.com');
-  assert.ok(hosgeldin, 'hoş geldin e-postası');
-  assert.equal(hosgeldin.fromName, 'apici SMM');
+  assert.equal(giden.filter(m => m.to === 'api@musteri.com').length, 0, 'Jet sunucusundan müşteriye e-posta gitmez');
+  const atlanan = await dbAsync.get("SELECT status, error FROM tenant_mail_log WHERE kind = 'welcome' AND recipient = 'api@musteri.com'");
+  assert.equal(atlanan.status, 'skipped');
+  assert.match(atlanan.error, /SMTP/);
+  assert.equal((await panel.post('/api/panel/mail/test').send({})).status, 400, 'SMTP olmadan test e-postası yok');
+
+  const kur = await panel.put('/api/panel/mail').send({ smtp: { host: '93.184.215.14', port: 587, user: 'destek@apici.com', password: 'smtp-sifre', from: 'destek@apici.com' } });
+  assert.equal(kur.status, 200, JSON.stringify(kur.body));
+  assert.equal(kur.body.smtp.active, true);
+  await site().post('/api/auth/register').send({ username: 'api_ucuncu', email: 'ucuncu@musteri.com', password: SIFRE });
+  await bekle();
+  const hosgeldin = giden.find(m => m.to === 'ucuncu@musteri.com');
+  assert.ok(hosgeldin?.smtp, 'bayinin SMTP\'siyle gitti');
+  assert.equal(hosgeldin.from, '"apici SMM" <destek@apici.com>');
   assert.match(hosgeldin.subject, /apici SMM hesabın hazır/);
   assert.match(hosgeldin.text, /https:\/\/apici\.api\.test\/bakiye/);
   assert.doesNotMatch(hosgeldin.text, /Jet/);
@@ -176,6 +190,7 @@ test('havale bildirimi bayiye, onaylanan ödeme müşteriye e-posta olarak gider
   await bekle();
   const bayiye = giden.find(m => m.to === 'apici_sahip@site.com');
   assert.ok(bayiye, 'bayiye havale e-postası');
+  assert.equal(bayiye.smtp, undefined, 'bayiye giden e-posta Jet\'ten');
   assert.match(bayiye.subject, /Yeni havale bildirimi · apici SMM/);
   assert.match(bayiye.text, /₺150,00/);
   assert.match(bayiye.text, /https:\/\/apici\.api\.test\/admin\/payments/);
@@ -184,8 +199,8 @@ test('havale bildirimi bayiye, onaylanan ödeme müşteriye e-posta olarak gider
   assert.equal((await panel.post(`/api/panel/payments/${bildirim.body.payment_id}/approve`)).status, 200);
   await bekle();
   const musteriye = giden.find(m => m.to === 'api@musteri.com');
-  assert.ok(musteriye, 'müşteriye ödeme e-postası');
-  assert.equal(musteriye.fromName, 'apici SMM');
+  assert.ok(musteriye?.smtp, 'müşteriye ödeme e-postası bayinin SMTP\'siyle');
+  assert.equal(musteriye.from, '"apici SMM" <destek@apici.com>');
   assert.match(musteriye.subject, /₺150,00 bakiyene eklendi/);
   const kayit = await panel.get('/api/panel/mail');
   assert.ok(kayit.body.log.some(l => l.kind === 'payment' && l.status === 'sent'));
@@ -229,8 +244,23 @@ test('bayinin SMTP\'si: özel ağ ve uygunsuz port reddedilir, parola geri gönd
   assert.equal(port.status, 400);
   assert.match(port.body.error, /port/);
   const ayar = await panel.get('/api/panel/mail');
-  assert.equal(ayar.body.smtp.active, false);
-  assert.equal(ayar.body.smtp.has_password, false);
+  assert.equal(ayar.body.smtp.host, '93.184.215.14', 'reddedilen kayıt öncekini bozmaz');
+  assert.equal(ayar.body.smtp.has_password, true);
   assert.equal(ayar.body.owner_email, 'apici_sahip@site.com');
-  assert.doesNotMatch(JSON.stringify(ayar.body), /smtp_pass/);
+  assert.doesNotMatch(JSON.stringify(ayar.body), /smtp_pass|smtp-sifre/);
+  const kaldir = await panel.put('/api/panel/mail').send({ smtp: null });
+  assert.equal(kaldir.body.smtp.active, false);
+});
+
+test('SMTP yokken şifre sıfırlama yöneticiye yönlendirir; bayi panelden yeni şifre verir, eski oturum kapanır', async () => {
+  const unuttum = await site().post('/api/auth/forgot').send({ email: 'api@musteri.com' });
+  assert.equal(unuttum.status, 409);
+  assert.match(unuttum.body.error, /site yöneticisine ulaş/);
+  assert.equal((await panel.post(`/api/panel/customers/${musteri.id}/password`).send({ password: 'kisa' })).status, 400);
+  const yeni = await panel.post(`/api/panel/customers/${musteri.id}/password`).send({ password: 'PaneldenYeniSifre_2026' });
+  assert.equal(yeni.status, 200, JSON.stringify(yeni.body));
+  assert.equal((await musteri.get('/api/auth/me')).status, 401, 'eski oturum kapandı');
+  assert.equal((await site().post('/api/auth/login').send({ username: 'api_musteri', password: 'PaneldenYeniSifre_2026' })).status, 200);
+  const baskaBayi = site('baskasi.api.test');
+  assert.equal((await baskaBayi.post(`/api/panel/customers/${musteri.id}/password`).send({ password: 'BaskaBayiSifre_2026' })).status, 401);
 });

@@ -500,6 +500,24 @@ router.post('/customers/:id/ban', validate(banSchema), async (req, res, next) =>
   } catch (err) { next(err); }
 });
 
+// Bayi musterisine yeni sifre verir (e-postasi olmayan bayide sifre
+// sifirlamanin yolu). Musterinin acik oturumlari kapanir.
+const customerPasswordSchema = z.object({ password: z.string().min(10).max(128) });
+
+router.post('/customers/:id/password', validate(customerPasswordSchema), async (req, res, next) => {
+  try {
+    const customer = await loadCustomer(req, res);
+    if (!customer) return;
+    const hash = await bcrypt.hash(req.body.password, 12);
+    await dbAsync.run(
+      'UPDATE tenant_customers SET password = ?, token_version = token_version + 1, reset_token_hash = NULL, reset_expires_at = NULL WHERE id = ?',
+      [hash, customer.id]
+    );
+    await ownerActivity(req, 'customer_password_set', { customer: customer.username });
+    res.json({ message: `${customer.username} için yeni şifre kaydedildi; açık oturumları kapandı.` });
+  } catch (err) { next(err); }
+});
+
 // --------------------------------------------------------------- siparisler
 const ORDER_STATUSES = new Set(['pending', 'processing', 'completed', 'partial', 'canceled']);
 

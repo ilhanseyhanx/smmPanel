@@ -1004,6 +1004,60 @@ async function runMigrations() {
   // gecerli olacak paket (Pro'dan Standart'a inis).
   await addColumnIfMissing('tenants', 'package', "TEXT NOT NULL DEFAULT 'standart'");
   await addColumnIfMissing('tenants', 'pending_package', 'TEXT');
+  // Pro: bayinin kendi SMM saglayicilari (services/tenantOwn.js). Siparisin
+  // parasi musterinin bayi bakiyesinden, saglayici ucreti bayinin kendi
+  // saglayici hesabindan gider; Jet'in orders tablosuna yazilmaz.
+  await dbAsync.exec(`
+    CREATE TABLE IF NOT EXISTS tenant_providers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      api_url TEXT NOT NULL,
+      api_key_encrypted TEXT NOT NULL,
+      currency TEXT,
+      balance TEXT,
+      status INTEGER NOT NULL DEFAULT 1,
+      checked_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS tenant_own_services (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL,
+      provider_id INTEGER NOT NULL REFERENCES tenant_providers(id) ON DELETE CASCADE,
+      provider_service_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Diğer',
+      description TEXT,
+      provider_rate TEXT,
+      rate_kurus INTEGER NOT NULL,
+      min_quantity INTEGER NOT NULL DEFAULT 1,
+      max_quantity INTEGER NOT NULL DEFAULT 1000000,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(provider_id, provider_service_id)
+    );
+    CREATE TABLE IF NOT EXISTS tenant_own_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL,
+      customer_id INTEGER NOT NULL,
+      service_id INTEGER NOT NULL,
+      provider_id INTEGER,
+      provider_order_id TEXT,
+      service_name TEXT NOT NULL,
+      link TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      charge_kurus INTEGER NOT NULL,
+      refunded_kurus INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending',
+      start_count INTEGER,
+      remains INTEGER,
+      error TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_tenant_own_orders_customer ON tenant_own_orders(tenant_id, customer_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_tenant_own_orders_open ON tenant_own_orders(status, provider_id);
+  `);
   // Bayi e-postalari (F6, services/tenantMail.js): hangi bildirimlerin
   // gidecegi ve istege bagli bayinin kendi SMTP'si (parola sifreli). Kayit
   // tablosu hem panelde son gonderimleri gosterir hem de tekrar sinirlar.

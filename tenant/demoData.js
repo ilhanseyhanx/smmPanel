@@ -291,6 +291,30 @@ function panelResponse(path, query, ctx) {
       top_up_url: ctx.topUpUrl, invoices: []
     };
   }
+  if (path === '/own') {
+    const own = [
+      ['Instagram Reels İzlenme', 'Instagram', '0.12 USD', 9.9, 100, 1000000],
+      ['Telegram Kanal Üyesi', 'Telegram', '0.85 USD', 59, 100, 50000],
+      ['Twitch Canlı İzleyici (1 saat)', 'Twitch', '1.40 USD', 99, 10, 2000]
+    ];
+    return {
+      pro: true,
+      providers: [{ id: 1, name: 'Örnek Panel', api_url: 'https://ornekpanel.com/api/v2', currency: 'USD', balance: '124.50', status: 1, checked_at: sqlDate(d.now - HOUR), created_at: sqlDate(d.now - 9 * 24 * HOUR), service_count: own.length }],
+      services: own.map(([name, category, providerRate, rate, min, max], i) => ({
+        id: 50_000_001 + i, local_id: 1 + i, provider_id: 1, provider_name: 'Örnek Panel', provider_service_id: String(320 + i),
+        name, category, description: '', provider_rate: providerRate, rate, min, max, enabled: true
+      }))
+    };
+  }
+  if (path === '/own/orders') {
+    const orders = d.orders.slice(0, 5).map((o, i) => ({
+      id: 50_000_101 + i, service_name: ['Instagram Reels İzlenme', 'Telegram Kanal Üyesi', 'Twitch Canlı İzleyici (1 saat)'][i % 3],
+      link: o.link, quantity: o.quantity, status: o.status, start_count: o.start_count, remains: o.remains,
+      charge: o.paid + o.refunded, refunded: o.refunded, refill: false, own: true, created_at: o.created_at,
+      customer: o.customer, provider_name: 'Örnek Panel', provider_order_id: String(88100 + i), error: null
+    }));
+    return { page: 1, pages: 1, total: orders.length, orders };
+  }
   if (path === '/mail') {
     const log = [
       ...d.payments.filter(p => p.status === 'completed').slice(0, 4).map(p => ({ kind: 'payment', recipient: `${p.customer.replace(/[._]/g, '')}@ornek.com`, subject: `Bakiyene ₺${p.amount} eklendi`, status: 'sent', error: null, created_at: p.completed_at })),

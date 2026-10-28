@@ -28,6 +28,7 @@ const cloudflare = require('../services/cloudflare');
 const tenantBranding = require('../services/tenantBranding');
 const demoData = require('./demoData');
 const tenantMail = require('../services/tenantMail');
+const tenantOwn = require('../services/tenantOwn');
 const { digitalSettings, tenantDigitalCatalog } = require('../services/tenantDigital');
 const tenantDomains = require('../services/tenantDomains');
 const { signOwnerSession, setOwnerCookie, clearOwnerCookie, requireOwner } = require('./panelSession');
@@ -681,6 +682,101 @@ router.get('/logs', async (req, res, next) => {
         type: l.type, order_id: l.order_id, note: l.note, created_at: l.created_at
       }))
     });
+  } catch (err) { next(err); }
+});
+
+// ------------------------------------------------- kendi saglayicilar (Pro)
+// services/tenantOwn.js. Standart pakette liste bos doner, ekleme reddedilir.
+const providerSchema = z.object({
+  name: z.string().trim().min(2).max(60),
+  api_url: z.url().max(500),
+  api_key: z.string().trim().min(8).max(200)
+});
+const providerToggleSchema = z.object({ enabled: z.boolean() });
+const importSchema = z.object({
+  service_ids: z.array(z.union([z.string(), z.number()])).min(1).max(500),
+  markup_percent: z.coerce.number().finite().min(0).max(1000)
+});
+const ownServiceSchema = z.object({
+  name: z.string().trim().min(2).max(200).optional(),
+  category: z.string().trim().min(1).max(100).optional(),
+  description: z.string().trim().max(1000).optional(),
+  rate: z.coerce.number().finite().positive().max(1_000_000).optional(),
+  enabled: z.boolean().optional()
+});
+
+router.get('/own', async (req, res, next) => {
+  try {
+    const pro = isProTenant(req.tenant);
+    res.json({
+      pro,
+      providers: pro ? await tenantOwn.listProviders(req.tenant.id) : [],
+      services: pro ? await tenantOwn.listOwnServices(req.tenant.id) : []
+    });
+  } catch (err) { next(err); }
+});
+
+router.post('/own/providers', validate(providerSchema), async (req, res, next) => {
+  try {
+    const provider = await tenantOwn.addProvider(req.tenant, req.body);
+    await ownerActivity(req, 'own_provider_added', { name: provider.name, api_url: provider.api_url });
+    res.status(201).json({ message: `"${provider.name}" bağlandı (bakiye ${provider.balance} ${provider.currency}).`, provider });
+  } catch (err) { next(err); }
+});
+
+router.post('/own/providers/:id/refresh', async (req, res, next) => {
+  try {
+    res.json({ provider: await tenantOwn.refreshProvider(req.tenant, idParam(req.params.id)) });
+  } catch (err) { next(err); }
+});
+
+router.put('/own/providers/:id', validate(providerToggleSchema), async (req, res, next) => {
+  try {
+    await tenantOwn.setProviderStatus(req.tenant, idParam(req.params.id), req.body.enabled);
+    res.json({ message: req.body.enabled ? 'Sağlayıcı açıldı; servisleri sitende görünür.' : 'Sağlayıcı kapatıldı; servisleri sitende gizlendi.' });
+  } catch (err) { next(err); }
+});
+
+router.delete('/own/providers/:id', async (req, res, next) => {
+  try {
+    await tenantOwn.removeProvider(req.tenant, idParam(req.params.id));
+    await ownerActivity(req, 'own_provider_removed', { provider_id: idParam(req.params.id) });
+    res.json({ message: 'Sağlayıcı ve servisleri kaldırıldı.' });
+  } catch (err) { next(err); }
+});
+
+router.get('/own/providers/:id/services', async (req, res, next) => {
+  try {
+    res.json(await tenantOwn.providerServices(req.tenant, idParam(req.params.id)));
+  } catch (err) { next(err); }
+});
+
+router.post('/own/providers/:id/import', validate(importSchema), async (req, res, next) => {
+  try {
+    const result = await tenantOwn.importServices(req.tenant, idParam(req.params.id), req.body);
+    await ownerActivity(req, 'own_services_imported', { provider_id: idParam(req.params.id), count: result.added, markup_percent: req.body.markup_percent });
+    res.json({ message: `${result.added} servis eklendi${result.currency !== 'TRY' ? ` (kur: 1 ${result.currency} = ₺${result.fx.toFixed(2)})` : ''}.`, ...result });
+  } catch (err) { next(err); }
+});
+
+router.put('/own/services/:id', validate(ownServiceSchema), async (req, res, next) => {
+  try {
+    await tenantOwn.updateOwnService(req.tenant, idParam(req.params.id), req.body);
+    res.json({ message: 'Servis güncellendi.' });
+  } catch (err) { next(err); }
+});
+
+router.delete('/own/services/:id', async (req, res, next) => {
+  try {
+    await tenantOwn.deleteOwnService(req.tenant, idParam(req.params.id));
+    res.json({ message: 'Servis silindi.' });
+  } catch (err) { next(err); }
+});
+
+router.get('/own/orders', async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number.parseInt(req.query.page || '1', 10) || 1);
+    res.json(await tenantOwn.panelOwnOrders(req.tenant.id, page));
   } catch (err) { next(err); }
 });
 

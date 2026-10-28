@@ -44,6 +44,7 @@
         <a href="/admin/customers" data-go="customers"><i class="fa-solid fa-users" aria-hidden="true"></i><span>Müşteriler</span></a>
         <a href="/admin/orders" data-go="orders"><i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i><span>Siparişler</span></a>
         <a href="/admin/digital" data-go="digital"><i class="fa-solid fa-key" aria-hidden="true"></i><span>Dijital Ürünler</span></a>
+        <a href="/admin/providers" data-go="providers"><i class="fa-solid fa-plug" aria-hidden="true"></i><span>Sağlayıcılarım</span><b class="pn-pro-tag">PRO</b></a>
         <a href="/admin/payments" data-go="payments"><i class="fa-solid fa-money-bill-transfer" aria-hidden="true"></i><span>Ödemeler</span><b class="pn-nav-count" id="pn-pay-count" hidden></b></a>
         <a href="/admin/payment-settings" data-go="paysettings"><i class="fa-solid fa-credit-card" aria-hidden="true"></i><span>Ödeme Ayarları</span></a>
         <a href="/admin/domain" data-go="domain"><i class="fa-solid fa-globe" aria-hidden="true"></i><span>Alan Adı</span></a>
@@ -323,6 +324,47 @@
           <p class="sf-form-error" role="alert"></p>
           <button type="submit" class="sf-btn sf-btn-primary">Kaydet</button>
         </form>
+      </section>
+
+      <!-- SAGLAYICILARIM (Pro) -->
+      <section class="pn-view" data-view="providers" hidden>
+        <div class="sf-card pn-pro-lock" id="pn-own-lock" hidden>
+          <h2 class="pn-card-title">Kendi sağlayıcıların Pro pakette</h2>
+          <p class="sf-muted">Pro pakette başka SMM panellerinin API'sini bağlayıp servislerini kendi fiyatınla satabilir, blog ve satış sayfaları yayınlayabilir, kendi dijital ürünlerini satabilirsin.</p>
+          <a class="sf-btn sf-btn-primary" href="/admin/subscription" data-go="subscription">Paketleri gör</a>
+        </div>
+        <div id="pn-own-body" hidden>
+          <div class="pn-grid-2">
+            <div class="sf-card">
+              <h2 class="pn-card-title">Bağlı sağlayıcılar</h2>
+              <ul class="pn-list pn-own-providers" id="pn-own-providers"></ul>
+            </div>
+            <form class="sf-card sf-form" id="pn-own-add" novalidate>
+              <h2 class="pn-card-title" style="margin:0;">Sağlayıcı ekle</h2>
+              <p class="sf-muted pn-help" style="margin:0;">Standart SMM API v2 kullanan herhangi bir panel. Siparişlerin ücreti o paneldeki bakiyenden düşer; müşterin senin sitendeki bakiyesiyle öder.</p>
+              <label>Ad<input name="name" class="sf-input" maxlength="60" placeholder="Örn: X Panel" required></label>
+              <label>API adresi<input name="api_url" class="sf-input" maxlength="500" placeholder="https://panel.com/api/v2" required></label>
+              <label>API anahtarı<input name="api_key" class="sf-input" maxlength="200" autocomplete="off" required></label>
+              <p class="sf-form-error" role="alert"></p>
+              <button type="submit" class="sf-btn sf-btn-primary">Bağla</button>
+            </form>
+          </div>
+          <div class="pn-filters" style="margin-top:18px;"><input type="search" id="pn-own-search" class="sf-input" placeholder="Kendi servislerinde ara..." aria-label="Servis ara"></div>
+          <div class="sf-card sf-table-wrap">
+            <table class="sf-table pn-table">
+              <thead><tr><th>No</th><th>Servis</th><th>Sağlayıcı fiyatı</th><th>Satış (1000)</th><th>Min - Maks</th><th>Durum</th><th></th></tr></thead>
+              <tbody id="pn-own-services"></tbody>
+            </table>
+          </div>
+          <h2 class="pn-card-title" style="margin-top:22px;">Kendi sağlayıcı siparişleri</h2>
+          <div class="sf-card sf-table-wrap">
+            <table class="sf-table pn-table">
+              <thead><tr><th>No</th><th>Müşteri</th><th>Servis</th><th>Miktar</th><th>Tutar</th><th>Sağlayıcı</th><th>Durum</th><th>Tarih</th></tr></thead>
+              <tbody id="pn-own-orders"></tbody>
+            </table>
+          </div>
+          <div class="pn-pager" id="pn-own-pager"></div>
+        </div>
       </section>
 
       <!-- E-POSTA & API -->

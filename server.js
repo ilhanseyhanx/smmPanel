@@ -1473,6 +1473,8 @@ async function startServer() {
     require('./services/resellerBilling').startBillingWorker();
     // Bayinin kendi alan adi: bekleyenlerin Cloudflare durumu (10 dakikada bir).
     require('./services/tenantDomains').startDomainWorker();
+    // Pro bayinin kendi saglayici siparislerinin durumu (3 dakikada bir).
+    require('./services/tenantOwn').startOwnOrderWorker();
     // Dijital urunlerin dolar karsiligi ve zarar kontrolu icin canli USD/TRY kuru (6 saatte bir).
     require('./services/fx').startFxWorker();
     // Ayak izi: acilista yonetici izleri temizlenir, 90 gunden eski kayitlar gunluk silinir.

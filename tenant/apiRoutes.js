@@ -14,6 +14,7 @@ const { requestCancel } = require('../services/cancelOrders');
 const { normalizeOrderInputType, normalizePricingModel } = require('../services/orderTypes');
 const { tenantSettings } = require('./resolve');
 const { placeTenantOrder } = require('./orders');
+const tenantOwn = require('../services/tenantOwn');
 
 const router = express.Router();
 
@@ -45,22 +46,26 @@ function apiError(err, fallback) {
   return Number.isInteger(err.status) && err.status < 500 ? err.message : fallback;
 }
 
+// Jet siparisi (orders) ya da kendi saglayici siparisi (tenant_own_orders).
 function orderStatusBody(order) {
   return {
     status: ORDER_STATUS[order.status] || 'Processing',
     start_count: order.start_count,
     remains: order.remains,
-    charge: fromKurus(order.tenant_charge_kurus).toFixed(2),
+    charge: fromKurus(order.own ? order.charge_kurus : order.tenant_charge_kurus).toFixed(2),
     currency: 'TRY'
   };
 }
 
 async function customerOrders(ctx, ids) {
-  if (!ids.length) return [];
-  return dbAsync.all(
-    `SELECT * FROM orders WHERE tenant_id = ? AND tenant_customer_id = ? AND id IN (${ids.map(() => '?').join(',')})`,
-    [ctx.tenant.id, ctx.customer.id, ...ids]
-  );
+  const jetIds = ids.filter(id => !tenantOwn.isOwnId(id));
+  const jet = jetIds.length ? await dbAsync.all(
+    `SELECT * FROM orders WHERE tenant_id = ? AND tenant_customer_id = ? AND id IN (${jetIds.map(() => '?').join(',')})`,
+    [ctx.tenant.id, ctx.customer.id, ...jetIds]
+  ) : [];
+  const own = (await tenantOwn.customerOwnOrders(ctx.tenant.id, ctx.customer.id, { ids }))
+    .map(row => ({ ...row, id: tenantOwn.toPublic(row.id), status: row.status === 'failed' ? 'canceled' : row.status, own: true }));
+  return [...jet, ...own];
 }
 
 async function services(ctx) {
@@ -83,7 +88,10 @@ async function services(ctx) {
       dripfeed: inputType === 'link' && Number(row.provider_dripfeed) === 1,
       description: row.description_tr || row.description || ''
     };
-  });
+  }).concat((await tenantOwn.ownCatalog(ctx.tenant)).map(own => ({
+    service: own.id, name: own.name, type: 'Default', category: own.category, rate: own.rate.toFixed(2),
+    min: own.min, max: own.max, refill: false, cancel: false, dripfeed: false, description: own.description
+  })));
 }
 
 async function balance(ctx) {
@@ -111,10 +119,13 @@ async function add(ctx, body, req) {
     }
   }
   try {
-    const result = await placeTenantOrder(ctx.tenant, ctx.customer, {
-      serviceId, link, quantity: qty, comments: body.comments || '', dripRuns: runs, dripIntervalMinutes: interval,
-      termsAccepted: true, lang: 'en'
-    });
+    if (tenantOwn.isOwnId(serviceId) && runs > 1) return { error: 'Drip-feed is not available for this service' };
+    const result = tenantOwn.isOwnId(serviceId)
+      ? await tenantOwn.placeOwnOrder(ctx.tenant, ctx.customer, { serviceId, link, quantity: qty })
+      : await placeTenantOrder(ctx.tenant, ctx.customer, {
+        serviceId, link, quantity: qty, comments: body.comments || '', dripRuns: runs, dripIntervalMinutes: interval,
+        termsAccepted: true, lang: 'en'
+      });
     return { order: result.orderId };
   } catch (err) {
     if (!err.messageEn && !(Number.isInteger(err.status) && err.status < 500)) req.log?.error({ err }, 'tenant_api_add_failed');
@@ -143,6 +154,7 @@ async function refillOne(ctx, orderId, req) {
   const id = singleId(orderId);
   const [order] = id ? await customerOrders(ctx, [id]) : [];
   if (!order) return { error: 'Incorrect order ID' };
+  if (order.own) return { error: 'Refill is not available for this service' };
   try {
     const result = await requestRefill({ user: { id: ctx.tenant.owner_user_id }, orderId: id });
     await logTenantActivity(dbAsync, {
@@ -199,11 +211,13 @@ async function cancel(ctx, body) {
   if (ctx.tenant.status !== 'active') return { error: 'This site is currently unavailable' };
   const ids = idList(isBlank(body.orders) ? body.order : body.orders);
   if (!ids.length) return { error: 'Invalid orders' };
-  const own = new Set((await customerOrders(ctx, ids)).map(row => row.id));
+  const mine = await customerOrders(ctx, ids);
+  const ownOrders = new Set(mine.filter(row => row.own).map(row => row.id));
+  const own = new Set(mine.filter(row => !row.own).map(row => row.id));
   const allowed = ids.filter(id => own.has(id));
   const results = allowed.length ? await requestCancel({ user: { id: ctx.tenant.owner_user_id }, orderIds: allowed }) : [];
   const byOrder = new Map(results.map(item => [item.order, item]));
-  return ids.map(id => byOrder.get(id) || { order: id, cancel: { error: 'Incorrect order ID' } });
+  return ids.map(id => byOrder.get(id) || { order: id, cancel: { error: ownOrders.has(id) ? 'Cancel is not available for this service' : 'Incorrect order ID' } });
 }
 
 const ACTIONS = new Map([

@@ -13,6 +13,7 @@ const { fromKurus } = require('../utils/money');
 const { requestRefill } = require('../services/refills');
 const { tenantCatalog, logTenantActivity } = require('../services/resellers');
 const { placeTenantOrder } = require('./orders');
+const tenantOwn = require('../services/tenantOwn');
 const tenantMail = require('../services/tenantMail');
 const securityMonitor = require('../services/securityMonitor');
 const { tenantSettings } = require('./resolve');
@@ -280,6 +281,20 @@ router.get('/services', async (req, res, next) => {
         speed: row.speed_tr || ''
       };
     });
+    // Pro: bayinin kendi saglayicilarindan servisler (services/tenantOwn.js).
+    const ownCategories = new Map();
+    for (const own of await tenantOwn.ownCatalog(req.tenant)) {
+      if (!ownCategories.has(own.category)) {
+        const id = tenantOwn.OWN_ID_BASE + ownCategories.size + 1;
+        ownCategories.set(own.category, id);
+        categories.push({ id, name: own.category });
+      }
+      services.push({
+        id: own.id, category_id: ownCategories.get(own.category), name: own.name, description: own.description,
+        rate: own.rate, pricing_model: 'per_1000', order_input_type: 'link', min: own.min, max: own.max,
+        refill: false, dripfeed: false, terms_required: false, start_time: '', speed: ''
+      });
+    }
     res.json({ categories, services });
   } catch (err) { next(err); }
 });
@@ -287,7 +302,9 @@ router.get('/services', async (req, res, next) => {
 router.post('/orders', requireActiveTenant, requireCustomer, validate(orderSchema), async (req, res, next) => {
   try {
     const body = req.body;
-    const result = await placeTenantOrder(req.tenant, req.customer, {
+    const result = tenantOwn.isOwnId(body.service_id)
+      ? await tenantOwn.placeOwnOrder(req.tenant, req.customer, { serviceId: body.service_id, link: body.link, quantity: body.quantity })
+      : await placeTenantOrder(req.tenant, req.customer, {
       serviceId: body.service_id,
       link: body.link,
       quantity: body.quantity,
@@ -327,8 +344,9 @@ router.get('/orders', requireCustomer, async (req, res, next) => {
         ORDER BY o.id DESC LIMIT ? OFFSET ?`,
       [req.tenant.id, req.customer.id, limit, (page - 1) * limit]
     );
-    res.json({
-      orders: rows.map(row => ({
+    // Kendi saglayici siparisleri ilk sayfada Jet siparisleriyle birlikte, tarihe gore.
+    const own = page === 1 ? (await tenantOwn.customerOwnOrders(req.tenant.id, req.customer.id, { limit })).map(tenantOwn.publicOwnOrder) : [];
+    const jet = rows.map(row => ({
         id: row.id,
         service_name: row.service_name,
         link: row.link,
@@ -340,9 +358,9 @@ router.get('/orders', requireCustomer, async (req, res, next) => {
         refunded: fromKurus(row.tenant_refunded_kurus),
         refill: Number(row.refill) === 1,
         created_at: row.created_at
-      })),
-      page
-    });
+      }));
+    const merged = own.length ? [...jet, ...own].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))) : jet;
+    res.json({ orders: merged, page });
   } catch (err) { next(err); }
 });
 
@@ -369,6 +387,7 @@ router.get('/pages/:slug', async (req, res, next) => {
 router.post('/orders/:id/refill', requireActiveTenant, requireCustomer, async (req, res, next) => {
   try {
     const orderId = Number(req.params.id);
+    if (tenantOwn.isOwnId(orderId)) return res.status(400).json({ error: 'Bu servis telafi desteklemiyor.', error_en: 'Refill is not available for this service.' });
     const order = Number.isSafeInteger(orderId) && await dbAsync.get(
       'SELECT id FROM orders WHERE id = ? AND tenant_id = ? AND tenant_customer_id = ?',
       [orderId, req.tenant.id, req.customer.id]

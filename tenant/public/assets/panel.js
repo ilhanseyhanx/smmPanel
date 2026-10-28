@@ -9,6 +9,7 @@
     customers: { path: '/admin/customers', title: 'Müşteriler' },
     orders: { path: '/admin/orders', title: 'Siparişler' },
     digital: { path: '/admin/digital', title: 'Dijital Ürünler' },
+    providers: { path: '/admin/providers', title: 'Sağlayıcılarım' },
     payments: { path: '/admin/payments', title: 'Ödemeler' },
     paysettings: { path: '/admin/payment-settings', title: 'Ödeme Ayarları' },
     site: { path: '/admin/site', title: 'Site Ayarları' },
@@ -1001,6 +1002,170 @@
     if (tab === 'orders') loadDigitalOrders().catch(err => toast(err.message, 'error'));
   }
 
+  // ------------------------------------------------------------- kendi saglayicilar (Pro)
+  const OWN_STATUS = { pending: 'processing', processing: 'processing', completed: 'completed', partial: 'partial', canceled: 'canceled', failed: 'canceled' };
+  const OWN_LABEL = { pending: 'Bekliyor', processing: 'İşleniyor', completed: 'Tamamlandı', partial: 'Kısmi', canceled: 'İptal', failed: 'Gönderilemedi' };
+
+  async function loadOwn() {
+    const d = await api('/own');
+    state.own = d;
+    $('#pn-own-lock').hidden = d.pro;
+    $('#pn-own-body').hidden = !d.pro;
+    if (!d.pro) return;
+    $('#pn-own-providers').innerHTML = d.providers.length ? d.providers.map(p => `<li>
+        <div><strong>${escapeHtml(p.name)}</strong>${p.status ? '' : ' <span class="sf-badge sf-badge-pending">Kapalı</span>'}
+          <span class="pn-sub">${escapeHtml(p.api_url)} · bakiye ${escapeHtml(p.balance ?? '—')} ${escapeHtml(p.currency || '')} · ${num(p.service_count)} servis</span></div>
+        <span class="pn-actions">
+          <button type="button" class="sf-btn sf-btn-primary sf-btn-sm" data-own-import="${p.id}">Servis ekle</button>
+          <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-own-refresh="${p.id}" title="Bakiyeyi yenile"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
+          <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-own-toggle="${p.id}" data-enabled="${p.status ? '0' : '1'}">${p.status ? 'Kapat' : 'Aç'}</button>
+          <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-own-remove="${p.id}" data-name="${escapeHtml(p.name)}" title="Kaldır"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+        </span></li>`).join('') : '<li class="sf-muted">Henüz sağlayıcı bağlamadın.</li>';
+    renderOwnServices();
+    await loadOwnOrders();
+  }
+
+  function renderOwnServices() {
+    const q = $('#pn-own-search').value.trim().toLocaleLowerCase('tr-TR');
+    const rows = (state.own?.services || []).filter(s => !q || `${s.name} ${s.category} ${s.provider_name}`.toLocaleLowerCase('tr-TR').includes(q));
+    $('#pn-own-services').innerHTML = rows.length ? rows.map(s => `<tr>
+      <td>#${s.id}</td>
+      <td><strong>${escapeHtml(s.name)}</strong><span class="pn-sub">${escapeHtml(s.category)} · ${escapeHtml(s.provider_name || '')} #${escapeHtml(s.provider_service_id)}</span></td>
+      <td class="pn-num">${escapeHtml(s.provider_rate || '—')}</td>
+      <td class="pn-num">${money(s.rate)}</td>
+      <td>${num(s.min)} - ${num(s.max)}</td>
+      <td>${s.enabled ? '<span class="sf-badge sf-badge-completed">Satışta</span>' : '<span class="sf-badge sf-badge-pending">Satışta değil</span>'}</td>
+      <td class="pn-actions"><button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-own-edit="${s.local_id}">Düzenle</button>
+        <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-own-delete="${s.local_id}" title="Sil"><i class="fa-solid fa-trash" aria-hidden="true"></i></button></td>
+    </tr>`).join('') : `<tr><td colspan="7" class="sf-muted">${state.own?.services?.length ? 'Aramaya uyan servis yok.' : 'Henüz kendi servisin yok; bir sağlayıcı bağlayıp "Servis ekle"ye bas.'}</td></tr>`;
+  }
+
+  async function loadOwnOrders() {
+    const d = await api(`/own/orders?page=${state.ownPage || 1}`);
+    $('#pn-own-orders').innerHTML = d.orders.length ? d.orders.map(o => `<tr>
+      <td>#${o.id}</td><td>${escapeHtml(o.customer || '—')}</td><td>${escapeHtml(o.service_name)}</td><td>${num(o.quantity)}</td>
+      <td class="pn-num">${money(o.charge - o.refunded)}${o.refunded > 0 ? `<span class="pn-sub">iade ${money(o.refunded)}</span>` : ''}</td>
+      <td>${escapeHtml(o.provider_name || '—')}${o.provider_order_id ? `<span class="pn-sub">#${escapeHtml(o.provider_order_id)}</span>` : ''}${o.error ? `<span class="pn-sub" style="color:var(--danger);">${escapeHtml(o.error)}</span>` : ''}</td>
+      <td><span class="sf-badge sf-badge-${OWN_STATUS[o.status] || 'processing'}">${OWN_LABEL[o.status] || o.status}</span></td>
+      <td>${formatDate(o.created_at)}</td></tr>`).join('') : '<tr><td colspan="8" class="sf-muted">Henüz kendi sağlayıcı siparişi yok.</td></tr>';
+    $('#pn-own-pager').innerHTML = d.pages > 1 ? `
+      <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-own-page="${d.page - 1}" ${d.page <= 1 ? 'disabled' : ''}>Önceki</button>
+      <span class="sf-muted">${d.page} / ${d.pages}</span>
+      <button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-own-page="${d.page + 1}" ${d.page >= d.pages ? 'disabled' : ''}>Sonraki</button>` : '';
+  }
+
+  async function addOwnProvider(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const errorEl = $('.sf-form-error', form);
+    errorEl.textContent = '';
+    const button = $('button[type=submit]', form);
+    button.disabled = true;
+    try {
+      const res = await api('/own/providers', { method: 'POST', body: JSON.stringify({ name: form.name.value.trim(), api_url: form.api_url.value.trim(), api_key: form.api_key.value.trim() }) });
+      form.reset();
+      toast(res.message);
+      await loadOwn();
+    } catch (err) {
+      errorEl.textContent = err.message;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function importOwnServices(providerId) {
+    openModal('Servis ekle', '<p class="sf-muted">Sağlayıcının servis listesi alınıyor…</p>', { wide: true });
+    let d;
+    try {
+      d = await api(`/own/providers/${providerId}/services`);
+    } catch (err) {
+      openModal('Servis ekle', `<p class="sf-form-error">${escapeHtml(err.message)}</p>`);
+      return;
+    }
+    openModal(`Servis ekle · ${d.provider.name}`, `
+      <form class="sf-form" id="pn-own-import-form" novalidate>
+        <div class="pn-filters" style="margin:0;"><input type="search" class="sf-input" id="pn-own-import-search" placeholder="Ara (ad veya kategori)"></div>
+        <div class="sf-table-wrap pn-own-import-list"><table class="sf-table"><thead><tr><th><input type="checkbox" id="pn-own-import-all" aria-label="Tümünü seç"></th><th>Servis</th><th>Fiyat (1000)</th><th>Min - Maks</th></tr></thead>
+          <tbody id="pn-own-import-rows"></tbody></table></div>
+        <label>Kâr oranı (%) <small>satış = sağlayıcı fiyatı × kur × (1 + kâr); sonra servis servis değiştirebilirsin</small><input name="markup" type="number" min="0" max="1000" step="1" value="50" class="sf-input"></label>
+        <p class="sf-form-error" role="alert"></p>
+        <button type="submit" class="sf-btn sf-btn-primary">Seçilenleri ekle</button>
+      </form>`, { wide: true });
+    const form = $('#pn-own-import-form');
+    const selected = new Set();
+    const render = () => {
+      const q = $('#pn-own-import-search').value.trim().toLocaleLowerCase('tr-TR');
+      const rows = d.services.filter(s => !q || `${s.name} ${s.category}`.toLocaleLowerCase('tr-TR').includes(q)).slice(0, 300);
+      $('#pn-own-import-rows').innerHTML = rows.map(s => `<tr>
+        <td><input type="checkbox" data-pick="${escapeHtml(s.service)}" ${selected.has(s.service) ? 'checked' : ''}></td>
+        <td><strong>${escapeHtml(s.name)}</strong><span class="pn-sub">${escapeHtml(s.category)} · #${escapeHtml(s.service)}${s.imported ? ' · eklendi' : ''}</span></td>
+        <td class="pn-num">${escapeHtml(String(s.rate))} ${escapeHtml(d.provider.currency || '')}</td><td>${num(s.min)} - ${num(s.max)}</td></tr>`).join('')
+        || '<tr><td colspan="4" class="sf-muted">Servis bulunamadı.</td></tr>';
+    };
+    form.addEventListener('change', event => {
+      const pick = event.target.closest('[data-pick]');
+      if (pick) { if (pick.checked) selected.add(pick.dataset.pick); else selected.delete(pick.dataset.pick); }
+      if (event.target.id === 'pn-own-import-all') {
+        $$('[data-pick]', form).forEach(box => { box.checked = event.target.checked; if (box.checked) selected.add(box.dataset.pick); else selected.delete(box.dataset.pick); });
+      }
+    });
+    $('#pn-own-import-search').addEventListener('input', debounce(render, 150));
+    render();
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!selected.size) { $('.sf-form-error', form).textContent = 'En az bir servis seç.'; return; }
+      try {
+        const res = await api(`/own/providers/${providerId}/import`, { method: 'POST', body: JSON.stringify({ service_ids: [...selected], markup_percent: Number(form.markup.value) || 0 }) });
+        closeModal();
+        toast(res.message);
+        await loadOwn();
+      } catch (err) {
+        $('.sf-form-error', form).textContent = err.message;
+      }
+    });
+  }
+
+  function editOwnService(localId) {
+    const s = state.own.services.find(x => x.local_id === localId);
+    if (!s) return;
+    openModal(s.name, `
+      <form class="sf-form" id="pn-own-edit" novalidate>
+        <div class="pn-preview">Sağlayıcı fiyatı: <strong>${escapeHtml(s.provider_rate || '—')}</strong> / 1000</div>
+        <label>Sitede görünen ad<input name="name" class="sf-input" maxlength="200" value="${escapeHtml(s.name)}"></label>
+        <label>Kategori<input name="category" class="sf-input" maxlength="100" value="${escapeHtml(s.category)}"></label>
+        <label>Açıklama <small>(isteğe bağlı)</small><textarea name="description" class="sf-input" rows="2" maxlength="1000">${escapeHtml(s.description)}</textarea></label>
+        <label>Satış fiyatı (₺ / 1000)<input name="rate" type="number" min="0.01" step="0.01" class="sf-input" value="${s.rate}"></label>
+        <label class="pn-radio"><input type="checkbox" name="enabled" ${s.enabled ? 'checked' : ''}> Sitede satışta</label>
+        <p class="sf-form-error" role="alert"></p>
+        <button type="submit" class="sf-btn sf-btn-primary">Kaydet</button>
+      </form>`);
+    const form = $('#pn-own-edit');
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      try {
+        const res = await api(`/own/services/${localId}`, { method: 'PUT', body: JSON.stringify({
+          name: form.name.value.trim(), category: form.category.value.trim(), description: form.description.value.trim(),
+          rate: Number(form.rate.value), enabled: form.enabled.checked
+        }) });
+        closeModal();
+        toast(res.message);
+        await loadOwn();
+      } catch (err) {
+        $('.sf-form-error', form).textContent = err.message;
+      }
+    });
+  }
+
+  async function ownAction(fn, message) {
+    try {
+      const res = await fn();
+      if (res?.message || message) toast(res?.message || message);
+      await loadOwn();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
   // ------------------------------------------------------------- e-posta & API
   const MAIL_KIND = {
     welcome: 'Hoş geldin', payment: 'Bakiye yüklendi', order: 'Sipariş bitti', test: 'Test',
@@ -1500,6 +1665,7 @@
       if (view === 'customers') await loadCustomers();
       if (view === 'orders') await loadOrders();
       if (view === 'digital') await loadDigital();
+      if (view === 'providers') await loadOwn();
       if (view === 'payments') await loadPayments();
       if (view === 'paysettings') await loadPaySettings();
       if (view === 'pages') await loadPagesView();
@@ -1540,6 +1706,8 @@
     $('#pn-default-markup-form').addEventListener('submit', saveDefaultMarkup);
     $('#pn-dg-settings-form').addEventListener('submit', saveDigitalSettings);
     $('#pn-notify-form').addEventListener('submit', saveNotify);
+    $('#pn-own-add').addEventListener('submit', addOwnProvider);
+    $('#pn-own-search').addEventListener('input', debounce(renderOwnServices, 150));
     $('#pn-smtp-form').addEventListener('submit', saveSmtp);
     $('#pn-smtp-test').addEventListener('click', event => testSmtp(event.currentTarget));
     $('#pn-smtp-clear').addEventListener('click', clearSmtp);
@@ -1625,6 +1793,28 @@
       const themeUse = t.closest('[data-theme-use]');
       if (themeUse) { useTheme(themeUse.dataset.themeUse); return; }
       if (t.closest('[data-sub-cancel]')) { subscriptionAction('cancel'); return; }
+      const ownImport = t.closest('[data-own-import]');
+      if (ownImport) { importOwnServices(Number(ownImport.dataset.ownImport)); return; }
+      const ownRefresh = t.closest('[data-own-refresh]');
+      if (ownRefresh) { ownAction(() => api(`/own/providers/${ownRefresh.dataset.ownRefresh}/refresh`, { method: 'POST' }), 'Bakiye yenilendi.'); return; }
+      const ownToggle = t.closest('[data-own-toggle]');
+      if (ownToggle) { ownAction(() => api(`/own/providers/${ownToggle.dataset.ownToggle}`, { method: 'PUT', body: JSON.stringify({ enabled: ownToggle.dataset.enabled === '1' }) })); return; }
+      const ownRemove = t.closest('[data-own-remove]');
+      if (ownRemove) {
+        confirmBox('Sağlayıcıyı kaldır', `"${ownRemove.dataset.name}" ve ondan eklediğin servisler kaldırılacak.`, 'Kaldır')
+          .then(ok => ok && ownAction(() => api(`/own/providers/${ownRemove.dataset.ownRemove}`, { method: 'DELETE' })));
+        return;
+      }
+      const ownEdit = t.closest('[data-own-edit]');
+      if (ownEdit) { editOwnService(Number(ownEdit.dataset.ownEdit)); return; }
+      const ownDelete = t.closest('[data-own-delete]');
+      if (ownDelete) {
+        confirmBox('Servisi sil', 'Bu servis sitenden kaldırılacak.', 'Sil')
+          .then(ok => ok && ownAction(() => api(`/own/services/${ownDelete.dataset.ownDelete}`, { method: 'DELETE' })));
+        return;
+      }
+      const ownPage = t.closest('[data-own-page]');
+      if (ownPage && !ownPage.disabled) { state.ownPage = Number(ownPage.dataset.ownPage); loadOwnOrders().catch(err => toast(err.message, 'error')); return; }
       const pkgBtn = t.closest('[data-package-change]');
       if (pkgBtn) { changePackage(pkgBtn.dataset.packageChange); return; }
       const pageEdit = t.closest('[data-page-edit]');

@@ -51,7 +51,9 @@ async function seedDemoContent(tenantId) {
   if (page && !page.service_id) {
     const service = await dbAsync.get(
       `SELECT s.id FROM services s LEFT JOIN categories c ON c.id = s.category_id
-        WHERE s.status = 1 AND s.is_bundle = 0 ORDER BY (lower(COALESCE(s.name_tr, s.name)) LIKE '%instagram%takip%') DESC, s.id LIMIT 1`);
+        WHERE s.status = 1 AND s.is_bundle = 0
+        ORDER BY (lower(COALESCE(s.name_tr, s.name)) LIKE 'instagram takip%') DESC,
+                 (lower(COALESCE(s.name_tr, s.name)) LIKE '%instagram%takip%') DESC, s.id LIMIT 1`);
     if (service) await dbAsync.run('UPDATE tenant_posts SET service_id = ? WHERE id = ?', [service.id, page.id]);
   }
   if (!(await dbAsync.get('SELECT 1 FROM tenant_own_products WHERE tenant_id = ?', [tenantId]))) {

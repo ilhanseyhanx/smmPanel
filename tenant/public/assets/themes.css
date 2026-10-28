@@ -122,3 +122,108 @@ h1, h2, .sf-brand-name { font-family: var(--font-display, var(--font)), system-u
 [data-layout="vitrin"] .sf-feature h3 { font-size: 1.1rem; }
 [data-layout="vitrin"] .sf-category h2 { padding: 18px 22px; font-size: 1.1rem; }
 [data-layout="vitrin"] .sf-page-head h1 { font-size: 2rem; }
+
+/* ------------------------------------------------- ana sayfa bolumleri: tema ayrintilari
+   Taban stiller storefront.css'te; burada her tema kendi karakterini ekler. */
+[data-layout="vitrin"] .sf-hero::before { display: none; }
+[data-layout="vitrin"] .sf-trust { justify-content: center; color: var(--hero-muted); }
+[data-layout="vitrin"] .sf-trust i { color: inherit; }
+[data-layout="vitrin"] .sf-eyebrow { background: color-mix(in srgb, var(--hero-text) 14%, transparent); border-color: color-mix(in srgb, var(--hero-text) 28%, transparent); color: var(--hero-text); }
+[data-layout="vitrin"] .sf-eyebrow i { color: inherit; }
+[data-layout="vitrin"] .sf-block-head { margin-inline: auto; text-align: center; }
+[data-layout="vitrin"] .sf-platform-grid { grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 270px)); justify-content: center; }
+[data-layout="vitrin"] .sf-faq-block { display: block; }
+[data-layout="vitrin"] .sf-faq-block .sf-block-head { position: static; margin: 0 auto 22px; }
+[data-layout="vitrin"] .sf-faq { margin-inline: auto; }
+[data-layout="tablo"] .sf-block { margin-bottom: 44px; }
+
+/* Koyu temalar: daha belirgin isik, koyu marka simgelerine ince cerceve */
+:root[data-theme="dark"] .sf-hero::before, :root[data-theme="neon"] .sf-hero::before {
+  background:
+    radial-gradient(32% 48% at 28% 50%, color-mix(in srgb, var(--primary) 26%, transparent), transparent 100%),
+    radial-gradient(24% 40% at 76% 50%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 100%);
+}
+:root[data-theme="dark"] .sf-platform-icon, :root[data-theme="neon"] .sf-platform-icon, :root[data-theme="glass"] .sf-platform-icon { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+:root[data-theme="dark"] .sf-platform:hover { box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 45%, transparent), var(--shadow); }
+
+/* Retro: kalin cizgi, sert golge */
+:root[data-theme="retro"] .sf-platform, :root[data-theme="retro"] .sf-steps li, :root[data-theme="retro"] .sf-faq details,
+:root[data-theme="retro"] .sf-stats, :root[data-theme="retro"] .sf-cta-band { border: 2px solid var(--text); }
+:root[data-theme="retro"] .sf-stats { gap: 2px; background: var(--text); }
+:root[data-theme="retro"] .sf-faq details { box-shadow: 3px 3px 0 var(--text); }
+:root[data-theme="retro"] .sf-platform-icon, :root[data-theme="retro"] .sf-steps b, :root[data-theme="retro"] .sf-feature i { border: 2px solid var(--text); border-radius: 6px; }
+:root[data-theme="retro"] .sf-platform:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--text); border-color: var(--text); }
+:root[data-theme="retro"] .sf-cta-band { box-shadow: 6px 6px 0 var(--text); }
+:root[data-theme="retro"] .sf-cta-band .sf-btn { border: 2px solid var(--text); }
+:root[data-theme="retro"] .sf-eyebrow { border: 2px solid var(--text); border-radius: 6px; background: #ffd166; box-shadow: 2px 2px 0 var(--text); }
+:root[data-theme="retro"] .sf-hero::before { background: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text) 16%, transparent) 1px, transparent 0) 0 0 / 18px 18px; mask-image: linear-gradient(180deg, #000 0%, transparent 90%); }
+
+/* Cesur: dev buyuk harfli basliklar, siyah bant */
+:root[data-theme="bold"] .sf-block-head h2, :root[data-theme="bold"] .sf-cta-band h2 { text-transform: uppercase; font-size: clamp(1.7rem, 3.6vw, 2.7rem); letter-spacing: -.01em; }
+:root[data-theme="bold"] .sf-platform, :root[data-theme="bold"] .sf-steps li, :root[data-theme="bold"] .sf-faq details { border-width: 2px; }
+:root[data-theme="bold"] .sf-stats { gap: 2px; border: 2px solid var(--text); background: var(--text); }
+:root[data-theme="bold"] .sf-stats > div { background: var(--text); }
+:root[data-theme="bold"] .sf-stats strong { color: #fff; font-size: 2rem; }
+:root[data-theme="bold"] .sf-stats span { color: #c9c9c9; text-transform: uppercase; letter-spacing: .05em; font-size: .74rem; }
+:root[data-theme="bold"] .sf-platform-icon, :root[data-theme="bold"] .sf-steps b, :root[data-theme="bold"] .sf-feature i, :root[data-theme="bold"] .sf-faq summary::after { border-radius: 0; }
+:root[data-theme="bold"] .sf-kicker { padding: 4px 8px; background: var(--primary); color: var(--on-primary, #fff); }
+:root[data-theme="bold"] .sf-eyebrow { border-radius: 0; text-transform: uppercase; letter-spacing: .05em; }
+:root[data-theme="bold"] .sf-cta-band { background: var(--text); color: #fff; }
+:root[data-theme="bold"] .sf-cta-band .sf-btn { background: var(--primary); color: var(--on-primary, #fff); }
+:root[data-theme="bold"] .sf-platform:hover { border-color: var(--text); background: color-mix(in srgb, var(--brand) 7%, var(--surface)); }
+
+/* Neon: parlayan simgeler ve sayilar */
+:root[data-theme="neon"] .sf-platform-icon { box-shadow: 0 0 22px color-mix(in srgb, var(--brand) 55%, transparent), inset 0 0 0 1px rgba(255, 255, 255, .14); }
+:root[data-theme="neon"] .sf-stats strong { color: var(--primary); text-shadow: 0 0 18px color-mix(in srgb, var(--primary) 55%, transparent); }
+:root[data-theme="neon"] .sf-steps b { box-shadow: 0 0 20px color-mix(in srgb, var(--primary) 55%, transparent); }
+:root[data-theme="neon"] .sf-kicker { text-shadow: 0 0 12px color-mix(in srgb, var(--primary) 60%, transparent); }
+:root[data-theme="neon"] .sf-feature i { color: var(--primary); box-shadow: 0 0 18px color-mix(in srgb, var(--primary) 25%, transparent); }
+:root[data-theme="neon"] .sf-cta-band {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 20%, var(--surface)), var(--surface));
+  color: var(--text); border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
+  box-shadow: 0 0 44px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+:root[data-theme="neon"] .sf-cta-band .sf-btn { background: var(--primary); color: var(--on-primary, #000); box-shadow: 0 0 24px color-mix(in srgb, var(--primary) 45%, transparent); }
+
+/* Cam: buzlu kartlar */
+:root[data-theme="glass"] .sf-platform, :root[data-theme="glass"] .sf-steps li, :root[data-theme="glass"] .sf-faq details,
+:root[data-theme="glass"] .sf-stats > div { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+:root[data-theme="glass"] .sf-stats { background: rgba(255, 255, 255, .1); }
+:root[data-theme="glass"] .sf-cta-band {
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 62%, transparent), color-mix(in srgb, var(--primary) 18%, transparent));
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+/* --surface camda yari saydam; kapanis dugmesi dolu zemin ister. */
+:root[data-theme="glass"] .sf-cta-band .sf-btn { background: #ffffff; color: #0a1224; }
+
+/* Pastel: yumusak, yuvarlak */
+:root[data-theme="pastel"] .sf-eyebrow { border-radius: 999px; }
+:root[data-theme="pastel"] .sf-platform-icon, :root[data-theme="pastel"] .sf-feature i { border-radius: 18px; }
+:root[data-theme="pastel"] .sf-stats > div:nth-child(even) { background: #fff7fb; }
+:root[data-theme="pastel"] .sf-cta-band { background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 88%, #fff), color-mix(in srgb, var(--primary) 50%, #a78bfa)); }
+
+/* Kurumsal: lacivert bant, keskin koseler */
+:root[data-theme="corporate"] .sf-cta-band { background: var(--header-bg); color: #fff; }
+:root[data-theme="corporate"] .sf-cta-band .sf-btn { background: var(--primary); color: var(--on-primary, #fff); }
+:root[data-theme="corporate"] .sf-steps b { border-radius: 6px; }
+:root[data-theme="corporate"] .sf-stats strong { color: var(--primary); }
+
+/* Sade: duz, tek renk */
+:root[data-theme="minimal"] .sf-hero::before { display: none; }
+:root[data-theme="minimal"] .sf-feature i { background: var(--surface-2); color: var(--text); }
+:root[data-theme="minimal"] .sf-steps b { background: var(--text); color: var(--bg); }
+:root[data-theme="minimal"] .sf-cta-band { background: var(--text); color: var(--bg); }
+
+/* Gradyan: gecisli vurgular */
+:root[data-theme="gradient"] .sf-cta-band, :root[data-theme="gradient"] .sf-steps b { background: linear-gradient(135deg, var(--primary) 0%, #db2777 100%); color: #fff; }
+:root[data-theme="gradient"] .sf-stats strong { background: linear-gradient(135deg, var(--primary), #db2777); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+/* Dar ekranda platform kartlari iki sutun, simge ustte (sayfa kisalir). */
+@media (max-width: 560px) {
+  .sf-platform-grid, [data-layout="vitrin"] .sf-platform-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .sf-platform { flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px; }
+  .sf-platform-icon { width: 40px; height: 40px; font-size: 1.2rem; }
+  .sf-platform-go { display: none; }
+  .sf-platform-text b { white-space: normal; }
+}

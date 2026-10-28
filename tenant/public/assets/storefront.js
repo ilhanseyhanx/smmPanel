@@ -171,12 +171,79 @@
     return service.pricing_model === 'per_item' ? 'adet başı' : '1000 adet';
   }
 
+  // Ana sayfadaki platform kartlari: kategori adindan platform bulunur (ilk eslesen).
+  const PLATFORMS = [
+    { key: 'instagram', label: 'Instagram', icon: 'fa-brands fa-instagram', color: '#e1306c', re: /instagram|reels/ },
+    { key: 'tiktok', label: 'TikTok', icon: 'fa-brands fa-tiktok', color: '#111111', re: /tik ?tok/ },
+    { key: 'youtube', label: 'YouTube', icon: 'fa-brands fa-youtube', color: '#ff0033', re: /youtube|shorts/ },
+    { key: 'x', label: 'X (Twitter)', icon: 'fa-brands fa-x-twitter', color: '#111111', re: /twitter|tweet|(^|[\s(])x([\s)]|$)/ },
+    { key: 'facebook', label: 'Facebook', icon: 'fa-brands fa-facebook-f', color: '#1877f2', re: /facebook/ },
+    { key: 'telegram', label: 'Telegram', icon: 'fa-brands fa-telegram', color: '#229ed9', re: /telegram/ },
+    { key: 'spotify', label: 'Spotify', icon: 'fa-brands fa-spotify', color: '#1db954', re: /spotify/ },
+    { key: 'twitch', label: 'Twitch', icon: 'fa-brands fa-twitch', color: '#9146ff', re: /twitch/ },
+    { key: 'threads', label: 'Threads', icon: 'fa-brands fa-threads', color: '#111111', re: /threads/ },
+    { key: 'linkedin', label: 'LinkedIn', icon: 'fa-brands fa-linkedin-in', color: '#0a66c2', re: /linkedin/ },
+    { key: 'discord', label: 'Discord', icon: 'fa-brands fa-discord', color: '#5865f2', re: /discord/ },
+    { key: 'pinterest', label: 'Pinterest', icon: 'fa-brands fa-pinterest-p', color: '#e60023', re: /pinterest/ },
+    { key: 'soundcloud', label: 'SoundCloud', icon: 'fa-brands fa-soundcloud', color: '#ff5500', re: /soundcloud/ },
+    { key: 'reddit', label: 'Reddit', icon: 'fa-brands fa-reddit-alien', color: '#ff4500', re: /reddit/ },
+    { key: 'web', label: 'Web Trafiği', icon: 'fa-solid fa-globe', color: '#0ea5e9', re: /trafik|traffic|website/ }
+  ];
+
+  // Turkce kucuk harf "Instagram"i "ınstagram" yapar; ı -> i ile eslesme kacmaz.
+  function platformOf(category) {
+    const name = String(category?.name || '').toLocaleLowerCase('tr-TR').replace(/ı/g, 'i');
+    return PLATFORMS.find(p => p.re.test(name)) || null;
+  }
+
+  function number(value) {
+    return Number(value || 0).toLocaleString('tr-TR');
+  }
+
+  // Ziyaretci ana sayfasi: sayilar ve platform kartlari gercek servis listesinden.
+  async function renderHome() {
+    try { await loadServices(); } catch { return; }
+    const services = state.services;
+    if (!services.length) return;
+    const byCategory = new Map(state.categories.map(c => [c.id, platformOf(c)]));
+    const groups = new Map();
+    for (const service of services) {
+      const platform = byCategory.get(service.category_id);
+      if (!platform) continue;
+      const group = groups.get(platform.key) || { platform, count: 0, min: null };
+      group.count++;
+      if (service.pricing_model !== 'per_item' && service.rate > 0 && (group.min === null || service.rate < group.min)) group.min = service.rate;
+      groups.set(platform.key, group);
+    }
+    const perThousand = services.filter(s => s.pricing_model !== 'per_item' && s.rate > 0).map(s => s.rate);
+    const stats = [
+      [number(services.length), 'aktif servis'],
+      groups.size ? [number(groups.size), 'platform'] : null,
+      [number(services.filter(s => s.refill).length), 'garantili servis'],
+      perThousand.length ? [money(Math.min(...perThousand)), 'başlayan fiyat / 1000'] : null
+    ].filter(Boolean);
+    $('#sf-stats').innerHTML = stats.map(([value, label]) => `<div><strong>${escapeHtml(value)}</strong><span>${escapeHtml(label)}</span></div>`).join('');
+    $('#sf-stats').hidden = false;
+
+    const cards = [...groups.values()].sort((a, b) => b.count - a.count).slice(0, 8);
+    $('#sf-platforms-block').hidden = !cards.length;
+    $('#sf-platform-grid').innerHTML = cards.map(({ platform, count, min }) => `
+      <a class="sf-platform" href="/services" data-platform="${platform.key}" style="--brand:${platform.color}">
+        <span class="sf-platform-icon"><i class="${platform.icon}" aria-hidden="true"></i></span>
+        <span class="sf-platform-text"><b>${escapeHtml(platform.label)}</b><small>${number(count)} servis${min !== null ? ` · ${money(min)}'den` : ''}</small></span>
+        <i class="fa-solid fa-arrow-right sf-platform-go" aria-hidden="true"></i>
+      </a>`).join('');
+  }
+
   function renderServices() {
     const box = $('#sf-services-list');
     const query = ($('#sf-service-search').value || '').trim().toLocaleLowerCase('tr-TR');
-    const matches = service => !query || service.name.toLocaleLowerCase('tr-TR').includes(query);
+    const platform = PLATFORMS.find(p => p.key === state.platformKey) || null;
+    const matches = (service, category) => platform
+      ? platformOf(category) === platform
+      : !query || service.name.toLocaleLowerCase('tr-TR').includes(query) || String(category.name).toLocaleLowerCase('tr-TR').includes(query);
     const html = state.categories.map(category => {
-      const items = state.services.filter(s => s.category_id === category.id && matches(s));
+      const items = state.services.filter(s => s.category_id === category.id && matches(s, category));
       if (!items.length) return '';
       const rows = items.map(s => `
         <tr>
@@ -911,11 +978,12 @@
   }
 
   async function loadFooterLinks() {
+    const landing = state.site?.landing_pages || [];
+    $('#sf-footer-landing-links').innerHTML = landing.map(p => `<a href="/hizmet/${encodeURIComponent(p.slug)}" data-nav="post">${escapeHtml(p.title)}</a>`).join('');
+    $('#sf-footer-landing').hidden = !landing.length;
     try {
       const data = await api('/pages');
-      $('#sf-footer-links').innerHTML = data.pages.map(p => `<a href="/sayfa/${encodeURIComponent(p.slug)}" data-nav="page">${escapeHtml(p.title)}</a>`).join('')
-        + (state.site?.landing_pages || []).map(p => `<a href="/hizmet/${encodeURIComponent(p.slug)}" data-nav="post">${escapeHtml(p.title)}</a>`).join('')
-        + (state.site?.api ? '<a href="/api-dokumani" data-nav="apidocs">API</a>' : '');
+      $('#sf-footer-links').innerHTML = data.pages.map(p => `<a href="/sayfa/${encodeURIComponent(p.slug)}" data-nav="page">${escapeHtml(p.title)}</a>`).join('');
     } catch { /* alt bilgi bagintisiz da calisir */ }
   }
 
@@ -935,6 +1003,7 @@
       if (view === 'page') await loadPage(decodeURIComponent(location.pathname.slice('/sayfa/'.length)));
       if (view === 'blog') await loadBlog();
       if (view === 'post') await loadPost(location.pathname);
+      if (view === 'home') await renderHome();
       if (view === 'services') { await loadServices(); renderServices(); }
       if (view === 'order') {
         await loadServices();
@@ -959,6 +1028,14 @@
 
   function bindEvents() {
     document.addEventListener('click', event => {
+      const platformCard = event.target.closest('[data-platform]');
+      if (platformCard) {
+        event.preventDefault();
+        state.platformKey = platformCard.dataset.platform;
+        $('#sf-service-search').value = PLATFORMS.find(p => p.key === state.platformKey)?.label || '';
+        navigate('/services');
+        return;
+      }
       const nav = event.target.closest('[data-nav]');
       if (nav && nav.getAttribute('href')) {
         event.preventDefault();
@@ -1004,7 +1081,8 @@
     $('#sf-forgot-form').addEventListener('submit', submitForgot);
     $('#sf-reset-form').addEventListener('submit', submitReset);
     $('#sf-logout').addEventListener('click', logout);
-    $('#sf-service-search').addEventListener('input', renderServices);
+    // Elle yazilan arama platform suzgecini birakir.
+    $('#sf-service-search').addEventListener('input', () => { state.platformKey = null; renderServices(); });
     $('#sf-order-category').addEventListener('change', () => fillServiceSelect(null));
     $('#sf-order-service').addEventListener('change', () => { $('#sf-order-quantity').value = ''; onServiceChange(); });
     $('#sf-order-quantity').addEventListener('input', updateCharge);
@@ -1028,8 +1106,13 @@
       $$('[data-blog-nav]').forEach(el => { el.hidden = !site.blog; });
       const note = site.settings?.announcement;
       if (note) { const bar = $('#sf-announcement'); bar.textContent = note; bar.hidden = false; }
+      $$('[data-api-nav]').forEach(el => { el.hidden = !site.api; });
       const contact = [site.settings?.support_email, site.settings?.telegram].filter(Boolean).map(escapeHtml).join(' · ');
-      if (contact) $('#sf-contact').innerHTML = `İletişim: ${contact}`;
+      if (contact) {
+        $('#sf-contact').innerHTML = `İletişim: ${contact}`;
+        $('#sf-footer-contact').innerHTML = `<i class="fa-solid fa-headset" aria-hidden="true"></i> ${contact}`;
+        $('#sf-footer-contact').hidden = false;
+      }
     } catch {
       setCustomer(null);
     }

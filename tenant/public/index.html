@@ -13,8 +13,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="%%FONT_HREF%%" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="/assets/storefront.css?v=20261028c">
-  <link rel="stylesheet" href="/assets/themes.css?v=20261027e">
+  <link rel="stylesheet" href="/assets/storefront.css?v=20261028d">
+  <link rel="stylesheet" href="/assets/themes.css?v=20261028a">
   <style>:root { --primary: %%PRIMARY%%; --font: %%FONT%%; --font-display: %%FONT_DISPLAY%%; }</style>
 </head>
 <body>
@@ -50,14 +50,20 @@
     <!-- ANA SAYFA (ziyaretci) -->
     <section class="sf-view" data-view="home">
       <div class="sf-hero">
-        <div>
+        <div class="sf-hero-copy">
+          <span class="sf-eyebrow"><i class="fa-solid fa-bolt" aria-hidden="true"></i> 7/24 otomatik sipariş sistemi</span>
           <h1>%%HERO_TITLE%%</h1>
           <p>%%HERO_TEXT%%</p>
           <div class="sf-hero-actions">
-            <button type="button" class="sf-btn sf-btn-primary sf-btn-lg" data-open-auth="register">Hemen Başla</button>
+            <button type="button" class="sf-btn sf-btn-primary sf-btn-lg" data-open-auth="register">Hemen Başla <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
             <a href="/services" data-nav="services" class="sf-btn sf-btn-ghost sf-btn-lg">Servisleri Gör</a>
             <a href="/dijital" data-nav="digital" class="sf-btn sf-btn-ghost sf-btn-lg" data-digital-nav hidden>Dijital Ürünler</a>
           </div>
+          <ul class="sf-trust">
+            <li><i class="fa-solid fa-lock" aria-hidden="true"></i> Şifre istemez</li>
+            <li><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Dakikalar içinde başlar</li>
+            <li><i class="fa-solid fa-rotate" aria-hidden="true"></i> Garantili servisler</li>
+          </ul>
         </div>
         <div class="sf-card sf-auth-card" id="sf-auth-card">
           <div class="sf-tabs" role="tablist">
@@ -88,11 +94,67 @@
           </form>
         </div>
       </div>
-      <div class="sf-features">
-        <div class="sf-feature"><i class="fa-solid fa-rocket" aria-hidden="true"></i><h3>Hızlı teslimat</h3><p>Siparişlerin çoğu dakikalar içinde başlar.</p></div>
-        <div class="sf-feature"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><h3>Güvenli</h3><p>Şifreni asla istemeyiz; yalnızca bağlantı yeterli.</p></div>
-        <div class="sf-feature"><i class="fa-solid fa-rotate" aria-hidden="true"></i><h3>Garantili servisler</h3><p>Düşüş olursa telafi isteyebilirsin.</p></div>
-      </div>
+      <!-- Sayilar ve platform kartlari servis listesinden uretilir (storefront.js renderHome). -->
+      <div class="sf-stats" id="sf-stats" hidden></div>
+
+      <section class="sf-block" id="sf-platforms-block" hidden>
+        <div class="sf-block-head">
+          <span class="sf-kicker">Platformlar</span>
+          <h2>Hangi platformda büyümek istiyorsun?</h2>
+          <p>Platformu seç, o platformun tüm servislerini ve fiyatlarını gör.</p>
+        </div>
+        <div class="sf-platform-grid" id="sf-platform-grid"></div>
+      </section>
+
+      <section class="sf-block">
+        <div class="sf-block-head">
+          <span class="sf-kicker">Nasıl çalışır?</span>
+          <h2>Üç adımda ilk siparişin</h2>
+        </div>
+        <ol class="sf-steps">
+          <li><b aria-hidden="true">1</b><h3>Ücretsiz hesap aç</h3><p>Kullanıcı adı ve e-postanla saniyeler içinde kayıt ol.</p></li>
+          <li><b aria-hidden="true">2</b><h3>Bakiye yükle</h3><p>Sitedeki ödeme yöntemlerinden biriyle bakiyeni yükle.</p></li>
+          <li><b aria-hidden="true">3</b><h3>Siparişini ver</h3><p>Servisi seç, bağlantını yapıştır, miktarı gir; gerisini sistem halleder.</p></li>
+        </ol>
+      </section>
+
+      <section class="sf-block">
+        <div class="sf-block-head">
+          <span class="sf-kicker">Neden biz?</span>
+          <h2>Büyümen için gereken her şey tek panelde</h2>
+        </div>
+        <div class="sf-features">
+          <div class="sf-feature"><i class="fa-solid fa-rocket" aria-hidden="true"></i><h3>Hızlı teslimat</h3><p>Siparişlerin çoğu dakikalar içinde başlar.</p></div>
+          <div class="sf-feature"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><h3>Güvenli</h3><p>Şifreni asla istemeyiz; yalnızca bağlantı yeterli.</p></div>
+          <div class="sf-feature"><i class="fa-solid fa-rotate" aria-hidden="true"></i><h3>Garantili servisler</h3><p>Düşüş olursa telafi isteyebilirsin.</p></div>
+          <div class="sf-feature"><i class="fa-solid fa-chart-line" aria-hidden="true"></i><h3>Canlı sipariş takibi</h3><p>Siparişlerinin durumunu Siparişlerim sayfasından anlık izle.</p></div>
+          <div class="sf-feature"><i class="fa-solid fa-tags" aria-hidden="true"></i><h3>Şeffaf fiyatlar</h3><p>Her servisin fiyatı, en az ve en çok miktarı açıkça yazılı.</p></div>
+          <div class="sf-feature"><i class="fa-solid fa-wallet" aria-hidden="true"></i><h3>Kolay bakiye</h3><p>Bakiyeni bir kez yükle, istediğin kadar sipariş ver.</p></div>
+        </div>
+      </section>
+
+      <section class="sf-block sf-faq-block">
+        <div class="sf-block-head">
+          <span class="sf-kicker">Sık sorulanlar</span>
+          <h2>Aklına takılanlar</h2>
+          <p>Sipariş, güvenlik ve ödeme hakkında en çok sorulan sorular.</p>
+        </div>
+        <div class="sf-faq">
+          <details><summary>Hesap şifremi vermem gerekiyor mu?</summary><p>Hayır. Sipariş için yalnızca profil ya da gönderi bağlantısı yeterli; şifreni asla istemeyiz.</p></details>
+          <details><summary>Siparişim ne zaman başlar?</summary><p>Çoğu servis dakikalar içinde başlar. Her servisin tahmini başlama süresi ve hızı sipariş ekranında yazar.</p></details>
+          <details><summary>Hesabım gizliyse ne olur?</summary><p>Gizli hesaplara gönderim yapılamaz. Siparişten önce hesabını herkese açık yap ve sipariş bitene kadar bağlantıyı değiştirme.</p></details>
+          <details><summary>Düşüş olursa ne yapmalıyım?</summary><p>Garantili servislerde düşüş olursa Siparişlerim sayfasından telafi isteyebilirsin.</p></details>
+          <details><summary>Bakiyemi nasıl yüklerim?</summary><p>Giriş yaptıktan sonra Bakiye Yükle sayfasındaki ödeme yöntemlerinden birini seç. Bakiyen siparişlerinde kullanılır.</p></details>
+        </div>
+      </section>
+
+      <section class="sf-cta-band">
+        <div>
+          <h2>Hemen başlamaya hazır mısın?</h2>
+          <p>Hesap açmak ücretsiz. İlk siparişini birkaç dakika içinde ver.</p>
+        </div>
+        <button type="button" class="sf-btn sf-btn-lg" data-open-auth="register">Ücretsiz Hesap Aç <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
+      </section>
     </section>
 
     <!-- SERVISLER -->
@@ -252,10 +314,31 @@
   </main>
 
   <footer class="sf-footer">
+    <div class="sf-container sf-footer-grid">
+      <div class="sf-footer-brand">
+        <span class="sf-footer-name">%%SITE_NAME%%</span>
+        <p>%%DESCRIPTION%%</p>
+        <p class="sf-footer-contact" id="sf-footer-contact" hidden></p>
+      </div>
+      <nav class="sf-footer-col" aria-label="Site">
+        <h2>Site</h2>
+        <a href="/services" data-nav="services">Servisler</a>
+        <a href="/dijital" data-nav="digital" data-digital-nav hidden>Dijital Ürünler</a>
+        <a href="/blog" data-nav="blog" data-blog-nav hidden>Blog</a>
+        <a href="/api-dokumani" data-nav="apidocs" data-api-nav hidden>API</a>
+      </nav>
+      <nav class="sf-footer-col" aria-label="Hizmetler" id="sf-footer-landing" hidden>
+        <h2>Hizmetler</h2>
+        <div id="sf-footer-landing-links"></div>
+      </nav>
+      <nav class="sf-footer-col" aria-label="Yasal bilgiler">
+        <h2>Yasal</h2>
+        <div class="sf-footer-links" id="sf-footer-links"></div>
+      </nav>
+    </div>
     <div class="sf-container sf-footer-inner">
       <span>© <span id="sf-year"></span> %%SITE_NAME%%</span>
       %%FOOTER_TEXT%%
-      <nav class="sf-footer-links" id="sf-footer-links" aria-label="Yasal bilgiler"></nav>
     </div>
   </footer>
 
@@ -266,6 +349,6 @@
     </div>
   </div>
   <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
-  <script src="/assets/storefront.js?v=20261028c" defer></script>
+  <script src="/assets/storefront.js?v=20261028d" defer></script>
 </body>
 </html>

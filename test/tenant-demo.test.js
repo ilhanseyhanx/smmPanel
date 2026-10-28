@@ -70,6 +70,10 @@ test('her tema kendi demo adresinde kendi markasıyla açılır; şerit diğer d
   assert.match(gece.text, /href="\/admin"/);
   assert.match(gece.text, /href="\/demo\/musteri"/);
   assert.match(gece.text, /name="robots" content="noindex"/);
+  // Ana sayfa bolumleri: sayilar ve platformlar (JS doldurur), adimlar, SSS, kapanis bandi, sutunlu alt bilgi.
+  for (const parca of ['id="sf-stats"', 'id="sf-platform-grid"', 'class="sf-steps"', 'class="sf-faq"', 'class="sf-cta-band"', 'sf-footer-grid']) {
+    assert.ok(gece.text.includes(parca), parca);
+  }
   const api = await site('demo-kurumsal.demo.test').get('/api/site');
   assert.equal(api.body.name, 'Atlas Dijital');
   assert.equal((await site('demo-yok.demo.test').get('/')).status, 404, 'tanımsız demo adresi');

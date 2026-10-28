@@ -314,7 +314,7 @@ test('panel: sağlayıcı telafiyi reddederse gerçek sebep gösterilir', async 
   const agent = request.agent(app);
   await agent.post('/api/auth/login').send({ username: 'aksiyon_musteri', password: SIFRE });
   const res = await agent.post(`/api/orders/${siparis}/refill`);
-  assert.equal(res.status, 502);
+  assert.equal(res.status, 424);
   assert.match(res.body.error, /Refill not allowed yet/);
 });
 
@@ -394,7 +394,7 @@ test('panel: sağlayıcı siparişi reddedince müşteri iade mesajını görür
     const agent = request.agent(app);
     await agent.post('/api/auth/login').send({ username: 'aksiyon_musteri', password: SIFRE });
     const res = await agent.post('/api/orders').send({ service_id: servisId, link: 'https://instagram.com/kullaniciadi', quantity: 1000 });
-    assert.equal(res.status, 502);
+    assert.equal(res.status, 424);
     assert.match(res.body.error, /iade edildi/, `genel hata mesajı gösterilmiş: ${res.body.error}`);
     assert.ok(res.body.error_en, 'İngilizce karşılık yok');
   } finally {

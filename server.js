@@ -9,7 +9,7 @@ const compression = require('compression');
 const path = require('path');
 const { initDatabase } = require('./config/database');
 const { startOrderWorker } = require('./services/orderWorker');
-const { notFoundApi, errorHandler } = require('./middleware/errorHandler');
+const { notFoundApi, errorHandler, keepGatewayErrorsVisible } = require('./middleware/errorHandler');
 const securityMonitor = require('./services/securityMonitor');
 
 const authRoutes = require('./routes/auth');
@@ -133,6 +133,7 @@ app.use(express.urlencoded({ extended: false, limit: '512kb' }));
 // API yanitlari (siparis durumu, bakiye vb.) asla onbelleklenmemeli; mobil
 // tarayicilarin eski veriyi gostermesini engeller.
 app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+app.use('/api', keepGatewayErrorsVisible);
 
 // Limiti asan istekler Guvenlik Merkezi'ne islenir (ayni IP dakikada bir kez;
 // saldiri aninda veritabanini log satirlariyla bogmamak icin).

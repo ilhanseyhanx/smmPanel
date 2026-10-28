@@ -12,4 +12,17 @@ function friendlyProviderReason(raw) {
   return 'Sağlayıcı siparişi kabul etmedi. Lütfen daha sonra tekrar deneyin.';
 }
 
-module.exports = { friendlyProviderReason };
+// Saglayicinin miktar sinirini metinden okur: "Quantity less than minimal 100",
+// "Quantity more than maximal 10 000", "Minimum quantity is 50" gibi.
+// Sinir saglayici birimindedir (carpan ve fazla gonderim dahil miktar).
+function providerQuantityLimit(raw) {
+  const msg = String(raw || '');
+  const number = text => Number(String(text).replace(/[\s.,]/g, ''));
+  const min = msg.match(/(?:less than minimal|minimal|minimum|min\.?(?:\s*(?:quantity|order|amount))?\s*(?:is|:)|at least)\D{0,30}?(\d[\d\s.,]*\d|\d)/i);
+  if (min && number(min[1]) > 0) return { kind: 'min', value: number(min[1]) };
+  const max = msg.match(/(?:more than maximal|maximal|maximum|max\.?(?:\s*(?:quantity|order|amount))?\s*(?:is|:)|at most)\D{0,30}?(\d[\d\s.,]*\d|\d)/i);
+  if (max && number(max[1]) > 0) return { kind: 'max', value: number(max[1]) };
+  return null;
+}
+
+module.exports = { friendlyProviderReason, providerQuantityLimit };

@@ -292,7 +292,7 @@ test('sağlayıcı reddederse ya da yanıt vermezse tutar iade edilir', async ()
   await bakiyeAyarla(5000);
   sahte.buyMode = 'reject';
   const red = await musteri.post('/api/digital/orders').send({ product_id: ids.gmail, quantity: 1, consent: true });
-  assert.equal(red.status, 502);
+  assert.equal(red.status, 424);
   assert.equal(await bakiye(), 5000);
   const redRow = await dbAsync.get('SELECT * FROM digital_orders ORDER BY id DESC LIMIT 1');
   assert.equal(redRow.status, 'failed');
@@ -301,7 +301,7 @@ test('sağlayıcı reddederse ya da yanıt vermezse tutar iade edilir', async ()
 
   sahte.buyMode = 'crash';
   const cokme = await musteri.post('/api/digital/orders').send({ product_id: ids.gmail, quantity: 1, consent: true });
-  assert.equal(cokme.status, 502);
+  assert.equal(cokme.status, 424);
   assert.equal(await bakiye(), 5000);
   const cokmeRow = await dbAsync.get('SELECT * FROM digital_orders ORDER BY id DESC LIMIT 1');
   assert.match(cokmeRow.failure_reason, /^\[Belirsiz\]/, 'belirsiz hata işaretlenmeli');

@@ -134,7 +134,7 @@ test('vitrin ve API kendi servisini satar; para müşteriden düşer, Jet bakiye
   saglayici.kabul = false;
   const red = await musteri.post('/api/orders').send({ service_id: servisNo, link: 'https://instagram.com/kendi', quantity: 500 });
   saglayici.kabul = true;
-  assert.equal(red.status, 502);
+  assert.equal(red.status, 424);
   assert.equal(await bakiye(musteri.id), 20000 - 6000, 'reddedilen tutar iade');
   assert.equal((await musteri.post('/api/orders').send({ service_id: servisNo, link: 'https://instagram.com/kendi', quantity: 50 })).status, 400, 'en az miktarın altı');
 });

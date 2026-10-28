@@ -129,7 +129,7 @@ test('sağlayıcı hatasında iki tarafa iade; kısmi admin iadesi müşteriye o
   saglayici.fail = 'Stok yok';
   const hata = await musteri.post('/api/digital/orders').send({ product_id: urunId, quantity: 1, consent: true });
   saglayici.fail = null;
-  assert.equal(hata.status, 502);
+  assert.equal(hata.status, 424);
   assert.equal(await bakiye(musteri.id), onceM);
   assert.equal(await sahipBakiye(), 10000);
 

@@ -94,7 +94,7 @@ test('sağlayıcı hatasında ayrılan sipariş tutarı iade edilir', async () =
   const before = await dbAsync.get('SELECT balance_kurus FROM users WHERE id = ?', [login.body.user.id]);
   const service = await dbAsync.get('SELECT * FROM services ORDER BY id LIMIT 1');
   const response = await agent.post('/api/orders').send({ service_id: service.id, link: 'https://example.com/post', quantity: service.min_quantity, drip_runs: 1 });
-  assert.equal(response.status, 502);
+  assert.equal(response.status, 424);
   const after = await dbAsync.get('SELECT balance_kurus FROM users WHERE id = ?', [login.body.user.id]);
   assert.equal(after.balance_kurus, before.balance_kurus);
   const order = await dbAsync.get('SELECT status, charge_kurus, refunded_kurus FROM orders WHERE user_id = ? ORDER BY id DESC LIMIT 1', [login.body.user.id]);

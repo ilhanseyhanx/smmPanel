@@ -10,7 +10,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const compression = require('compression');
 const { rateLimit } = require('express-rate-limit');
-const { notFoundApi, errorHandler } = require('../middleware/errorHandler');
+const { notFoundApi, errorHandler, keepGatewayErrorsVisible } = require('../middleware/errorHandler');
 const { tenantForHost, tenantSettings, baseDomains, normalizeHost, isMainHost } = require('./resolve');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -181,6 +181,7 @@ function buildTenantApp() {
   // hakkini tuketmesin.
   app.use('/api/panel/login', rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, handler: rateLimitHandler }));
   app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+  app.use('/api', keepGatewayErrorsVisible);
   // Demo bayi (tenant/demo.js): hicbir yazma istegi calismaz (cikis haric).
   app.use('/api', (req, res, next) => {
     if (req.method === 'GET' || !tenantSettings(req.tenant).demo || req.path === '/auth/logout') return next();

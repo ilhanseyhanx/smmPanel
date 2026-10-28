@@ -236,7 +236,7 @@ test('tüm bileşenler reddedilirse sipariş alınamaz ve tamamı iade edilir', 
   const once = await bakiye();
   const res = await musteri.post('/api/orders').send({ service_id: paketId, link: LINK, quantity: 1 });
   reddedilen = null;
-  assert.equal(res.status, 502);
+  assert.equal(res.status, 424);
   assert.match(res.body.error, /iade/);
   assert.equal(await bakiye(), once);
 });

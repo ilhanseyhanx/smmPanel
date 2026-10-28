@@ -378,7 +378,7 @@ test('sağlayıcı reddederse müşteri ve bayi tam iade alır', async () => {
   const sahipOnce = await sahipBakiye();
   saglayiciKabul = false;
   const res = await siparis(site);
-  assert.equal(res.status, 502);
+  assert.equal(res.status, 424);
   assert.match(res.body.error, /iade edildi/);
   assert.equal(await musteriBakiye(musteri), 10000);
   assert.equal(await sahipBakiye(), sahipOnce);

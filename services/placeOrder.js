@@ -13,7 +13,7 @@ const {
 const { activeServiceDiscount, applyDiscountKurus } = require('./campaigns');
 const { changeCustomerBalance, syncTenantRefund } = require('./resellers');
 const { validateOrderLink } = require('../utils/linkValidator');
-const { friendlyProviderReason } = require('../utils/providerErrors');
+const { friendlyProviderReason, providerQuantityLimit } = require('../utils/providerErrors');
 const SmmProviderClient = require('./smmProvider');
 const telegram = require('./telegramNotifier');
 const {
@@ -35,6 +35,33 @@ function fail(message, status, messageEn) {
   err.status = status;
   if (messageEn) err.messageEn = messageEn;
   return err;
+}
+
+// Saglayicinin bildirdigi sinir saglayici birimindedir (carpan ve fazla gonderim
+// dahil); musterinin girecegi miktara cevrilir: en az icin saglayiciya giden
+// miktari sinira ulastiran en kucuk, en fazla icin siniri asmayan en buyuk miktar.
+function customerQuantityLimit(service, limit) {
+  if (!limit) return null;
+  const sent = quantity => { try { return providerQuantityFor(service, quantity); } catch { return Infinity; } };
+  const factor = sent(1000) / 1000;
+  if (!Number.isFinite(factor) || factor <= 0) return null;
+  let value = limit.kind === 'min' ? Math.max(1, Math.ceil(limit.value / factor)) : Math.floor(limit.value / factor);
+  for (let i = 0; i < 1000; i++) {
+    if (limit.kind === 'min' && sent(value) < limit.value) value++;
+    else if (limit.kind === 'min' && value > 1 && sent(value - 1) >= limit.value) value--;
+    else if (limit.kind === 'max' && value > 0 && sent(value) > limit.value) value--;
+    else break;
+  }
+  return value > 0 ? { kind: limit.kind, value } : null;
+}
+
+// Kayitli sinir saglayicininkinden gevsekse duzeltilir; siparis formu ve bayi
+// siteleri bir sonraki istekte bu miktara zaten izin vermez. Yalnizca sikilastirir.
+async function tightenServiceLimit(serviceId, limit) {
+  const sql = limit.kind === 'min'
+    ? 'UPDATE services SET min_quantity = ? WHERE id = ? AND min_quantity < ? AND max_quantity >= ?'
+    : 'UPDATE services SET max_quantity = ? WHERE id = ? AND max_quantity > ? AND min_quantity <= ?';
+  await dbAsync.run(sql, [limit.value, serviceId, limit.value, limit.value]).catch(() => {});
 }
 
 async function placeOrder({
@@ -234,7 +261,12 @@ async function placeOrder({
     status = 'processing';
     await dbAsync.run('UPDATE orders SET provider_order_id = ?, status = ? WHERE id = ?', [providerOrderId, status, reserved.orderId]);
   } catch (providerError) {
-    const friendly = friendlyProviderReason(providerError.message);
+    // Miktar reddi ("Quantity less than minimal 100") musterinin girdisiyle ilgilidir:
+    // sunucu hatasi gibi degil, net sinirla soylenir (400).
+    const limit = customerQuantityLimit(reserved.service, providerQuantityLimit(providerError.message));
+    const friendly = limit
+      ? `Bu serviste ${limit.kind === 'min' ? 'en az' : 'en fazla'} ${limit.value.toLocaleString('tr-TR')} adet sipariş verilebilir.`
+      : friendlyProviderReason(providerError.message);
     await withTransaction(async tx => {
       const order = await tx.get('SELECT status, refunded_kurus FROM orders WHERE id = ?', [reserved.orderId]);
       if (order && order.refunded_kurus === 0) {
@@ -250,9 +282,12 @@ async function placeOrder({
         await syncTenantRefund(tx, reserved.orderId);
       }
     });
+    if (limit) await tightenServiceLimit(reserved.service.id, limit);
     const err = fail(
-      `Sipariş alınamadı: ${friendly} Tutar bakiyenize iade edildi.`, 502,
-      'The order could not be placed and the amount was refunded to your balance.'
+      `Sipariş alınamadı: ${friendly} Tutar bakiyenize iade edildi.`, limit ? 400 : 502,
+      limit
+        ? `The order could not be placed: this service accepts ${limit.kind === 'min' ? 'a minimum' : 'a maximum'} of ${limit.value.toLocaleString('en-US')}. The amount was refunded to your balance.`
+        : 'The order could not be placed and the amount was refunded to your balance.'
     );
     // Mesaj bilerek musteriye gosterilir: iade yapildigini bilmesi gerekir.
     err.expose = true;

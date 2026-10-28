@@ -7,6 +7,18 @@ function notFoundApi(req, res, next) {
   next();
 }
 
+// Cloudflare, kaynak sunucunun 502/504 cevaplarini kendi HTML hata sayfasiyla
+// degistirir: JSON'daki mesaj ("Sipariş alınamadı ... tutar iade edildi")
+// tarayiciya ulasmaz, istemci "Sunucu yanıt veremedi (502)" gosterir. API'de bu
+// iki kod 424 (Failed Dependency: bagli olunan saglayici basarisiz) olarak
+// gonderilir; Cloudflare 4xx cevaplara dokunmaz.
+const GATEWAY_STATUSES = new Set([502, 504]);
+function keepGatewayErrorsVisible(req, res, next) {
+  const setStatus = res.status.bind(res);
+  res.status = code => setStatus(GATEWAY_STATUSES.has(code) ? 424 : code);
+  next();
+}
+
 function errorHandler(err, req, res, next) {
   req.log?.error({ err }, 'request_failed');
   if (res.headersSent) return next(err);
@@ -35,4 +47,4 @@ function errorHandler(err, req, res, next) {
   res.status(status).json(body);
 }
 
-module.exports = { notFoundApi, errorHandler };
+module.exports = { notFoundApi, errorHandler, keepGatewayErrorsVisible };

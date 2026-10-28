@@ -15,6 +15,7 @@ const { normalizePlainText } = require('../utils/security');
 const { toKurus, fromKurus } = require('../utils/money');
 const PayTR = require('../services/paytr');
 const NowPayments = require('../services/nowpayments');
+const tenantMail = require('../services/tenantMail');
 const Shopier = require('../services/shopier');
 const { shopierLineAmountKurus } = require('../routes/payments');
 const { loadMethods, amountError, completePayment, closePayment, publicPayment } = require('../services/tenantPayments');
@@ -168,6 +169,8 @@ router.post('/bank', requireActiveTenant, requireCustomer, startLimiter, validat
       tenantId: req.tenant.id, actorType: 'customer', actorId: req.customer.id, action: 'payment_notice',
       details: { payment_id: id, amount: fromKurus(amountKurus), sender: senderName }, ip: clientIp(req)
     });
+    tenantMail.fireAndForget(tenantMail.ownerBankNotice(req.tenant,
+      { amount_kurus: amountKurus, sender_name: senderName, bank_name: normalizePlainText(req.body.bank_name, 80) }, req.customer));
     res.status(201).json({ message: 'Ödeme bildirimin alındı. Onaylanınca bakiyene eklenecek.', payment_id: id });
   } catch (err) { next(err); }
 });
@@ -227,7 +230,7 @@ router.post('/paytr/callback', async (req, res) => {
     );
     if (payment?.status === 'pending') {
       if (req.body.status === 'success') {
-        await withTransaction(tx => completePayment(tx, payment.id));
+        if (await withTransaction(tx => completePayment(tx, payment.id))) tenantMail.fireAndForget(tenantMail.paymentCompleted(payment.id));
       } else {
         await closePayment(dbAsync, payment.id, req.body.failed_reason_msg || 'Ödeme reddedildi.');
       }
@@ -272,6 +275,7 @@ async function settleShopierOrder(req, method, order) {
     const done = await withTransaction(tx => completePayment(tx, payment.id, { providerRef: productId }));
     if (done) {
       settled += 1;
+      tenantMail.fireAndForget(tenantMail.paymentCompleted(payment.id));
       Shopier.deleteProduct(productId, method.secrets.pat).catch(() => {});
     }
   }
@@ -383,7 +387,8 @@ router.post('/nowpayments/callback', async (req, res) => {
     );
     if (payment?.status === 'pending') {
       if (status === 'finished') {
-        await withTransaction(tx => completePayment(tx, payment.id, { providerRef: String(req.body.payment_id || '') || null }));
+        const done = await withTransaction(tx => completePayment(tx, payment.id, { providerRef: String(req.body.payment_id || '') || null }));
+        if (done) tenantMail.fireAndForget(tenantMail.paymentCompleted(payment.id));
       } else if (['failed', 'expired', 'refunded'].includes(status)) {
         await closePayment(dbAsync, payment.id, `NOWPayments: ${status}`);
       } else if (status === 'partially_paid') {

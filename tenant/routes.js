@@ -11,9 +11,10 @@ const { z } = require('zod');
 const { dbAsync } = require('../config/database');
 const { validate, bilingual } = require('../middleware/validate');
 const { fromKurus } = require('../utils/money');
-const { placeOrder } = require('../services/placeOrder');
 const { requestRefill } = require('../services/refills');
-const { tenantCatalog, tenantPriceForService, logTenantActivity } = require('../services/resellers');
+const { tenantCatalog, logTenantActivity } = require('../services/resellers');
+const { placeTenantOrder } = require('./orders');
+const tenantMail = require('../services/tenantMail');
 const securityMonitor = require('../services/securityMonitor');
 const { tenantSettings } = require('./resolve');
 const { listPages, getPage } = require('./legalPages');
@@ -94,6 +95,7 @@ router.get('/site', async (req, res, next) => {
         telegram: settings.telegram || null
       },
       customer: customer && !customer.banned ? publicCustomer(customer) : null,
+      api: apiEnabled(req.tenant),
       // Menude "Dijital Urunler" yalnizca satista urun varsa gorunur.
       digital: digitalSettings(req.tenant).enabled && (await tenantDigitalCatalog(req.tenant)).length > 0
     });
@@ -125,6 +127,7 @@ router.post('/auth/register', requireActiveTenant, validate(registerSchema), asy
       action: 'customer_registered', details: { username, email }, ip: clientIp(req)
     });
     setCustomerCookie(res, signCustomerSession(req.tenant, customer));
+    tenantMail.fireAndForget(tenantMail.customerWelcome(req.tenant, customer));
     res.status(201).json({ customer: publicCustomer(customer) });
   } catch (err) { next(err); }
 });
@@ -224,6 +227,29 @@ router.get('/auth/me', requireCustomer, (req, res) => {
   res.json({ customer: publicCustomer(req.customer) });
 });
 
+// Musteri API anahtari (bayi.com/api/v2, tenant/apiRoutes.js). Bayi API'yi
+// kapattiysa anahtar gosterilmez ve uretilmez.
+function apiEnabled(tenant) {
+  return tenantSettings(tenant).api_enabled !== false;
+}
+
+router.get('/account/api-key', requireCustomer, (req, res) => {
+  if (!apiEnabled(req.tenant)) return res.status(404).json({ error: 'Bu sitede API kapalı.', error_en: 'API is disabled on this site.' });
+  res.json({ key: req.customer.api_key || null });
+});
+
+router.post('/account/api-key', requireActiveTenant, requireCustomer, async (req, res, next) => {
+  try {
+    if (!apiEnabled(req.tenant)) return res.status(404).json({ error: 'Bu sitede API kapalı.', error_en: 'API is disabled on this site.' });
+    const key = crypto.randomBytes(24).toString('hex');
+    await dbAsync.run('UPDATE tenant_customers SET api_key = ? WHERE id = ?', [key, req.customer.id]);
+    await logTenantActivity(dbAsync, {
+      tenantId: req.tenant.id, actorType: 'customer', actorId: req.customer.id, action: 'api_key_created', ip: clientIp(req)
+    });
+    res.json({ key, message: 'Yeni API anahtarın oluşturuldu; eskisi artık çalışmaz.' });
+  } catch (err) { next(err); }
+});
+
 router.get('/services', async (req, res, next) => {
   try {
     const catalog = await tenantCatalog(req.tenant);
@@ -258,47 +284,16 @@ router.get('/services', async (req, res, next) => {
 router.post('/orders', requireActiveTenant, requireCustomer, validate(orderSchema), async (req, res, next) => {
   try {
     const body = req.body;
-    const price = await tenantPriceForService(req.tenant, body.service_id);
-    if (!price?.available) {
-      return res.status(400).json({ error: 'Bu servis şu anda satışta değil.', error_en: 'This service is currently unavailable.' });
-    }
-    const owner = await dbAsync.get(
-      'SELECT id, username, role, banned, balance_kurus FROM users WHERE id = ?',
-      [req.tenant.owner_user_id]
-    );
-    if (!owner || owner.banned) {
-      return res.status(503).json({ error: 'Bu site şu anda sipariş kabul etmiyor.', error_en: 'This site is not accepting orders right now.' });
-    }
-    let result;
-    try {
-      result = await placeOrder({
-        user: owner,
-        serviceId: body.service_id,
-        link: body.link,
-        quantity: body.quantity,
-        comments: body.comments,
-        dripRuns: body.drip_runs,
-        dripIntervalMinutes: body.drip_interval_minutes,
-        termsAccepted: body.terms_accepted,
-        lang: 'tr',
-        tenant: {
-          id: req.tenant.id,
-          customerId: req.customer.id,
-          sellRateKurus: price.rateKurus,
-          discountPercent: price.discountPercent
-        }
-      });
-    } catch (err) {
-      // Bayinin Jet bakiyesi bitti: musteri genel mesaj gorur, bayi ve admin
-      // bunu islem kaydinda gorur.
-      if (err.code === 'TENANT_OWNER_BALANCE') {
-        await logTenantActivity(dbAsync, {
-          tenantId: req.tenant.id, actorType: 'system', action: 'owner_balance_low',
-          details: { service_id: body.service_id, required: fromKurus(err.requiredKurus), owner_balance: fromKurus(owner.balance_kurus) }
-        }).catch(() => {});
-      }
-      throw err;
-    }
+    const result = await placeTenantOrder(req.tenant, req.customer, {
+      serviceId: body.service_id,
+      link: body.link,
+      quantity: body.quantity,
+      comments: body.comments,
+      dripRuns: body.drip_runs,
+      dripIntervalMinutes: body.drip_interval_minutes,
+      termsAccepted: body.terms_accepted,
+      lang: 'tr'
+    });
     const fresh = await dbAsync.get('SELECT balance_kurus FROM tenant_customers WHERE id = ?', [req.customer.id]);
     res.status(201).json({
       message: 'Siparişiniz alındı.',

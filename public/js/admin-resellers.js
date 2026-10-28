@@ -387,7 +387,10 @@ Object.assign(SmmApp.prototype, {
       site_settings_changed: 'Site ayarları değişti',
       digital_order: 'Dijital ürün satıldı',
       digital_settings_changed: 'Dijital ürün ayarı değişti',
-      digital_price_changed: 'Dijital ürün fiyatı değişti'
+      digital_price_changed: 'Dijital ürün fiyatı değişti',
+      mail_settings_changed: 'E-posta ayarları değişti',
+      api_settings_changed: 'Müşteri API ayarı değişti',
+      api_key_created: 'Müşteri API anahtarı oluşturdu'
     }[action] || action;
   },
 

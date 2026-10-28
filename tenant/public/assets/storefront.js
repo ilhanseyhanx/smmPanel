@@ -5,7 +5,7 @@
 
   const state = { site: null, customer: null, categories: [], services: [], servicesLoaded: false, methods: [], method: null, payTimer: null, digital: [], dgCategory: '', afterAuth: null };
   const USER_VIEWS = new Set(['order', 'orders', 'account', 'funds', 'dorders']);
-  const ROUTES = { '/': 'home', '/services': 'services', '/order': 'order', '/orders': 'orders', '/account': 'account', '/bakiye': 'funds', '/sifre-sifirla': 'reset', '/dijital': 'digital', '/dijital/siparislerim': 'dorders' };
+  const ROUTES = { '/': 'home', '/services': 'services', '/order': 'order', '/orders': 'orders', '/account': 'account', '/bakiye': 'funds', '/sifre-sifirla': 'reset', '/dijital': 'digital', '/dijital/siparislerim': 'dorders', '/api-dokumani': 'apidocs' };
 
   // Yasal sayfalar /sayfa/<slug> adresinde acilir.
   function routeOf(path) {
@@ -757,6 +757,85 @@
     }
   }
 
+  // ------------------------------------------------------------- API
+  // Musteri API'si: bayi.com/api/v2 (standart SMM API v2). Anahtar Hesabim'da.
+  async function loadApiCard() {
+    const card = $('#sf-api-card');
+    card.hidden = !state.site?.api;
+    if (card.hidden) return;
+    $('#sf-api-url').textContent = `${location.origin}/api/v2`;
+    try {
+      const data = await api('/account/api-key');
+      showApiKey(data.key);
+    } catch { card.hidden = true; }
+  }
+
+  function showApiKey(key) {
+    $('#sf-api-key').textContent = key || 'Henüz yok';
+    $('#sf-api-copy').hidden = !key;
+    $('#sf-api-new').textContent = key ? 'Yeni anahtar oluştur' : 'Anahtar oluştur';
+    $('#sf-api-new').dataset.hasKey = key ? '1' : '';
+  }
+
+  function newApiKey(button) {
+    if (!button.dataset.hasKey) { createApiKey(button); return; }
+    openModal(`<h2 class="sf-modal-title" id="sf-modal-title">Yeni API anahtarı</h2>
+      <p>Yeni anahtar oluşturulunca eskisi hemen çalışmaz; kendi panelindeki anahtarı da güncellemen gerekir.</p>
+      <div class="sf-modal-actions"><button type="button" class="sf-btn sf-btn-primary" id="sf-api-confirm">Yeni anahtar oluştur</button>
+        <button type="button" class="sf-btn sf-btn-ghost" data-modal-close>Vazgeç</button></div>`);
+    $('#sf-api-confirm').addEventListener('click', () => { closeModal(); createApiKey(button); });
+  }
+
+  async function createApiKey(button) {
+    button.disabled = true;
+    try {
+      const data = await api('/account/api-key', { method: 'POST' });
+      showApiKey(data.key);
+      toast(data.message);
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  const API_ACTIONS = [
+    ['services', 'Servis listesi ve fiyatlar', [], '[{"service":1,"name":"Instagram Takipçi","type":"Default","category":"Instagram","rate":"11.70","min":100,"max":100000,"refill":true,"cancel":true,"dripfeed":false}]'],
+    ['add', 'Sipariş ver', [['service', 'Servis ID'], ['link', 'Profil veya gönderi bağlantısı'], ['quantity', 'Miktar'], ['comments', 'Yorumlar, her satıra bir tane (yorum servislerinde)', true], ['runs', 'Tur sayısı (kademeli gönderim)', true], ['interval', 'Turlar arası dakika', true]], '{"order":23501}'],
+    ['status', 'Sipariş durumu', [['order', 'Sipariş ID'], ['orders', 'Birden çok ID, virgülle (en fazla 100)', true]], '{"charge":"11.70","start_count":"3572","status":"Partial","remains":"157","currency":"TRY"}'],
+    ['refill', 'Telafi iste', [['order', 'Sipariş ID'], ['orders', 'Birden çok ID, virgülle', true]], '{"refill":1}'],
+    ['refill_status', 'Telafi durumu', [['refill', 'Telafi ID'], ['refills', 'Birden çok ID, virgülle', true]], '{"status":"Completed"}'],
+    ['cancel', 'İptal iste', [['orders', 'Sipariş ID\'leri, virgülle']], '[{"order":9,"cancel":1}]'],
+    ['balance', 'Bakiye', [], '{"balance":"100.84","currency":"TRY"}']
+  ];
+
+  function renderApiDocs() {
+    const box = $('#sf-docs');
+    if (!state.site?.api) {
+      box.innerHTML = '<div class="sf-card sf-empty"><p>Bu sitede API kullanımı kapalı.</p></div>';
+      return;
+    }
+    const url = `${location.origin}/api/v2`;
+    const param = ([name, text, optional]) => `<tr><td><code>${name}</code></td><td>${escapeHtml(text)}${optional ? ' <span class="sf-muted">(isteğe bağlı)</span>' : ''}</td></tr>`;
+    box.innerHTML = `<div class="sf-card sf-docs-intro">
+        <dl class="sf-dl">
+          <dt>Adres</dt><dd><code>${escapeHtml(url)}</code></dd>
+          <dt>Yöntem</dt><dd>POST · JSON veya form verisi</dd>
+          <dt>Anahtar</dt><dd>${state.customer ? '<a href="/account" data-nav="account">Hesabım</a> sayfasından' : 'Giriş yaptıktan sonra Hesabım sayfasından'} alınır.</dd>
+          <dt>Yanıt</dt><dd>JSON. Hata olursa <code>{"error": "..."}</code> döner. Tutarlar TL'dir.</dd>
+        </dl>
+        <pre><code>curl -X POST ${escapeHtml(url)} -d key=ANAHTARIN -d action=balance</code></pre>
+      </div>
+      ${API_ACTIONS.map(([action, title, params, example]) => `<div class="sf-card sf-docs-action">
+        <h2>${escapeHtml(title)} <code>action=${action}</code></h2>
+        <div class="sf-table-wrap"><table class="sf-table"><thead><tr><th>Parametre</th><th>Açıklama</th></tr></thead><tbody>
+          ${param(['key', 'API anahtarın'])}${param(['action', action])}${params.map(param).join('')}
+        </tbody></table></div>
+        <p class="sf-muted sf-small">Örnek yanıt</p>
+        <pre><code>${escapeHtml(example)}</code></pre>
+      </div>`).join('')}`;
+  }
+
   // ------------------------------------------------------------- yasal sayfalar
   // Duz metin: "## " baslik, "- " madde, bos satir paragraf. Once kacis, sonra bicim.
   function formatLegal(text) {
@@ -792,7 +871,8 @@
   async function loadFooterLinks() {
     try {
       const data = await api('/pages');
-      $('#sf-footer-links').innerHTML = data.pages.map(p => `<a href="/sayfa/${encodeURIComponent(p.slug)}" data-nav="page">${escapeHtml(p.title)}</a>`).join('');
+      $('#sf-footer-links').innerHTML = data.pages.map(p => `<a href="/sayfa/${encodeURIComponent(p.slug)}" data-nav="page">${escapeHtml(p.title)}</a>`).join('')
+        + (state.site?.api ? '<a href="/api-dokumani" data-nav="apidocs">API</a>' : '');
     } catch { /* alt bilgi bagintisiz da calisir */ }
   }
 
@@ -820,7 +900,8 @@
       if (view === 'orders') await loadOrders();
       if (view === 'digital') await loadDigital();
       if (view === 'dorders') await loadDigitalOrders();
-      if (view === 'account') await refreshCustomer();
+      if (view === 'account') { await refreshCustomer(); await loadApiCard(); }
+      if (view === 'apidocs') renderApiDocs();
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -886,6 +967,7 @@
     $('#sf-order-form').addEventListener('submit', submitOrder);
     $('#sf-orders-refresh').addEventListener('click', loadOrders);
     $('#sf-digital-search').addEventListener('input', renderDigital);
+    $('#sf-api-new').addEventListener('click', event => newApiKey(event.currentTarget));
     document.addEventListener('keydown', event => { if (event.key === 'Escape' && !$('#sf-modal').hidden) closeModal(); });
     window.addEventListener('popstate', () => showView(routeOf(location.pathname)));
   }

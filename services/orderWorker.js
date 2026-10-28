@@ -118,6 +118,11 @@ async function applyProviderStatus(orderId, providerStatus) {
   if (statusChange) {
     if (statusChange.notifyOwner) telegram.notifyOrderOwner(statusChange.userId, statusChange.event, statusChange.order);
     telegram.notifyOrderFinished(statusChange.adminSummary);
+    // Bayi musterisine (bayi bu bildirimi actiysa) bayinin adiyla e-posta.
+    if (!statusChange.notifyOwner) {
+      const tenantMail = require('./tenantMail');
+      tenantMail.fireAndForget(tenantMail.orderFinished(statusChange.order.id));
+    }
   }
 }
 

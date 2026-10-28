@@ -163,6 +163,7 @@ function buildTenantApp() {
   app.use('/api/panel', require('./panelRoutes'));
   app.use('/api/payments', require('./paymentRoutes'));
   app.use('/api/digital', require('./digitalRoutes'));
+  app.use('/api/v2', require('./apiRoutes'));
   app.use('/api', require('./routes'));
   app.use(notFoundApi);
 

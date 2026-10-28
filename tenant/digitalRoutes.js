@@ -13,6 +13,7 @@ const digitalStore = require('../services/digitalStore');
 const { digitalSettings, tenantDigitalCatalog, tenantDigitalItem, publicProduct } = require('../services/tenantDigital');
 const { logTenantActivity } = require('../services/resellers');
 const securityMonitor = require('../services/securityMonitor');
+const tenantMail = require('../services/tenantMail');
 const { requireCustomer } = require('./session');
 const { requireActiveTenant } = require('./routes');
 
@@ -62,6 +63,7 @@ router.post('/orders', requireActiveTenant, requireCustomer, validate(buySchema)
           tenantId: req.tenant.id, actorType: 'system', action: 'owner_balance_low',
           details: { product: item.product.name, required: fromKurus(item.price.costKurus * req.body.quantity) }
         }).catch(() => {});
+        tenantMail.fireAndForget(tenantMail.ownerBalanceLow(req.tenant, item.price.costKurus * req.body.quantity));
       }
       throw err;
     }

@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="%%FONT_HREF%%" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="/assets/storefront.css?v=20261028a">
+  <link rel="stylesheet" href="/assets/storefront.css?v=20261028b">
   <link rel="stylesheet" href="/assets/themes.css?v=20261027e">
   <style>:root { --primary: %%PRIMARY%%; --font: %%FONT%%; --font-display: %%FONT_DISPLAY%%; }</style>
 </head>
@@ -216,7 +216,25 @@
             <dt>E-posta</dt><dd id="sf-account-email">—</dd>
           </dl>
         </div>
+        <div class="sf-card sf-api-card" id="sf-api-card" hidden>
+          <h3>API</h3>
+          <p class="sf-muted">Kendi panelini bu siteye bağlayıp otomatik sipariş verebilirsin (standart SMM API v2).</p>
+          <dl class="sf-dl">
+            <dt>Adres</dt><dd><code id="sf-api-url"></code></dd>
+            <dt>Anahtar</dt><dd><span class="sf-copy"><code id="sf-api-key">Henüz yok</code><button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-copy="#sf-api-key" id="sf-api-copy" hidden>Kopyala</button></span></dd>
+          </dl>
+          <div class="sf-modal-actions">
+            <button type="button" class="sf-btn sf-btn-primary sf-btn-sm" id="sf-api-new">Anahtar oluştur</button>
+            <a href="/api-dokumani" data-nav="apidocs" class="sf-btn sf-btn-ghost sf-btn-sm"><i class="fa-solid fa-book" aria-hidden="true"></i> API dokümanı</a>
+          </div>
+        </div>
       </div>
+    </section>
+
+    <!-- API DOKUMANI -->
+    <section class="sf-view" data-view="apidocs" hidden>
+      <div class="sf-page-head"><h1>API Dokümanı</h1></div>
+      <div class="sf-docs" id="sf-docs"></div>
     </section>
   </main>
 
@@ -235,6 +253,6 @@
     </div>
   </div>
   <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
-  <script src="/assets/storefront.js?v=20261028a" defer></script>
+  <script src="/assets/storefront.js?v=20261028b" defer></script>
 </body>
 </html>

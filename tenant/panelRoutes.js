@@ -27,6 +27,7 @@ const { THEME_KEYS, themeOf, publicThemes } = require('./themes');
 const cloudflare = require('../services/cloudflare');
 const tenantBranding = require('../services/tenantBranding');
 const demoData = require('./demoData');
+const tenantMail = require('../services/tenantMail');
 const { digitalSettings, tenantDigitalCatalog } = require('../services/tenantDigital');
 const tenantDomains = require('../services/tenantDomains');
 const { signOwnerSession, setOwnerCookie, clearOwnerCookie, requireOwner } = require('./panelSession');
@@ -633,6 +634,73 @@ router.get('/logs', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ------------------------------------------------------ e-posta ve API
+// Musteri e-postalari ve bayinin kendi SMTP'si (services/tenantMail.js);
+// musteri API'si bayi.com/api/v2 (tenant/apiRoutes.js).
+const mailSchema = z.object({
+  notify: z.object({ welcome: z.boolean(), payment: z.boolean(), order: z.boolean() }).optional(),
+  smtp: z.object({
+    host: z.string().trim().min(3).max(253).regex(/^[a-zA-Z0-9.-]+$/, 'Sunucu adı geçersiz.'),
+    port: z.coerce.number().int(),
+    secure: z.boolean().optional().default(false),
+    user: z.string().trim().min(1).max(254),
+    password: z.string().max(500).optional().default(''),
+    from: z.email().max(254)
+  }).nullable().optional()
+});
+const mailTestSchema = z.object({ to: z.email().max(254).optional() });
+const apiSettingsSchema = z.object({ enabled: z.boolean() });
+
+function siteBase(req) {
+  return `${req.protocol}://${req.get('host')}`;
+}
+
+router.get('/mail', async (req, res, next) => {
+  try {
+    res.json({ ...(await tenantMail.mailSettings(req.tenant.id)), owner_email: req.owner.email || '' });
+  } catch (err) { next(err); }
+});
+
+router.put('/mail', validate(mailSchema), async (req, res, next) => {
+  try {
+    const saved = await tenantMail.saveMailSettings(req.tenant.id, { notify: req.body.notify, smtp: req.body.smtp });
+    await ownerActivity(req, 'mail_settings_changed', {
+      notify: saved.notify, smtp: saved.smtp.active ? `${saved.smtp.host}:${saved.smtp.port}` : null
+    });
+    res.json({ message: 'E-posta ayarları kaydedildi.', ...saved });
+  } catch (err) {
+    if (err.status === 400) return res.status(400).json({ error: err.message, field: err.field });
+    next(err);
+  }
+});
+
+router.post('/mail/test', validate(mailTestSchema), async (req, res, next) => {
+  try {
+    const to = req.body.to || req.owner.email;
+    if (!to) return res.status(400).json({ error: 'Test e-postasının gideceği adresi yaz.' });
+    const result = await tenantMail.sendTestMail(req.tenant, to);
+    res.json({ message: `Test e-postası ${to} adresine gönderildi${result.custom ? ' (kendi SMTP\'n ile)' : ''}.` });
+  } catch (err) {
+    if (err.status === 400) return res.status(400).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.get('/api-settings', (req, res) => {
+  const base = siteBase(req);
+  res.json({ enabled: tenantSettings(req.tenant).api_enabled !== false, url: `${base}/api/v2`, docs_url: `${base}/api-dokumani` });
+});
+
+router.put('/api-settings', validate(apiSettingsSchema), async (req, res, next) => {
+  try {
+    const settings = { ...tenantSettings(req.tenant), api_enabled: req.body.enabled };
+    await dbAsync.run('UPDATE tenants SET settings_json = ? WHERE id = ?', [JSON.stringify(settings), req.tenant.id]);
+    invalidateTenantCache();
+    await ownerActivity(req, 'api_settings_changed', { enabled: req.body.enabled });
+    res.json({ message: req.body.enabled ? 'Müşteri API\'si açıldı.' : 'Müşteri API\'si kapatıldı; mevcut anahtarlar çalışmaz.' });
+  } catch (err) { next(err); }
+});
+
 // -------------------------------------------------------- dijital urunler
 // Katalog Jet'in satistaki dijital urunleridir (services/tenantDigital.js).
 const digitalSettingsSchema = z.object({ enabled: z.boolean(), markup_percent: markupField.nullable().optional() });
@@ -1118,6 +1186,7 @@ router.post('/payments/:id/approve', async (req, res, next) => {
       actor: `owner:${req.owner.username}`, actorType: 'owner', actorId: req.owner.id
     }));
     if (!result) return res.status(409).json({ error: 'Bu bildirim zaten sonuçlanmış.' });
+    tenantMail.fireAndForget(tenantMail.paymentCompleted(payment.id));
     res.json({ message: `₺${fromKurus(payment.amount_kurus).toFixed(2)} müşterinin bakiyesine eklendi.`, balance: fromKurus(result.balanceKurus) });
   } catch (err) { next(err); }
 });

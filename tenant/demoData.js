@@ -288,6 +288,19 @@ function panelResponse(path, query, ctx) {
       top_up_url: ctx.topUpUrl, invoices: []
     };
   }
+  if (path === '/mail') {
+    const log = [
+      ...d.payments.filter(p => p.status === 'completed').slice(0, 4).map(p => ({ kind: 'payment', recipient: `${p.customer.replace(/[._]/g, '')}@ornek.com`, subject: `Bakiyene ₺${p.amount} eklendi`, status: 'sent', error: null, created_at: p.completed_at })),
+      ...d.payments.filter(p => p.method === 'bank').slice(0, 2).map(p => ({ kind: 'owner_bank_notice', recipient: 'sahip@ornekmedya.com', subject: 'Yeni havale bildirimi', status: 'sent', error: null, created_at: p.created_at })),
+      ...d.customers.slice(0, 3).map(c => ({ kind: 'welcome', recipient: c.email, subject: 'Hesabın hazır', status: 'sent', error: null, created_at: c.created_at }))
+    ].sort((a, b) => b.created_at.localeCompare(a.created_at));
+    return {
+      notify: { welcome: true, payment: true, order: false },
+      smtp: { host: 'smtp.yandex.com', port: 465, secure: true, user: 'destek@ornekmedya.com', from: 'destek@ornekmedya.com', has_password: true, active: true },
+      log,
+      owner_email: 'sahip@ornekmedya.com'
+    };
+  }
   if (path === '/payment-settings') {
     const method = (key, enabled, extra = {}) => ({
       method: key, label: METHODS[key].label, enabled, configured: enabled, min: key === 'nowpayments' ? 400 : 10, max: 50000,

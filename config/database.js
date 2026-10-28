@@ -1000,6 +1000,35 @@ async function runMigrations() {
     );
     CREATE INDEX IF NOT EXISTS idx_digital_orders_tenant ON digital_orders(tenant_id, tenant_customer_id, id DESC);
   `);
+  // Bayi e-postalari (F6, services/tenantMail.js): hangi bildirimlerin
+  // gidecegi ve istege bagli bayinin kendi SMTP'si (parola sifreli). Kayit
+  // tablosu hem panelde son gonderimleri gosterir hem de tekrar sinirlar.
+  await dbAsync.exec(`
+    CREATE TABLE IF NOT EXISTS tenant_mail_settings (
+      tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+      notify_welcome INTEGER NOT NULL DEFAULT 1,
+      notify_payment INTEGER NOT NULL DEFAULT 1,
+      notify_order INTEGER NOT NULL DEFAULT 0,
+      smtp_host TEXT,
+      smtp_port INTEGER,
+      smtp_secure INTEGER NOT NULL DEFAULT 0,
+      smtp_user TEXT,
+      smtp_pass_encrypted TEXT,
+      smtp_from TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS tenant_mail_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL,
+      kind TEXT NOT NULL,
+      recipient TEXT,
+      subject TEXT,
+      status TEXT NOT NULL,
+      error TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_tenant_mail_log ON tenant_mail_log(tenant_id, kind, id DESC);
+  `);
 
   // --- ZIYARETCI AYAK IZI (5 Eki 2026) -------------------------------------
   // Oturum + adim akisi (services/footprint.js). Cerez onayi veren ziyaretcide

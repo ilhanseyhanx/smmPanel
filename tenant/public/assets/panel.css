@@ -175,3 +175,13 @@
 .pn-demo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .pn-demo-actions a { padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(226, 232, 240, .3); color: #e2e8f0; font-size: .84rem; }
 .pn-demo-actions a:hover { background: #e2e8f0; color: #0f172a; }
+
+/* E-posta & API */
+.pn-stack { display: grid; gap: 18px; align-content: start; min-width: 0; }
+.pn-form-row { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 12px; }
+.pn-mail-log li { display: grid; gap: 2px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: .86rem; }
+.pn-mail-log li:last-child { border-bottom: 0; }
+.pn-mail-log b { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; overflow-wrap: anywhere; }
+.pn-mail-log small { color: var(--muted); overflow-wrap: anywhere; }
+.pn-mail-log .pn-mail-err { color: var(--danger); }
+@media (max-width: 560px) { .pn-form-row { grid-template-columns: minmax(0, 1fr); } }

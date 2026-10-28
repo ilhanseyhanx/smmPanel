@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="/assets/storefront.css?v=20261028a">
-  <link rel="stylesheet" href="/assets/panel.css?v=20261028a">
+  <link rel="stylesheet" href="/assets/storefront.css?v=20261028b">
+  <link rel="stylesheet" href="/assets/panel.css?v=20261028b">
   <style>:root { --primary: %%PRIMARY%%; }</style>
 </head>
 <body class="pn-body">
@@ -49,6 +49,7 @@
         <a href="/admin/domain" data-go="domain"><i class="fa-solid fa-globe" aria-hidden="true"></i><span>Alan Adı</span></a>
         <a href="/admin/appearance" data-go="appearance"><i class="fa-solid fa-palette" aria-hidden="true"></i><span>Görünüm</span></a>
         <a href="/admin/site" data-go="site"><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Site Ayarları</span></a>
+        <a href="/admin/mail" data-go="mail"><i class="fa-solid fa-envelope" aria-hidden="true"></i><span>E-posta & API</span></a>
         <a href="/admin/pages" data-go="pages"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i><span>Yasal Sayfalar</span></a>
         <a href="/admin/subscription" data-go="subscription"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i><span>Abonelik</span></a>
         <a href="/admin/logs" data-go="logs"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i><span>Kayıtlar</span></a>
@@ -322,6 +323,50 @@
         </form>
       </section>
 
+      <!-- E-POSTA & API -->
+      <section class="pn-view" data-view="mail" hidden>
+        <div class="pn-grid-2">
+          <div class="pn-stack">
+            <form class="sf-card sf-form" id="pn-notify-form" novalidate>
+              <h2 class="pn-card-title">Müşterilerine giden e-postalar</h2>
+              <label class="pn-radio"><input type="checkbox" name="welcome"> Hoş geldin <small class="sf-muted">· kayıt olunca</small></label>
+              <label class="pn-radio"><input type="checkbox" name="payment"> Bakiye yüklendi <small class="sf-muted">· ödeme onaylanınca</small></label>
+              <label class="pn-radio"><input type="checkbox" name="order"> Sipariş bitti <small class="sf-muted">· tamamlandı, kısmi ya da iptal (iade tutarıyla)</small></label>
+              <p class="sf-muted pn-help" style="margin:0;">E-postalar site adınla gider; müşteri yanıtlarsa destek e-postana düşer. Havale bildirimi ve bakiyen yetmediği için kaçan siparişler için sana da e-posta gelir.</p>
+              <button type="submit" class="sf-btn sf-btn-primary">Kaydet</button>
+            </form>
+            <form class="sf-card sf-form" id="pn-smtp-form" novalidate>
+              <div class="pn-pay-head"><h2 class="pn-card-title" style="margin:0;">Gönderen adres (SMTP)</h2><span class="sf-badge" id="pn-smtp-state"></span></div>
+              <p class="sf-muted pn-help" style="margin:0;">Boş bırakırsan e-postalar site adınla ortak e-posta sunucusundan gider. Kendi alan adından gitsin istersen e-posta sağlayıcının (Gmail, Yandex, Zoho, hosting) SMTP bilgilerini gir.</p>
+              <div class="pn-form-row">
+                <label>Sunucu<input name="host" class="sf-input" maxlength="253" placeholder="smtp.yandex.com" autocomplete="off"></label>
+                <label>Port<select name="port" class="sf-input"><option value="587">587 (STARTTLS)</option><option value="465">465 (SSL)</option><option value="2525">2525</option><option value="25">25</option></select></label>
+              </div>
+              <label>Kullanıcı adı<input name="user" class="sf-input" maxlength="254" autocomplete="off"></label>
+              <label>Parola <small>(uygulama şifresi)</small><input name="password" type="password" class="sf-input" maxlength="500" autocomplete="new-password"></label>
+              <label>Gönderen e-posta<input name="from" type="email" class="sf-input" maxlength="254" placeholder="destek@siten.com"></label>
+              <p class="sf-form-error" role="alert"></p>
+              <div class="pn-row-actions" style="justify-content:flex-start;">
+                <button type="submit" class="sf-btn sf-btn-primary">Kaydet</button>
+                <button type="button" class="sf-btn sf-btn-ghost" id="pn-smtp-test"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Test e-postası gönder</button>
+                <button type="button" class="sf-btn sf-btn-ghost" id="pn-smtp-clear" hidden>SMTP'yi kaldır</button>
+              </div>
+            </form>
+          </div>
+          <div class="pn-stack">
+            <div class="sf-card">
+              <div class="pn-pay-head"><h2 class="pn-card-title" style="margin:0;">Müşteri API'si</h2><label class="pn-radio" style="margin:0;"><input type="checkbox" id="pn-api-enabled"> Açık</label></div>
+              <p class="sf-muted pn-help">Müşterilerin kendi panellerini sitene bağlayıp otomatik sipariş verebilir (standart SMM API v2). Fiyatlar senin satış fiyatlarındır; anahtarı müşteri Hesabım sayfasından alır.</p>
+              <dl class="sf-dl pn-sub-dl" id="pn-api-info"></dl>
+            </div>
+            <div class="sf-card">
+              <h2 class="pn-card-title">Son gönderilen e-postalar</h2>
+              <ul class="pn-list pn-mail-log" id="pn-mail-log"></ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- KAYITLAR -->
       <section class="pn-view" data-view="logs" hidden>
         <div class="sf-tabs pn-tabs" role="tablist">
@@ -342,6 +387,6 @@
   </div>
 
   <div class="sf-toast" id="sf-toast" role="status" aria-live="polite"></div>
-  <script src="/assets/panel.js?v=20261028a" defer></script>
+  <script src="/assets/panel.js?v=20261028b" defer></script>
 </body>
 </html>

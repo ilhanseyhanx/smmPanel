@@ -12,6 +12,7 @@
     payments: { path: '/admin/payments', title: 'Ödemeler' },
     paysettings: { path: '/admin/payment-settings', title: 'Ödeme Ayarları' },
     site: { path: '/admin/site', title: 'Site Ayarları' },
+    mail: { path: '/admin/mail', title: 'E-posta & API' },
     pages: { path: '/admin/pages', title: 'Yasal Sayfalar' },
     subscription: { path: '/admin/subscription', title: 'Abonelik' },
     appearance: { path: '/admin/appearance', title: 'Görünüm' },
@@ -900,6 +901,124 @@
     if (tab === 'orders') loadDigitalOrders().catch(err => toast(err.message, 'error'));
   }
 
+  // ------------------------------------------------------------- e-posta & API
+  const MAIL_KIND = {
+    welcome: 'Hoş geldin', payment: 'Bakiye yüklendi', order: 'Sipariş bitti', test: 'Test',
+    owner_bank_notice: 'Sana: havale bildirimi', owner_balance_low: 'Sana: bakiye yetmedi'
+  };
+  const MAIL_STATUS = { sent: ['Gitti', 'completed'], failed: ['Gitmedi', 'canceled'], skipped: ['Atlandı', 'pending'] };
+
+  function renderMail(d) {
+    const notify = $('#pn-notify-form');
+    notify.welcome.checked = d.notify.welcome;
+    notify.payment.checked = d.notify.payment;
+    notify.order.checked = d.notify.order;
+    const smtp = $('#pn-smtp-form');
+    smtp.host.value = d.smtp.host;
+    smtp.port.value = String(d.smtp.port || 587);
+    smtp.user.value = d.smtp.user;
+    smtp.from.value = d.smtp.from;
+    smtp.password.value = '';
+    smtp.password.placeholder = d.smtp.has_password ? 'Kayıtlı; değiştirmek için yaz' : '';
+    const state = $('#pn-smtp-state');
+    state.textContent = d.smtp.active ? 'Kendi SMTP\'n' : 'Ortak sunucu';
+    state.className = `sf-badge sf-badge-${d.smtp.active ? 'completed' : 'pending'}`;
+    $('#pn-smtp-clear').hidden = !d.smtp.active;
+    state.dataset.ownerEmail = d.owner_email || '';
+    $('#pn-mail-log').innerHTML = d.log.length ? d.log.map(l => {
+      const [label, cls] = MAIL_STATUS[l.status] || MAIL_STATUS.skipped;
+      return `<li><b><span>${escapeHtml(MAIL_KIND[l.kind] || l.kind)} · ${escapeHtml(l.recipient || '')}</span><span class="sf-badge sf-badge-${cls}">${label}</span></b>
+        <small>${formatDate(l.created_at)} · ${escapeHtml(l.subject || '')}</small>${l.error ? `<small class="pn-mail-err">${escapeHtml(l.error)}</small>` : ''}</li>`;
+    }).join('') : '<li class="sf-muted">Henüz e-posta gönderilmedi.</li>';
+  }
+
+  async function loadMail() {
+    const [mail, apiInfo] = await Promise.all([api('/mail'), api('/api-settings')]);
+    renderMail(mail);
+    $('#pn-api-enabled').checked = apiInfo.enabled;
+    $('#pn-api-info').innerHTML = `<dt>Adres</dt><dd><code>${escapeHtml(apiInfo.url)}</code></dd>
+      <dt>Doküman</dt><dd><a href="${escapeHtml(apiInfo.docs_url)}" target="_blank" rel="noopener">${escapeHtml(apiInfo.docs_url)}</a></dd>`;
+  }
+
+  async function saveNotify(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    try {
+      const res = await api('/mail', { method: 'PUT', body: JSON.stringify({ notify: { welcome: form.welcome.checked, payment: form.payment.checked, order: form.order.checked } }) });
+      renderMail(res);
+      toast(res.message);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  async function saveSmtp(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const errorEl = $('.sf-form-error', form);
+    errorEl.textContent = '';
+    const smtp = {
+      host: form.host.value.trim(), port: Number(form.port.value), secure: form.port.value === '465',
+      user: form.user.value.trim(), password: form.password.value, from: form.from.value.trim()
+    };
+    if (!smtp.host || !smtp.user || !smtp.from) { errorEl.textContent = 'Sunucu, kullanıcı adı ve gönderen e-posta gerekli.'; return; }
+    try {
+      const res = await api('/mail', { method: 'PUT', body: JSON.stringify({ smtp }) });
+      renderMail(res);
+      toast(res.message);
+    } catch (err) {
+      errorEl.textContent = err.message;
+    }
+  }
+
+  async function testSmtp(button) {
+    const to = await new Promise(resolve => {
+      openModal('Test e-postası', `
+        <form class="sf-form" id="pn-mail-test-form" novalidate>
+          <label>Gideceği adres<input name="to" type="email" class="sf-input" value="${escapeHtml($('#pn-smtp-state').dataset.ownerEmail || '')}" required></label>
+          <button type="submit" class="sf-btn sf-btn-primary">Gönder</button>
+        </form>`);
+      $('#pn-mail-test-form').addEventListener('submit', event => {
+        event.preventDefault();
+        const value = event.currentTarget.to.value.trim();
+        closeModal();
+        resolve(value || null);
+      });
+      $('#pn-modal')._resolve = () => resolve(null);
+    });
+    if (!to) return;
+    button.disabled = true;
+    try {
+      toast((await api('/mail/test', { method: 'POST', body: JSON.stringify({ to }) })).message);
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      button.disabled = false;
+      loadMail().catch(() => {});
+    }
+  }
+
+  async function clearSmtp() {
+    if (!(await confirmBox('SMTP\'yi kaldır', 'Müşteri e-postaları yeniden ortak sunucudan, site adınla gönderilecek.', 'Kaldır'))) return;
+    try {
+      const res = await api('/mail', { method: 'PUT', body: JSON.stringify({ smtp: null }) });
+      renderMail(res);
+      toast(res.message);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  async function toggleApi(event) {
+    const enabled = event.target.checked;
+    try {
+      toast((await api('/api-settings', { method: 'PUT', body: JSON.stringify({ enabled }) })).message);
+    } catch (err) {
+      event.target.checked = !enabled;
+      toast(err.message, 'error');
+    }
+  }
+
   // ------------------------------------------------------------- site
   async function loadSite() {
     const s = await api('/site');
@@ -1188,6 +1307,11 @@
     domain_activated: 'Alan adı aktif oldu',
     branding_changed: 'Logo / simge değişti',
     page_reset: 'Yasal sayfa otomatiğe döndü',
+    mail_settings_changed: 'E-posta ayarları değişti',
+    api_settings_changed: 'Müşteri API ayarı değişti',
+    api_key_created: 'Müşteri API anahtarı oluşturdu',
+    password_reset_requested: 'Müşteri şifre sıfırlama istedi',
+    password_reset_done: 'Müşteri şifresini değiştirdi',
     digital_order: 'Dijital ürün satıldı',
     digital_settings_changed: 'Dijital ürün ayarı değişti',
     digital_price_changed: 'Dijital ürün fiyatı değişti'
@@ -1201,6 +1325,12 @@
     if (entry.action === 'owner_balance_low') return d.product
       ? `${escapeHtml(d.product)} · gerekli ${money(d.required)}`
       : `Gerekli ${money(d.required)}, bakiyeniz ${money(d.owner_balance)}`;
+    if (entry.action === 'mail_settings_changed') {
+      const n = d.notify || {};
+      const onOff = value => (value ? 'açık' : 'kapalı');
+      return `Hoş geldin ${onOff(n.welcome)} · Bakiye ${onOff(n.payment)} · Sipariş ${onOff(n.order)} · SMTP: ${escapeHtml(d.smtp || 'ortak sunucu')}`;
+    }
+    if (entry.action === 'api_settings_changed') return d.enabled ? 'API açıldı' : 'API kapatıldı';
     if (entry.action === 'digital_order') return `#D${Number(d.order_id)} ${escapeHtml(d.product)} × ${num(d.quantity)} · ${money(d.charge)}`;
     if (entry.action === 'digital_settings_changed') return `${d.enabled ? 'satışta' : 'sitede gizli'} · ${d.markup_percent === null || d.markup_percent === undefined ? 'servislerle aynı kâr' : `kâr %${d.markup_percent}`}`;
     if (entry.action === 'digital_price_changed') {
@@ -1273,6 +1403,7 @@
       if (view === 'appearance') await loadThemes();
       if (view === 'domain') await loadDomains();
       if (view === 'site') await loadSite();
+      if (view === 'mail') await loadMail();
       if (view === 'logs') await loadLogs(true);
     } catch (err) {
       if (err.status !== 401) toast(err.message, 'error');
@@ -1304,6 +1435,11 @@
     $('#pn-logout').addEventListener('click', logout);
     $('#pn-default-markup-form').addEventListener('submit', saveDefaultMarkup);
     $('#pn-dg-settings-form').addEventListener('submit', saveDigitalSettings);
+    $('#pn-notify-form').addEventListener('submit', saveNotify);
+    $('#pn-smtp-form').addEventListener('submit', saveSmtp);
+    $('#pn-smtp-test').addEventListener('click', event => testSmtp(event.currentTarget));
+    $('#pn-smtp-clear').addEventListener('click', clearSmtp);
+    $('#pn-api-enabled').addEventListener('change', toggleApi);
     $('#pn-dg-search').addEventListener('input', debounce(renderDigitalProducts, 150));
     $('#pn-site-form').addEventListener('submit', saveSite);
     $('#pn-domain-form').addEventListener('submit', addDomain);

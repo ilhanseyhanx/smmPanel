@@ -8,6 +8,10 @@ TOPLAM: 10 yeni blog yazısı, 1-28 Kasım arası 3 günde bir.
 Önce aşağıdaki "KASIM ÖNCESİ" düzeltmeleri yapılır; yazılardan daha hızlı
 sonuç verirler.
 
+YAYINLAMA (1-5 taslak hazır)
+  Admin > "Ana Sayfa & Blog" > Blog Yazıları > ilgili taslak > "Yayınla"
+  ya da Claude'a "1 Kasım yazısını yayınla" demen yeterli.
+
 HER YAYINDAN SONRA
   [ ] Adresi tarayıcıda aç, açıldığını gör
   [ ] Google Search Console > URL İnceleme > "Dizine eklenmeyi iste"
@@ -57,6 +61,7 @@ YAZI KURALLARI (her yazı için)
     Hedef: smm panel kurma, smm panel satılık, beğeni paneli kurma,
            twitter panel scripti, smm panel scripti
     Link : /bayilik, /smm-panel-api, blog/smm-panel-bayilik-nasil-yapilir
+TASLAK YAZILDI (28 Eki) - siteye taslak olarak eklenmeyi bekliyor
     NOT (28 Eki): "bayilik paneli" aramaları artık güncellenen
     smm-panel-bayilik-nasil-yapilir yazısında; bu yazı aynı konuyu tekrar
     etmesin diye "kurma / script" tarafına kaydırıldı.
@@ -67,14 +72,18 @@ YAZI KURALLARI (her yazı için)
     Hedef: twitter bayilik paneli (91 gösterim, 8,9. sıra), twitter panel
            satın al, twitter ilan paneli satın al
     Link : /bayilik, /twitter-smm-panel, /twitter-takipci-satin-al
+TASLAK YAZILDI (28 Eki) - siteye taslak olarak eklenmeyi bekliyor
 
  3) 7 KASIM ----------------------------------------------------------- BLOG
     instagram-takipci-paneli
-    "Instagram Takipçi Paneli Nasıl Kullanılır? Panel Seçerken 6 Kontrol"
+    "Instagram Takipçi Paneli: Servis Kartı Nasıl Okunur, Hangi Paket Seçilir?"
+    (Başlık değişti: "panel seçerken kontrol" yayındaki smm-panel-nasil-secilir
+    yazısıyla çakışırdı; bu yazı Instagram servis kartı ve paket seçimi üzerine.)
     Hedef: instagram takipçi paneli, smm panel instagram, instagram panel,
            instagram takipçi paneli satın al, şifresiz takipçi paneli
     Link : /instagram-takipci-satin-al (49. sıra, ana destek),
            /instagram-smm-panel, /turk-takipci-satin-al
+TASLAK YAZILDI (28 Eki) - siteye taslak olarak eklenmeyi bekliyor
 
  4) 10 KASIM ---------------------------------------------------------- BLOG
     twitter-takipci-paneli
@@ -83,6 +92,7 @@ YAZI KURALLARI (her yazı için)
            satın al, 2000 twitter türk takipçi satın al
     Link : /twitter-takipci-satin-al (12,9. sıra -> ilk 10 hedefi),
            /twitter-smm-panel, /twitter-goruntulenme-satin-al
+TASLAK YAZILDI (28 Eki) - siteye taslak olarak eklenmeyi bekliyor
 
  5) 13 KASIM ---------------------------------------------------------- BLOG
     tiktok-takipci-paneli
@@ -90,6 +100,7 @@ YAZI KURALLARI (her yazı için)
     Hedef: tiktok panel, tiktok smm panel, smm panel tiktok, tiktok takipçi
            paneli, tiktok beğeni paneli, tiktok bayilik paneli
     Link : /tiktok-smm-panel, /tiktok-takipci-satin-al, /tiktok-begeni-satin-al
+TASLAK YAZILDI (28 Eki) - siteye taslak olarak eklenmeyi bekliyor
 
  6) 16 KASIM ---------------------------------------------------------- BLOG
     instagram-kaydetme-nedir

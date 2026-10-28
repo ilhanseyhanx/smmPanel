@@ -10,7 +10,7 @@
 
 const { demoSites } = require('../tenant/demo');
 
-const IMG_VERSION = '1';
+const IMG_VERSION = '2';
 
 function esc(value) {
   return String(value ?? '')

@@ -31,6 +31,41 @@ async function randomPasswordHash() {
   return bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
 }
 
+const DEMO_POSTS = [
+  ['blog', 'instagram-takipci-nasil-artar', 'Instagram takipçisi nasıl artar? 7 pratik yol', 'Organik büyüme ile reklamı birlikte kullanmanın kısa rehberi.',
+    '## Düzenli paylaş\nHaftada en az 3 gönderi ve her gün hikâye, algoritmanın seni unutmamasını sağlar.\n\n## Reels kullan\n- İlk 2 saniyede dikkat çek\n- Trend sesleri kullan\n- Altyazı ekle\n\n## Etkileşimi büyüt\nYeni bir hesapta ilk izlenim önemlidir; takipçi ve beğeni desteği ilk ivmeyi verir.'],
+  ['blog', 'tiktok-kesfete-dusmek', 'TikTok keşfete nasıl düşülür?', 'Keşfet algoritmasının sevdiği 5 alışkanlık.',
+    '## İzlenme süresi her şeydir\nVideonun sonuna kadar izlenmesi, beğeniden daha değerlidir.\n\n- Kısa ve net giriş\n- Döngüye giren kurgu\n- Yorum davet eden soru'],
+  ['page', 'instagram-takipci-satin-al', 'Instagram Takipçi Satın Al', 'Hızlı başlangıç, düşüşe karşı telafi, güvenli ödeme.',
+    '## Neden bizden almalısın?\n- Siparişler dakikalar içinde başlar\n- Şifre istemeyiz, yalnızca kullanıcı adı yeter\n- Düşüş olursa telafi isteyebilirsin\n\n## Nasıl sipariş verilir?\nAşağıdan "Sipariş ver"e bas, bağlantını yapıştır ve miktarı seç.']
+];
+
+// Demo icerigi: yoksa eklenir, varsa dokunulmaz (tekrar calistirmak guvenli).
+async function seedDemoContent(tenantId) {
+  for (const [type, slug, title, excerpt, body] of DEMO_POSTS) {
+    await dbAsync.run(
+      `INSERT OR IGNORE INTO tenant_posts (tenant_id, type, slug, title, excerpt, body, status, published_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'published', CURRENT_TIMESTAMP)`, [tenantId, type, slug, title, excerpt, body]);
+  }
+  const page = await dbAsync.get("SELECT id, service_id FROM tenant_posts WHERE tenant_id = ? AND type = 'page' AND slug = 'instagram-takipci-satin-al'", [tenantId]);
+  if (page && !page.service_id) {
+    const service = await dbAsync.get(
+      `SELECT s.id FROM services s LEFT JOIN categories c ON c.id = s.category_id
+        WHERE s.status = 1 AND s.is_bundle = 0 ORDER BY (lower(COALESCE(s.name_tr, s.name)) LIKE '%instagram%takip%') DESC, s.id LIMIT 1`);
+    if (service) await dbAsync.run('UPDATE tenant_posts SET service_id = ? WHERE id = ?', [service.id, page.id]);
+  }
+  if (!(await dbAsync.get('SELECT 1 FROM tenant_own_products WHERE tenant_id = ?', [tenantId]))) {
+    const { encryptSecret } = require('../utils/security');
+    const product = await dbAsync.run(
+      `INSERT INTO tenant_own_products (tenant_id, name, category, description, usage_note, item_format, price_kurus)
+       VALUES (?, 'Spotify Premium 1 Ay (bayinin kendi ürünü)', 'Abonelik', 'Pro pakette bayi kendi stoğunu yükleyip satar.', 'Örnek ürün.', 'email|şifre', 3990)`, [tenantId]);
+    for (let i = 1; i <= 5; i++) {
+      await dbAsync.run('INSERT INTO tenant_own_product_items (tenant_id, product_id, item_encrypted) VALUES (?, ?, ?)',
+        [tenantId, product.id, encryptSecret(`ornek${i}@demo.invalid|OrnekSifre${i}`)]);
+    }
+  }
+}
+
 async function ensureDemoTenant() {
   let owner = await dbAsync.get('SELECT id FROM users WHERE username = ?', [OWNER_USERNAME]);
   if (!owner) {
@@ -59,6 +94,10 @@ async function ensureDemoTenant() {
     tenant = { id: row.id };
     created = true;
   }
+
+  // Demo Pro pakette: blog, satis sayfasi ve kendi dijital urunu ornekleri.
+  await dbAsync.run("UPDATE tenants SET package = 'pro', pending_package = NULL WHERE id = ?", [tenant.id]);
+  await seedDemoContent(tenant.id);
 
   // "Musteri gozuyle" girisinde kullanilan hesap (sifresi kimsede yok).
   const shopper = await dbAsync.get('SELECT id FROM tenant_customers WHERE tenant_id = ? AND username = ?', [tenant.id, SHOPPER_USERNAME]);

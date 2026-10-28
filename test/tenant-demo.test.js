@@ -73,6 +73,13 @@ test('her tema kendi demo adresinde kendi markasıyla açılır; şerit diğer d
   const api = await site('demo-kurumsal.demo.test').get('/api/site');
   assert.equal(api.body.name, 'Atlas Dijital');
   assert.equal((await site('demo-yok.demo.test').get('/')).status, 404, 'tanımsız demo adresi');
+  // Demo Pro pakette: örnek blog, satış sayfası ve kendi dijital ürünü görünür.
+  const blog = await site('demo-gece.demo.test').get('/blog');
+  assert.equal(blog.status, 200);
+  assert.match(blog.text, /href="\/blog\/instagram-takipci-nasil-artar"/);
+  assert.equal((await site('demo-gece.demo.test').get('/hizmet/instagram-takipci-satin-al')).status, 200);
+  const dijital = (await site('demo-gece.demo.test').get('/api/digital/products')).body.products;
+  assert.ok(dijital.some(p => p.own && p.stock === 5));
 });
 
 test('müşteri gözüyle: şifresiz demo müşteri girişi, örnek siparişler, yazma kapalı', async () => {

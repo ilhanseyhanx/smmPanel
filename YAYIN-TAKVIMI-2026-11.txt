@@ -38,6 +38,7 @@ YAZI KURALLARI (her yazı için)
     twitch-izleyici, instagram-kaydetme, canli-yayin-izleyici,
     twitter-goruntulenme, pinterest-kaydetme, youtube-smm-panel
 
+ A ve B YAPILDI (28 Eki). C YAPILDI (28 Eki): 4 yazı güncellendi.
  C) Mevcut yazılar güncellenecek
     - smm-panel-bayilik-nasil-yapilir: bayi paneli (599/999 TL) anlatılacak,
       /bayilik sayfasına link verilecek.
@@ -51,11 +52,14 @@ YAZI KURALLARI (her yazı için)
 ===============================================================================
 
  1) 1 KASIM -------------------------------------------------- BLOG (BAYİLİK)
-    smm-bayilik-paneli-nedir
-    "SMM Bayilik Paneli Nedir? Kendi SMM Panelini Açmanın 3 Yolu"
-    Hedef: bayilik paneli, smm bayilik paneli, smm panel satılık,
-           smm panel kurma, beğeni paneli kurma, smm bayici
+    smm-panel-kurma
+    "SMM Panel Kurma: Script mi Alınır, Hazır Bayi Paneli mi Kullanılır?"
+    Hedef: smm panel kurma, smm panel satılık, beğeni paneli kurma,
+           twitter panel scripti, smm panel scripti
     Link : /bayilik, /smm-panel-api, blog/smm-panel-bayilik-nasil-yapilir
+    NOT (28 Eki): "bayilik paneli" aramaları artık güncellenen
+    smm-panel-bayilik-nasil-yapilir yazısında; bu yazı aynı konuyu tekrar
+    etmesin diye "kurma / script" tarafına kaydırıldı.
 
  2) 4 KASIM -------------------------------------------------- BLOG (BAYİLİK)
     twitter-bayilik-paneli

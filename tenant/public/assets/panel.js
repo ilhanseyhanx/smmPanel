@@ -219,6 +219,15 @@
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
   }
 
+  // Deneme sonrasi site yalnizca bayinin kendi alan adinda acilir.
+  function hasActiveDomain() {
+    return Boolean(state.me?.tenant?.domains?.some(d => d.status === 'active'));
+  }
+
+  function timeLeft(sub) {
+    return sub.hours_left !== null && sub.hours_left < 48 ? `${sub.hours_left} saat` : `${sub.days_left} gün`;
+  }
+
   // Her sayfanin ustundeki durum seridi: yalnizca yapilacak bir sey varsa gorunur.
   function renderBillingBanner(sub) {
     const box = $('#pn-billing');
@@ -226,17 +235,22 @@
     const fee = money(sub.fee);
     const topUp = state.me?.top_up_url ? `<a class="sf-btn sf-btn-ghost sf-btn-sm" href="${escapeHtml(state.me.top_up_url)}" target="_blank" rel="noopener">Jet bakiyesi yükle</a>` : '';
     const pay = label => `<button type="button" class="sf-btn sf-btn-primary sf-btn-sm" data-sub-continue>${escapeHtml(label)}</button>`;
+    const connect = '<a class="sf-btn sf-btn-primary sf-btn-sm" href="/admin/domain" data-go="domain">Alan adını bağla</a>';
     let tone = 'info';
     let text = '';
     let actions = '';
     if (sub.plan_status === 'trial') {
-      if (sub.auto_renew) {
+      if (!hasActiveDomain()) {
+        text = `Ücretsiz deneme: ${timeLeft(sub)} kaldı. Devam etmek için önce kendi alan adını bağla, sonra ${fee}/ay ile devam et; deneme adresi deneme bitince kapanır.`;
+        actions = connect;
+        tone = sub.hours_left !== null && sub.hours_left <= 24 ? 'warn' : 'info';
+      } else if (sub.auto_renew) {
         text = `Deneme ${day(sub.trial_ends_at)} tarihinde bitiyor; ${fee} Jet bakiyenden alınacak.`;
         if (!sub.balance_enough) { tone = 'warn'; text += ' Bakiyen şu an yetersiz.'; actions = topUp; }
       } else {
-        text = `Ücretsiz deneme: ${sub.days_left} gün kaldı (${day(sub.trial_ends_at)}). Devam etmezsen deneme bitince site kapanır.`;
+        text = `Ücretsiz deneme: ${timeLeft(sub)} kaldı. Alan adın hazır; devam etmezsen deneme bitince site kapanır.`;
         actions = pay(`${fee}/ay ile devam et`);
-        tone = sub.days_left <= 2 ? 'warn' : 'info';
+        tone = sub.hours_left !== null && sub.hours_left <= 24 ? 'warn' : 'info';
       }
     } else if (sub.plan_status === 'active') {
       if (!sub.auto_renew) {
@@ -263,18 +277,63 @@
     box.innerHTML = `<span>${escapeHtml(text)}</span><span class="pn-billing-actions">${actions}</span>`;
   }
 
+  const PACKAGE_FEATURES = {
+    standart: ['Hazır site ve yönetim paneli', 'Jet servisleri %10 indirimli, fiyatı sen belirlersin', 'Jet dijital ürünleri', 'Kendi alan adın ve otomatik SSL', '10 tema, logo ve renk', 'Ödemeler doğrudan sana, müşteri API\'si'],
+    pro: ['Standart\'taki her şey', 'Kendi SMM sağlayıcılarını bağla', 'Blog yazıları', 'Satış sayfaları (SEO)', 'Kendi dijital ürünlerin', 'Jet servisleri Jet fiyatından itibaren satılır; en az 50 Jet servisi açık kalır']
+  };
+
+  function renderPackages(sub) {
+    const box = $('#pn-packages');
+    if (!sub.fees) { box.innerHTML = ''; return; }
+    box.innerHTML = ['standart', 'pro'].map(key => {
+      const current = sub.package === key;
+      const pending = sub.pending_package === key;
+      let action = '';
+      if (pending) action = `<span class="sf-badge sf-badge-pending">${day(sub.paid_until)} tarihinde geçilecek</span>`;
+      else if (current && sub.pending_package) action = `<button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-package-change="${key}">Pro'da kal</button>`;
+      else if (current) action = '<span class="sf-badge sf-badge-completed">Kullandığın paket</span>';
+      else if (sub.plan_status !== 'comp') action = `<button type="button" class="sf-btn sf-btn-primary sf-btn-sm" data-package-change="${key}">${key === 'pro' ? 'Pro\'ya geç' : 'Standart\'a geç'}</button>`;
+      return `<div class="sf-card pn-package${current ? ' is-current' : ''}">
+        <div class="pn-pay-head"><h3>${key === 'pro' ? 'Pro' : 'Standart'}</h3><strong>${money(sub.fees[key])}<small>/ay</small></strong></div>
+        <ul>${PACKAGE_FEATURES[key].map(item => `<li><i class="fa-solid fa-check" aria-hidden="true"></i> ${escapeHtml(item)}</li>`).join('')}</ul>
+        <div class="pn-row-actions" style="justify-content:flex-start;">${action}</div>
+      </div>`;
+    }).join('');
+  }
+
+  async function changePackage(pkg) {
+    const sub = state.subscription;
+    let message;
+    if (sub.plan_status === 'active' && pkg === 'pro' && sub.package !== 'pro') message = `Pro'ya hemen geçersin; bu dönemin kalan günlerinin farkı Jet bakiyenden alınır. Sonraki aylar ${money(sub.fees.pro)}.`;
+    else if (sub.plan_status === 'active' && pkg === 'standart') message = `Standart'a ${day(sub.paid_until)} tarihinde geçersin; o güne kadar Pro özellikleri açık kalır. Sonra kendi sağlayıcıların, blogun ve satış sayfaların sitende gizlenir.`;
+    else message = `${pkg === 'pro' ? 'Pro' : 'Standart'} paketine geçeceksin; aylık ücret ${money(sub.fees[pkg])} olur.`;
+    if (!(await confirmBox('Paket değişikliği', message, 'Onayla'))) return;
+    try {
+      toast((await api('/subscription/package', { method: 'POST', body: JSON.stringify({ package: pkg }) })).message);
+      await loadMe();
+      await loadSubscription();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
   async function loadSubscription() {
     const d = await api('/subscription');
     const sub = d.subscription;
+    state.subscription = sub;
+    renderPackages(sub);
     const [label, cls] = PLAN_LABEL[sub.plan_status] || PLAN_LABEL.trial;
-    const rows = [];
-    if (sub.plan_status === 'trial') rows.push(['Deneme bitişi', day(sub.trial_ends_at)], ['Kalan', `${sub.days_left} gün`]);
+    const rows = [['Paket', `${sub.package_name}${sub.pending_package ? ` (${day(sub.paid_until)} tarihinde Standart)` : ''}`]];
+    if (sub.plan_status !== 'comp') rows.push(['Kendi alan adı', d.has_domain ? 'Bağlı' : 'Bağlı değil (devam için gerekli)']);
+    if (sub.plan_status === 'trial') rows.push(['Deneme bitişi', day(sub.trial_ends_at)], ['Kalan', timeLeft(sub)]);
     if (sub.plan_status === 'active') rows.push(['Dönem sonu', day(sub.paid_until)], ['Otomatik yenileme', sub.auto_renew ? 'Açık' : 'Kapalı']);
     if (sub.plan_status === 'past_due') rows.push(['Son ödeme günü', day(sub.grace_ends_at)]);
     if (sub.plan_status === 'expired') rows.push(['Silinme tarihi', day(sub.delete_at)]);
     rows.push(['Aylık ücret', sub.plan_status === 'comp' ? 'Ücretsiz' : money(sub.fee)], ['Jet bakiyen', money(sub.owner_balance)]);
     let actions = '';
-    if (sub.plan_status === 'trial' || sub.plan_status === 'active') {
+    if (sub.plan_status !== 'comp' && !d.has_domain) {
+      actions = '<a class="sf-btn sf-btn-primary" href="/admin/domain" data-go="domain">Önce alan adını bağla</a>';
+    } else if (sub.plan_status === 'trial' || sub.plan_status === 'active') {
       actions = sub.auto_renew
         ? '<button type="button" class="sf-btn sf-btn-ghost" data-sub-cancel>Yenilemeyi kapat</button>'
         : `<button type="button" class="sf-btn sf-btn-primary" data-sub-continue>${money(sub.fee)}/ay ile devam et</button>`;
@@ -288,7 +347,7 @@
       ${actions ? `<div class="pn-row-actions pn-sub-actions">${actions}</div>` : ''}`;
     $('#pn-sub-rules').innerHTML = [
       `Aylık ücret ${money(sub.fee)}; Jet hesabının bakiyesinden alınır.`,
-      `İlk ${d.trial_days} gün ücretsiz. "Devam et" demezsen deneme bitince site kapanır.`,
+      `İlk ${d.trial_days} gün ücretsiz ve deneme adresinde açılır. Devam etmek için kendi alan adını bağlayıp "Devam et"e basarsın; deneme bitince site yalnızca kendi alan adında açılır.`,
       'Sonraki aylar kendiliğinden yenilenir; istediğin zaman yenilemeyi kapatabilirsin.',
       `Bakiye yetmezse ${d.grace_days} gün içinde yüklemen yeterli; ücret kendiliğinden alınır.`,
       `Askıya alınan site ${d.delete_after_days} gün sonra müşterileri ve ayarlarıyla silinir.`
@@ -507,6 +566,11 @@
     if (!state.services || force) state.services = await api('/services');
     const data = state.services;
     $('#pn-default-markup').value = data.default_markup_percent;
+    const proNote = $('#pn-svc-pro');
+    proNote.hidden = !data.pro;
+    if (data.pro && data.pro_minimum) {
+      proNote.textContent = `Pro paket: Jet servisleri Jet fiyatının altına satılamaz (kârın Jet fiyatının altında kalırsa fiyat Jet fiyatına çıkar). En az ${data.pro_minimum.required} Jet servisi satışta kalmalı; şu an ${data.pro_minimum.enabled} açık.`;
+    }
     const cat = $('#pn-svc-category');
     const current = cat.value;
     cat.innerHTML = '<option value="">Tüm kategoriler</option>' + data.categories.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
@@ -549,7 +613,7 @@
         <td>#${s.id}</td>
         <td><strong>${escapeHtml(s.custom_name || s.name)}</strong>${s.custom_name ? `<span class="pn-sub">${escapeHtml(s.name)}</span>` : ''}<span class="pn-sub">${num(s.min)} - ${num(s.max)}${s.refill ? ' · garantili' : ''}</span></td>
         <td class="pn-num">${money(s.cost)} <span class="pn-sub">${unitLabel(s)}</span></td>
-        <td class="pn-num">${money(s.price)} <span class="pn-sub">${mode}</span></td>
+        <td class="pn-num">${money(s.price)} <span class="pn-sub">${mode}${state.services.pro ? ` · taban ${money(s.jet_price)}` : ''}</span></td>
         <td>${profitCell(profit)}</td>
         <td>${status}</td>
         <td><button type="button" class="sf-btn sf-btn-ghost sf-btn-sm" data-svc-edit="${s.id}">Düzenle</button></td>
@@ -573,7 +637,7 @@
     const mode = s.fixed_price !== null ? 'fixed' : (s.markup_percent !== null ? 'markup' : 'default');
     openModal(`#${s.id} · ${s.name}`, `
       <form class="sf-form" id="pn-svc-form" novalidate>
-        <div class="pn-preview">Maliyetiniz: <strong>${money(s.cost)}</strong> ${unitLabel(s)}</div>
+        <div class="pn-preview">Maliyetiniz: <strong>${money(s.cost)}</strong> ${unitLabel(s)}${state.services.pro ? ` · Jet fiyatı (en düşük satış): <strong>${money(s.jet_price)}</strong>` : ''}</div>
         <label>Sitede görünecek ad <small>(boş bırakırsanız orijinal ad)</small><input name="custom_name" class="sf-input" maxlength="160" value="${escapeHtml(s.custom_name || '')}" placeholder="${escapeHtml(s.name)}"></label>
         <div class="pn-radio-group">
           <label class="pn-radio"><input type="radio" name="mode" value="default" ${mode === 'default' ? 'checked' : ''}> Varsayılan kâr (%${state.services.default_markup_percent})</label>
@@ -595,6 +659,8 @@
       let price;
       if (m === 'fixed') price = Number(form.fixed.value) || 0;
       else price = Math.ceil(s.cost * 100 * (100 + (m === 'markup' ? Number(form.markup.value) || 0 : state.services.default_markup_percent)) / 100) / 100;
+      // Pro: Jet servisleri Jet fiyatinin altina satilamaz.
+      if (state.services.pro && m !== 'fixed') price = Math.max(price, s.jet_price);
       const profit = price - s.cost;
       $('#pn-svc-preview').innerHTML = `Müşterinin göreceği fiyat: <strong>${money(price)}</strong> ${unitLabel(s)} · kârınız <span class="${profit >= 0 ? 'pn-profit-pos' : 'pn-profit-neg'}">${money(profit)}</span>`;
     };
@@ -849,7 +915,7 @@
     const mode = p.mode === 'fixed' ? 'fixed' : (p.mode === 'custom' ? 'markup' : 'default');
     openModal(p.name, `
       <form class="sf-form" id="pn-dg-form" novalidate>
-        <div class="pn-preview">Alışınız: <strong>${money(p.cost)}</strong> / adet</div>
+        <div class="pn-preview">Alışınız: <strong>${money(p.cost)}</strong> / adet${d.pro ? ` · Jet fiyatı (en düşük satış): <strong>${money(p.jet_price)}</strong>` : ''}</div>
         ${p.below_cost ? '<p class="pn-alert pn-alert-warn" style="margin:0;">Bu ürünün sağlayıcı maliyeti şu an alış fiyatınızın üzerinde; fiyat düşene kadar sitenizde gizli kalır.</p>' : ''}
         <div class="pn-radio-group">
           <label class="pn-radio"><input type="radio" name="mode" value="default" ${mode === 'default' ? 'checked' : ''}> Varsayılan kâr (%${d.markup_percent})</label>
@@ -869,7 +935,8 @@
       $('#pn-dg-markup-label').hidden = m !== 'markup';
       $('#pn-dg-fixed-label').hidden = m !== 'fixed';
       const rate = m === 'markup' ? Number(form.markup.value) || 0 : d.markup_percent;
-      const price = m === 'fixed' ? Number(form.fixed.value) || 0 : Math.round(p.cost * 100 * (100 + rate) / 100) / 100;
+      let price = m === 'fixed' ? Number(form.fixed.value) || 0 : Math.round(p.cost * 100 * (100 + rate) / 100) / 100;
+      if (d.pro && m !== 'fixed') price = Math.max(price, p.jet_price);
       const profit = price - p.cost;
       $('#pn-dg-preview').innerHTML = `Müşterinin göreceği fiyat: <strong>${money(price)}</strong> / adet · kârınız <span class="${profit >= 0 ? 'pn-profit-pos' : 'pn-profit-neg'}">${money(profit)}</span>`;
     };
@@ -1348,6 +1415,7 @@
     api_key_created: 'Müşteri API anahtarı oluşturdu',
     password_reset_requested: 'Müşteri şifre sıfırlama istedi',
     password_reset_done: 'Müşteri şifresini değiştirdi',
+    package_changed: 'Paket değişti',
     digital_order: 'Dijital ürün satıldı',
     digital_settings_changed: 'Dijital ürün ayarı değişti',
     digital_price_changed: 'Dijital ürün fiyatı değişti'
@@ -1557,6 +1625,8 @@
       const themeUse = t.closest('[data-theme-use]');
       if (themeUse) { useTheme(themeUse.dataset.themeUse); return; }
       if (t.closest('[data-sub-cancel]')) { subscriptionAction('cancel'); return; }
+      const pkgBtn = t.closest('[data-package-change]');
+      if (pkgBtn) { changePackage(pkgBtn.dataset.packageChange); return; }
       const pageEdit = t.closest('[data-page-edit]');
       if (pageEdit) { editPage(pageEdit.dataset.pageEdit); return; }
       const pageReset = t.closest('[data-page-reset]');

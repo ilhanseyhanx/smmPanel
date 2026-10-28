@@ -19,6 +19,8 @@ const SETTING_KEYS = {
   applications_open: 'reseller_applications_open',
   default_markup_percent: 'reseller_default_markup_percent',
   monthly_fee_tl: 'reseller_monthly_fee_tl',
+  monthly_fee_pro_tl: 'reseller_monthly_fee_pro_tl',
+  pro_min_jet_services: 'reseller_pro_min_jet_services',
   trial_days: 'reseller_trial_days',
   grace_days: 'reseller_grace_days',
   delete_after_days: 'reseller_delete_after_days'
@@ -33,13 +35,36 @@ const DEFAULT_SETTINGS = Object.freeze({
   min_deposit_tl: 500,
   applications_open: true,
   default_markup_percent: 30,
-  // Abonelik (27 Eki 2026 karari): duz 599 TL/ay, 7 gun deneme, 7 gun gecikme
-  // payi, askidan 30 gun sonra silme.
+  // Abonelik (28 Eki 2026 karari): iki paket (Standart 599, Pro 999 TL/ay),
+  // jetsmmpanel.com alt adresinde 2 gun deneme, sonra kendi alan adi zorunlu;
+  // 7 gun gecikme payi, askidan 30 gun sonra silme. Pro'da en az 50 Jet
+  // servisi satista kalir ve Jet servisleri Jet fiyatinin altina satilamaz.
   monthly_fee_tl: 599,
-  trial_days: 7,
+  monthly_fee_pro_tl: 999,
+  pro_min_jet_services: 50,
+  trial_days: 2,
   grace_days: 7,
   delete_after_days: 30
 });
+
+// Paketler: tenants.package. Pro'nun ekstralari (kendi saglayicilari, blog,
+// satis sayfalari, kendi dijital urunleri) isProTenant ile acilir.
+const PACKAGES = Object.freeze({
+  standart: { key: 'standart', name: 'Standart', feeKey: 'monthly_fee_tl' },
+  pro: { key: 'pro', name: 'Pro', feeKey: 'monthly_fee_pro_tl' }
+});
+
+function packageOf(tenant) {
+  return tenant?.package === 'pro' ? 'pro' : 'standart';
+}
+
+function isProTenant(tenant) {
+  return packageOf(tenant) === 'pro';
+}
+
+function packageFeeTl(settings, pkg) {
+  return Number(settings[PACKAGES[pkg === 'pro' ? 'pro' : 'standart'].feeKey]) || 0;
+}
 
 function clampInt(value, fallback, min, max) {
   const n = Math.round(Number(value));
@@ -79,6 +104,8 @@ async function getResellerSettings() {
       : raw[SETTING_KEYS.applications_open] === '1',
     default_markup_percent: toPercent(raw[SETTING_KEYS.default_markup_percent], DEFAULT_SETTINGS.default_markup_percent),
     monthly_fee_tl: toPercent(raw[SETTING_KEYS.monthly_fee_tl], DEFAULT_SETTINGS.monthly_fee_tl),
+    monthly_fee_pro_tl: toPercent(raw[SETTING_KEYS.monthly_fee_pro_tl], DEFAULT_SETTINGS.monthly_fee_pro_tl),
+    pro_min_jet_services: raw[SETTING_KEYS.pro_min_jet_services] === undefined ? DEFAULT_SETTINGS.pro_min_jet_services : clampInt(raw[SETTING_KEYS.pro_min_jet_services], DEFAULT_SETTINGS.pro_min_jet_services, 0, 10000),
     trial_days: raw[SETTING_KEYS.trial_days] === undefined ? DEFAULT_SETTINGS.trial_days : clampInt(raw[SETTING_KEYS.trial_days], DEFAULT_SETTINGS.trial_days, 0, 60),
     grace_days: raw[SETTING_KEYS.grace_days] === undefined ? DEFAULT_SETTINGS.grace_days : clampInt(raw[SETTING_KEYS.grace_days], DEFAULT_SETTINGS.grace_days, 0, 60),
     delete_after_days: raw[SETTING_KEYS.delete_after_days] === undefined ? DEFAULT_SETTINGS.delete_after_days : clampInt(raw[SETTING_KEYS.delete_after_days], DEFAULT_SETTINGS.delete_after_days, 7, 365)
@@ -96,7 +123,7 @@ async function saveResellerSettings(values) {
     [SETTING_KEYS.default_markup_percent]: String(values.default_markup_percent)
   };
   // Abonelik alanlari istege bagli: eski admin ekrani gondermese de korunur.
-  for (const key of ['monthly_fee_tl', 'trial_days', 'grace_days', 'delete_after_days']) {
+  for (const key of ['monthly_fee_tl', 'monthly_fee_pro_tl', 'pro_min_jet_services', 'trial_days', 'grace_days', 'delete_after_days']) {
     if (values[key] !== undefined && values[key] !== null) entries[SETTING_KEYS[key]] = String(values[key]);
   }
   if (values.min_deposit_tl === undefined || values.min_deposit_tl === null) delete entries[SETTING_KEYS.min_deposit_tl];
@@ -123,17 +150,35 @@ function resellerCostRate(serviceRateKurus, discountPercent) {
 }
 
 // priceRow: tenant_service_prices satiri (yoksa null).
-// Donus: { rateKurus, costKurus, belowCost, mode, markupPercent }
-function sellRate({ costKurus, priceRow, tenant, settings }) {
+// floorKurus: Pro pakette Jet'in kendi satis fiyati; bayi bunun altina satamaz.
+// Donus: { rateKurus, costKurus, belowCost, mode, markupPercent, floorKurus }
+function sellRate({ costKurus, priceRow, tenant, settings, floorKurus = 0 }) {
+  const floor = Math.max(0, Number(floorKurus) || 0);
   if (priceRow && priceRow.fixed_rate_kurus !== null && priceRow.fixed_rate_kurus !== undefined) {
-    const fixed = Number(priceRow.fixed_rate_kurus);
-    return { rateKurus: fixed, costKurus, belowCost: fixed < costKurus, mode: 'fixed', markupPercent: null };
+    const fixed = Math.max(Number(priceRow.fixed_rate_kurus), floor);
+    return { rateKurus: fixed, costKurus, belowCost: fixed < costKurus, mode: 'fixed', markupPercent: null, floorKurus: floor };
   }
   const markup = [priceRow?.markup_percent, tenant?.default_markup_percent, settings.default_markup_percent]
     .find(value => value !== null && value !== undefined);
   const markupPercent = toPercent(markup, DEFAULT_SETTINGS.default_markup_percent);
-  const rateKurus = Math.ceil(costKurus * (100 + markupPercent) / 100);
-  return { rateKurus, costKurus, belowCost: false, mode: 'markup', markupPercent };
+  const rateKurus = Math.max(Math.ceil(costKurus * (100 + markupPercent) / 100), floor);
+  return { rateKurus, costKurus, belowCost: false, mode: 'markup', markupPercent, floorKurus: floor };
+}
+
+// Pro'da satista kalmasi gereken en az Jet servisi; Jet'te daha az servis
+// varsa hepsi.
+async function jetServiceCounts(tenantId) {
+  const row = await dbAsync.get(
+    `SELECT COUNT(*) AS total,
+            SUM(CASE WHEN tp.enabled = 0 THEN 0 ELSE 1 END) AS enabled
+       FROM services s LEFT JOIN tenant_service_prices tp ON tp.service_id = s.id AND tp.tenant_id = ?
+      WHERE s.status = 1 AND s.is_bundle = 0`, [tenantId]);
+  return { total: row.total || 0, enabled: row.enabled || 0 };
+}
+
+async function proMinimum(tenantId, settings) {
+  const counts = await jetServiceCounts(tenantId);
+  return { ...counts, required: Math.min(settings.pro_min_jet_services, counts.total) };
 }
 
 // Bayinin musterisine gosterilecek katalog. Kapali, maliyetin altina dusmus
@@ -159,7 +204,7 @@ async function tenantCatalog(tenant, { includeHidden = false } = {}) {
     const baseRateKurus = serviceRateKurus(row);
     const costKurus = resellerCostRate(baseRateKurus, discount);
     const priceRow = row.enabled === null || row.enabled === undefined ? null : row;
-    const price = sellRate({ costKurus, priceRow, tenant, settings });
+    const price = sellRate({ costKurus, priceRow, tenant, settings, floorKurus: isProTenant(tenant) ? baseRateKurus : 0 });
     const enabled = priceRow ? Number(priceRow.enabled) === 1 : true;
     const visible = enabled && !price.belowCost && price.rateKurus > 0;
     if (!visible && !includeHidden) continue;
@@ -181,7 +226,7 @@ async function tenantPriceForService(tenant, serviceId) {
   const discountPercent = effectiveDiscountPercent(tenant, settings);
   const costKurus = resellerCostRate(serviceRateKurus(row), discountPercent);
   const priceRow = row.enabled === null || row.enabled === undefined ? null : row;
-  const price = sellRate({ costKurus, priceRow, tenant, settings });
+  const price = sellRate({ costKurus, priceRow, tenant, settings, floorKurus: isProTenant(tenant) ? serviceRateKurus(row) : 0 });
   const enabled = priceRow ? Number(priceRow.enabled) === 1 : true;
   return { ...price, enabled, discountPercent, available: enabled && !price.belowCost && price.rateKurus > 0 };
 }
@@ -288,6 +333,12 @@ function validateSlug(value) {
 
 module.exports = {
   DEFAULT_SETTINGS,
+  PACKAGES,
+  packageOf,
+  isProTenant,
+  packageFeeTl,
+  jetServiceCounts,
+  proMinimum,
   getResellerSettings,
   saveResellerSettings,
   effectiveDiscountPercent,

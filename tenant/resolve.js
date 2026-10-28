@@ -45,33 +45,50 @@ function mainHosts() {
   return hosts;
 }
 
+// Yeni bayilerin deneme adresi TENANT_BASE_DOMAIN altindadir (slug.taban);
+// TENANT_LEGACY_BASE_DOMAINS (virgulle) eski taban adlarinin da calismaya
+// devam etmesini saglar.
 function baseDomain() {
   return normalizeHost(process.env.TENANT_BASE_DOMAIN || '');
+}
+
+function baseDomains() {
+  const list = [baseDomain(), ...String(process.env.TENANT_LEGACY_BASE_DOMAINS || '').split(',').map(normalizeHost)];
+  return [...new Set(list.filter(Boolean))];
 }
 
 function isMainHost(host) {
   return mainHosts().has(host);
 }
 
-const TENANT_COLUMNS = `t.id, t.owner_user_id, t.slug, t.name, t.theme, t.status, t.status_reason,
+const TENANT_COLUMNS = `t.id, t.owner_user_id, t.slug, t.name, t.theme, t.status, t.status_reason, t.package, t.plan_status,
   t.discount_percent, t.default_markup_percent, t.settings_json`;
 
+// Bayinin aktif ozel alan adi (deneme sonrasi site yalnizca orada acilir).
+async function primaryDomain(tenantId) {
+  const row = await dbAsync.get("SELECT domain FROM tenant_domains WHERE tenant_id = ? AND status = 'active' ORDER BY id LIMIT 1", [tenantId]);
+  return row ? row.domain : null;
+}
+
+// Donen bayi nesnesinde via: 'base' (slug.taban) | 'custom' (kendi alan adi).
 async function lookup(host) {
-  const base = baseDomain();
-  if (base && host.endsWith(`.${base}`)) {
+  const base = baseDomains().find(name => host.endsWith(`.${name}`));
+  if (base) {
     const slug = host.slice(0, -(base.length + 1));
     if (!slug || slug.includes('.')) return null;
     // demo-<site>: demo bayinin o temali kopyasi (tenant/demo.js).
     const demoKey = demo.demoKeyOfSlug(slug);
     const row = await dbAsync.get(`SELECT ${TENANT_COLUMNS} FROM tenants t WHERE t.slug = ?`, [demoKey ? demo.DEMO_SLUG : slug]);
-    if (demoKey) return row ? demo.demoVariant(row, demoKey) : null;
-    return row || null;
+    if (!row) return null;
+    const tenant = demoKey ? demo.demoVariant(row, demoKey) : row;
+    return tenant ? { ...tenant, via: 'base', primary_domain: demoKey ? null : await primaryDomain(row.id) } : null;
   }
-  return (await dbAsync.get(
+  const row = await dbAsync.get(
     `SELECT ${TENANT_COLUMNS} FROM tenant_domains d JOIN tenants t ON t.id = d.tenant_id
       WHERE d.domain = ? AND d.status = 'active'`,
     [host]
-  )) || null;
+  );
+  return row ? { ...row, via: 'custom' } : null;
 }
 
 async function tenantForHost(rawHost) {
@@ -107,6 +124,7 @@ function tenantSettings(tenant) {
 module.exports = {
   normalizeHost,
   baseDomain,
+  baseDomains,
   isMainHost,
   tenantForHost,
   invalidateTenantCache,

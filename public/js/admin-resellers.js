@@ -36,6 +36,8 @@ Object.assign(SmmApp.prototype, {
     const set = (id, value) => { const el = document.getElementById(id); if (el) el.value = value; };
     set('reseller-setting-discount', settings.discount_percent);
     set('reseller-setting-fee', settings.monthly_fee_tl);
+    set('reseller-setting-fee-pro', settings.monthly_fee_pro_tl);
+    set('reseller-setting-pro-min', settings.pro_min_jet_services);
     set('reseller-setting-trial', settings.trial_days);
     set('reseller-setting-grace', settings.grace_days);
     set('reseller-setting-delete', settings.delete_after_days);
@@ -154,7 +156,7 @@ Object.assign(SmmApp.prototype, {
       const st = this.resellerStatusInfo(t.status);
       const lowBalance = t.owner && t.owner.balance < 50;
       return `<tr>
-        <td><a href="#" onclick="app.openAdminResellerDetail(${t.id}); return false;"><strong>${esc(t.name)}</strong></a>${t.is_demo ? ' <span class="badge badge-processing">Demo</span>' : ''}<small style="display:block;color:var(--text-dim);">#${t.id} · ${this.fmtDbDateTime(t.created_at)}</small></td>
+        <td><a href="#" onclick="app.openAdminResellerDetail(${t.id}); return false;"><strong>${esc(t.name)}</strong></a>${t.is_demo ? ' <span class="badge badge-processing">Demo</span>' : ''}${t.package === 'pro' ? ' <span class="badge badge-completed">Pro</span>' : ''}<small style="display:block;color:var(--text-dim);">#${t.id} · ${this.fmtDbDateTime(t.created_at)}</small></td>
         <td>${t.owner ? `<a href="#" onclick="app.openUserFromReseller(${t.owner.id}); return false;">${esc(t.owner.username)}</a>${t.owner.banned ? ' <span class="badge badge-canceled">Banlı</span>' : ''}` : '—'}</td>
         <td style="font-size:.85rem;">${this.resellerAddressesHtml(t)}</td>
         <td><span class="badge ${st.badge}"><i class="fa-solid ${st.icon}"></i> ${st.label}</span></td>
@@ -180,6 +182,8 @@ Object.assign(SmmApp.prototype, {
       public_page_enabled: Boolean(document.getElementById('reseller-setting-public')?.checked),
       discount_percent: num('reseller-setting-discount'),
       monthly_fee_tl: num('reseller-setting-fee'),
+      monthly_fee_pro_tl: num('reseller-setting-fee-pro'),
+      pro_min_jet_services: num('reseller-setting-pro-min'),
       trial_days: num('reseller-setting-trial'),
       grace_days: num('reseller-setting-grace'),
       delete_after_days: num('reseller-setting-delete'),
@@ -287,6 +291,7 @@ Object.assign(SmmApp.prototype, {
       badge(`${plan.label}${plan.note ? ` · ${esc(plan.note)}` : ''}`, plan.badge, 'fa-calendar-check'),
       badge(`İndirim %${t.effective_discount_percent}${ownDiscount ? ' (özel)' : ' (genel)'}`, ownDiscount ? 'badge-processing' : 'badge-completed', 'fa-percent'),
       badge(`Kâr %${t.default_markup_percent}`, 'badge-completed', 'fa-arrow-trend-up'),
+      badge(`Paket: ${t.package === 'pro' ? 'Pro' : 'Standart'}${t.pending_package ? ' (dönem sonunda Standart)' : ''}`, t.package === 'pro' ? 'badge-completed' : 'badge-pending', 'fa-box'),
       badge(`Tema: ${esc(t.theme)}`, 'badge-pending', 'fa-palette'),
       st.below_cost_services ? badge(`${st.below_cost_services} servis zararına (gizli)`, 'badge-canceled', 'fa-triangle-exclamation') : ''
     ].filter(Boolean).join(' ');
@@ -301,6 +306,7 @@ Object.assign(SmmApp.prototype, {
       <button class="btn btn-outline btn-sm" onclick="app.editResellerField('default_markup_percent')"><i class="fa-solid fa-arrow-trend-up"></i> Kâr</button>
       <button class="btn btn-outline btn-sm" onclick="app.addResellerDomain()"><i class="fa-solid fa-globe"></i> Alan Adı Ekle</button>
       <button class="btn btn-outline btn-sm" onclick="app.changeResellerSubscription()"><i class="fa-solid fa-calendar-plus"></i> Abonelik</button>
+      <button class="btn btn-outline btn-sm" onclick="app.toggleResellerPackage()"><i class="fa-solid fa-box"></i> ${t.package === 'pro' ? 'Standart\x27a al' : 'Pro\x27ya al'}</button>
       ${t.settings?.demo ? '' : '<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="app.deleteReseller()"><i class="fa-solid fa-trash"></i> Sil</button>'}`;
 
     const info = (label, value) => `
@@ -563,6 +569,24 @@ Object.assign(SmmApp.prototype, {
       const res = await API.setAdminResellerStatus(id, status, reason);
       showToast(res.message, 'success');
       await this.refreshAdminResellerDetail();
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'error');
+    }
+  },
+
+  // Admin paketi elle degistirir (ucret farki alinmaz, bekleyen inis silinir).
+  async toggleResellerPackage() {
+    const id = this.adminResellerDetailId;
+    const t = this.adminResellerDetailData?.tenant;
+    if (!id || !t) return;
+    const next = t.package === 'pro' ? 'standart' : 'pro';
+    const ok = await confirmDialog(`"${t.name}" ${next === 'pro' ? 'Pro' : 'Standart'} pakete alınacak. Ücret farkı alınmaz; sonraki dönem yeni paketin ücreti uygulanır.`,
+      { title: 'Paketi değiştir', icon: 'fa-box', confirmText: 'Değiştir' });
+    if (!ok) return;
+    try {
+      const res = await API.updateAdminReseller(id, { package: next });
+      showToast(res.message, 'success');
+      await this.openAdminResellerDetail(id);
     } catch (err) {
       showToast(`Hata: ${err.message}`, 'error');
     }

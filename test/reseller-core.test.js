@@ -104,12 +104,12 @@ test.beforeEach(() => { giden.length = 0; saglayiciKabul = true; });
 // Ayarlar ve basvuru
 // ---------------------------------------------------------------------------
 
-test('varsayılan bayilik ayarları: sayfa kapalı, %10 indirim, %30 kâr, 599 TL/ay, 7 gün deneme', async () => {
+test('varsayılan bayilik ayarları: sayfa kapalı, %10 indirim, %30 kâr, Standart 599 / Pro 999 TL, 2 gün deneme', async () => {
   const res = await admin.get('/api/admin/resellers/settings');
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.deepEqual(res.body.settings, {
     public_page_enabled: false, discount_percent: 10, min_deposit_tl: 500, applications_open: true, default_markup_percent: 30,
-    monthly_fee_tl: 599, trial_days: 7, grace_days: 7, delete_after_days: 30
+    monthly_fee_tl: 599, monthly_fee_pro_tl: 999, pro_min_jet_services: 50, trial_days: 2, grace_days: 7, delete_after_days: 30
   });
 });
 
@@ -150,10 +150,11 @@ test('ayar kaydında sayfa anahtarı gönderilmezse mevcut değer korunur', asyn
   const program = await request(app).get('/api/reseller/program');
   assert.equal(program.body.enabled, true);
   assert.equal(program.body.monthly_fee, 599);
-  assert.equal(program.body.trial_days, 7);
+  assert.deepEqual(program.body.packages.map(p => [p.key, p.fee]), [['standart', 599], ['pro', 999]]);
+  assert.equal(program.body.trial_days, 2);
 });
 
-test('bayilik başvurusu: yükleme şartı yok, panel açılır ve 7 günlük deneme başlar', async () => {
+test('bayilik başvurusu: yükleme şartı yok, panel açılır ve 2 günlük deneme başlar', async () => {
   const sahip = await jetKullanici('bayi_sahibi');
   sahipId = sahip.id;
   const agent = request.agent(app);
@@ -163,7 +164,7 @@ test('bayilik başvurusu: yükleme şartı yok, panel açılır ve 7 günlük de
   assert.equal(durum.status, 200);
   assert.equal(durum.body.tenant, null);
   assert.equal(durum.body.monthly_fee, 599);
-  assert.equal(durum.body.trial_days, 7);
+  assert.equal(durum.body.trial_days, 2);
   // Yukleme artik sart degil; admin detayinda gercek yukleme olarak gorunur.
   await dbAsync.run(
     "INSERT INTO payments (user_id, amount, amount_kurus, method, status, transaction_id) VALUES (?, 500, 50000, 'Shopier', 'completed', 'S1')",
@@ -179,7 +180,8 @@ test('bayilik başvurusu: yükleme şartı yok, panel açılır ve 7 günlük de
   assert.equal(ok.body.tenant.address, 'kanka.bayi.test');
   assert.equal(ok.body.tenant.subscription.plan_status, 'trial');
   assert.equal(ok.body.tenant.subscription.auto_renew, false);
-  assert.ok(ok.body.tenant.subscription.days_left >= 6 && ok.body.tenant.subscription.days_left <= 7);
+  assert.ok(ok.body.tenant.subscription.days_left >= 1 && ok.body.tenant.subscription.days_left <= 2);
+  assert.equal(ok.body.tenant.package, 'standart');
   tenantId = ok.body.tenant.id;
 
   assert.equal((await agent.post('/api/reseller/apply').send({ name: 'İkinci', slug: 'ikinci' })).status, 409);

@@ -1,8 +1,9 @@
 'use strict';
 
-// Jet kullanicisinin bayilik durumu ve basvurusu (27 Eki 2026 modeli):
-// basvuru aninda panel acilir ve ucretsiz deneme baslar (varsayilan 7 gun);
-// sonra aylik ucret (varsayilan 599 TL) Jet bakiyesinden alinir. Ayrintilar
+// Jet kullanicisinin bayilik durumu ve basvurusu (28 Eki 2026 modeli):
+// basvuruda paket secilir (Standart / Pro), panel aninda slug.jetsmmpanel.com
+// adresinde acilir ve ucretsiz deneme baslar (varsayilan 2 gun); devam icin
+// kendi alan adi baglanir ve aylik ucret Jet bakiyesinden alinir. Ayrintilar
 // services/resellerBilling.js'te.
 const express = require('express');
 const { z } = require('zod');
@@ -12,7 +13,7 @@ const { validate } = require('../middleware/validate');
 const { normalizePlainText } = require('../utils/security');
 const { fromKurus } = require('../utils/money');
 const {
-  getResellerSettings, validateSlug, logTenantActivity
+  getResellerSettings, validateSlug, logTenantActivity, PACKAGES, packageFeeTl
 } = require('../services/resellers');
 const billing = require('../services/resellerBilling');
 const { baseDomain, invalidateTenantCache } = require('../tenant/resolve');
@@ -29,6 +30,7 @@ router.get('/program', async (req, res, next) => {
       enabled: true,
       applications_open: settings.applications_open,
       monthly_fee: settings.monthly_fee_tl,
+      packages: packageList(settings),
       trial_days: settings.trial_days,
       discount_percent: settings.discount_percent
     });
@@ -43,8 +45,13 @@ function programClosed(res) {
 
 const applySchema = z.object({
   name: z.string().trim().min(2).max(60),
-  slug: z.string().trim().min(3).max(30)
+  slug: z.string().trim().min(3).max(30),
+  package: z.enum(['standart', 'pro']).optional().default('standart')
 });
+
+function packageList(settings) {
+  return Object.values(PACKAGES).map(p => ({ key: p.key, name: p.name, fee: packageFeeTl(settings, p.key) }));
+}
 
 function tenantSummary(tenant, settings, ownerBalanceKurus) {
   const base = baseDomain();
@@ -57,6 +64,7 @@ function tenantSummary(tenant, settings, ownerBalanceKurus) {
     status: tenant.status,
     theme: tenant.theme,
     address: base ? `${tenant.slug}.${base}` : null,
+    package: tenant.package === 'pro' ? 'pro' : 'standart',
     created_at: tenant.created_at
   };
 }
@@ -73,6 +81,7 @@ router.get('/me', async (req, res, next) => {
       program_enabled: settings.public_page_enabled,
       applications_open: settings.applications_open,
       monthly_fee: settings.monthly_fee_tl,
+      packages: packageList(settings),
       trial_days: settings.trial_days,
       discount_percent: settings.discount_percent,
       balance: fromKurus(req.user.balance_kurus || 0),
@@ -112,17 +121,17 @@ router.post('/apply', validate(applySchema), async (req, res, next) => {
 
     const trial = await billing.trialFields();
     const created = await dbAsync.run(
-      'INSERT INTO tenants (owner_user_id, slug, name, default_markup_percent, plan_status, trial_ends_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [req.user.id, slugCheck.slug, name, settings.default_markup_percent, trial.plan_status, trial.trial_ends_at]
+      'INSERT INTO tenants (owner_user_id, slug, name, default_markup_percent, plan_status, trial_ends_at, package) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [req.user.id, slugCheck.slug, name, settings.default_markup_percent, trial.plan_status, trial.trial_ends_at, req.body.package]
     );
     await logTenantActivity(dbAsync, {
       tenantId: created.id, actorType: 'owner', actorId: req.user.id, action: 'tenant_created',
-      details: { name, slug: slugCheck.slug, trial_ends_at: trial.trial_ends_at }, ip: req.ip
+      details: { name, slug: slugCheck.slug, package: req.body.package, trial_ends_at: trial.trial_ends_at }, ip: req.ip
     });
     invalidateTenantCache();
     const tenant = await dbAsync.get('SELECT * FROM tenants WHERE id = ?', [created.id]);
     res.status(201).json({
-      message: `Bayi panelin açıldı. ${settings.trial_days} günlük ücretsiz deneme başladı.`,
+      message: `${PACKAGES[req.body.package].name} bayi panelin açıldı. ${settings.trial_days} günlük ücretsiz deneme başladı; devam etmek için deneme bitmeden kendi alan adını bağla.`,
       tenant: tenantSummary(tenant, settings, req.user.balance_kurus)
     });
   } catch (err) { next(err); }

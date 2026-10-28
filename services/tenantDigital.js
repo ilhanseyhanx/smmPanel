@@ -8,7 +8,7 @@
 // Saglayici maliyeti bayinin alis fiyatina ulasan urun bayide gizlenir
 // (Jet zararina satmaz).
 const { dbAsync } = require('../config/database');
-const { getResellerSettings, effectiveDiscountPercent, resellerCostRate } = require('./resellers');
+const { getResellerSettings, effectiveDiscountPercent, resellerCostRate, isProTenant } = require('./resellers');
 const { tenantSettings } = require('../tenant/resolve');
 const digitalStore = require('./digitalStore');
 const { fromKurus } = require('../utils/money');
@@ -24,14 +24,16 @@ function digitalSettings(tenant) {
   };
 }
 
-function priceFor(priceKurus, row, discountPercent, defaultMarkup) {
+// floorKurus: Pro pakette Jet'in satis fiyati (altina satilamaz).
+function priceFor(priceKurus, row, discountPercent, defaultMarkup, floorKurus = 0) {
   const costKurus = resellerCostRate(priceKurus, discountPercent);
+  const floor = Math.max(costKurus, Number(floorKurus) || 0);
   if (row?.fixed_price_kurus) {
-    return { costKurus, sellKurus: Math.max(costKurus, Number(row.fixed_price_kurus)), mode: 'fixed', markupPercent: null };
+    return { costKurus, sellKurus: Math.max(floor, Number(row.fixed_price_kurus)), mode: 'fixed', markupPercent: null, floorKurus: floorKurus || 0 };
   }
   const custom = row?.markup_percent !== null && row?.markup_percent !== undefined;
   const markupPercent = custom ? Number(row.markup_percent) : defaultMarkup;
-  return { costKurus, sellKurus: Math.max(costKurus, Math.round(costKurus * (100 + markupPercent) / 100)), mode: custom ? 'custom' : 'default', markupPercent };
+  return { costKurus, sellKurus: Math.max(floor, Math.round(costKurus * (100 + markupPercent) / 100)), mode: custom ? 'custom' : 'default', markupPercent, floorKurus: floorKurus || 0 };
 }
 
 /**
@@ -54,7 +56,7 @@ async function tenantDigitalCatalog(tenant, { includeHidden = false } = {}) {
   );
   const out = [];
   for (const p of rows) {
-    const price = priceFor(p.price_kurus, { markup_percent: p.t_markup, fixed_price_kurus: p.t_fixed }, discount, ds.markupPercent);
+    const price = priceFor(p.price_kurus, { markup_percent: p.t_markup, fixed_price_kurus: p.t_fixed }, discount, ds.markupPercent, isProTenant(tenant) ? p.price_kurus : 0);
     const providerCost = await digitalStore.costKurusOf(p.cost_rate, p.cost_currency).catch(() => 0);
     const belowCost = providerCost > 0 && providerCost >= price.costKurus;
     const enabled = p.t_enabled === null || p.t_enabled === undefined ? true : Boolean(p.t_enabled);

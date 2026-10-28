@@ -14,7 +14,7 @@ const { normalizePlainText, decryptSecret } = require('../utils/security');
 const { fromKurus, toKurus } = require('../utils/money');
 const securityMonitor = require('../services/securityMonitor');
 const {
-  getResellerSettings, effectiveDiscountPercent, tenantCatalog, logTenantActivity, changeCustomerBalance
+  getResellerSettings, effectiveDiscountPercent, tenantCatalog, logTenantActivity, changeCustomerBalance, isProTenant, proMinimum
 } = require('../services/resellers');
 const {
   METHODS: PAYMENT_METHODS, loadMethods, saveMethod, completePayment, closePayment, publicPayment
@@ -178,6 +178,7 @@ router.get('/me', async (req, res, next) => {
       tenant: {
         name: req.tenant.name,
         slug: req.tenant.slug,
+        package: req.tenant.package === 'pro' ? 'pro' : 'standart',
         status: req.tenant.status,
         status_reason: req.tenant.status_reason,
         discount_percent: effectiveDiscountPercent(req.tenant, settings),
@@ -275,6 +276,7 @@ router.get('/services', async (req, res, next) => {
         max: row.max_quantity,
         refill: Number(row.refill) === 1,
         cost: fromKurus(row.price.costKurus),
+        jet_price: fromKurus(row.base_rate_kurus),
         price: fromKurus(row.price.rateKurus),
         mode: row.price.mode,
         markup_percent: row.markup_percent,
@@ -285,7 +287,12 @@ router.get('/services', async (req, res, next) => {
         visible: row.visible
       };
     });
-    res.json({ default_markup_percent: req.tenant.default_markup_percent, categories, services });
+    const pro = isProTenant(req.tenant);
+    res.json({
+      default_markup_percent: req.tenant.default_markup_percent, categories, services,
+      // Pro: Jet servisleri Jet fiyatinin altina satilamaz, en az N servis satista kalir.
+      pro, pro_minimum: pro ? await proMinimum(req.tenant.id, await getResellerSettings()) : null
+    });
   } catch (err) { next(err); }
 });
 
@@ -336,6 +343,18 @@ router.put('/services/:id', validate(servicePriceSchema), async (req, res, next)
           field: 'fixed_price'
         });
       }
+      if (isProTenant(req.tenant) && next_.fixed_rate_kurus !== null && next_.fixed_rate_kurus < service.base_rate_kurus) {
+        return res.status(400).json({
+          error: `Pro pakette Jet servisleri Jet fiyatının (₺${fromKurus(service.base_rate_kurus).toFixed(2)}) altında satılamaz.`,
+          field: 'fixed_price'
+        });
+      }
+    }
+    if (isProTenant(req.tenant) && next_.enabled === 0 && service.enabled) {
+      const min = await proMinimum(req.tenant.id, await getResellerSettings());
+      if (min.enabled - 1 < min.required) {
+        return res.status(409).json({ error: `Pro pakette en az ${min.required} Jet servisi satışta kalmalı.`, code: 'PRO_MIN_SERVICES' });
+      }
     }
     await savePriceRow(dbAsync, req.tenant.id, serviceId, next_);
     await ownerActivity(req, 'service_price_changed', {
@@ -357,6 +376,19 @@ router.post('/services/bulk', validate(bulkSchema), async (req, res, next) => {
     const valid = new Set((await dbAsync.all(
       `SELECT id FROM services WHERE status = 1 AND id IN (${ids.map(() => '?').join(',')})`, ids
     )).map(row => row.id));
+    if (action === 'disable' && isProTenant(req.tenant)) {
+      const min = await proMinimum(req.tenant.id, await getResellerSettings());
+      const closing = (await dbAsync.get(
+        `SELECT COUNT(*) AS n FROM services s LEFT JOIN tenant_service_prices tp ON tp.service_id = s.id AND tp.tenant_id = ?
+          WHERE s.status = 1 AND s.is_bundle = 0 AND COALESCE(tp.enabled, 1) = 1 AND s.id IN (${ids.map(() => '?').join(',')})`,
+        [req.tenant.id, ...ids])).n;
+      if (min.enabled - closing < min.required) {
+        return res.status(409).json({
+          error: `Pro pakette en az ${min.required} Jet servisi satışta kalmalı; şu an ${min.enabled} açık, en fazla ${Math.max(0, min.enabled - min.required)} tanesini kapatabilirsin.`,
+          code: 'PRO_MIN_SERVICES'
+        });
+      }
+    }
     let changed = 0;
     await withTransaction(async tx => {
       for (const serviceId of ids) {
@@ -739,6 +771,7 @@ router.get('/digital', async (req, res, next) => {
       markup_percent: ds.markupPercent,
       own_markup: own === undefined || own === '' ? null : own,
       discount_percent: effectiveDiscountPercent(req.tenant, settings),
+      pro: isProTenant(req.tenant),
       products: catalog.map(row => ({
         id: row.product.id,
         name: row.product.name,
@@ -784,6 +817,9 @@ router.put('/digital/products/:id', validate(digitalProductSchema), async (req, 
     };
     if (next_.fixed_price_kurus !== null && next_.fixed_price_kurus < row.price.costKurus) {
       return res.status(400).json({ error: `Sabit fiyat alış fiyatının (₺${fromKurus(row.price.costKurus).toFixed(2)}) altında olamaz.`, field: 'fixed_price' });
+    }
+    if (next_.fixed_price_kurus !== null && isProTenant(req.tenant) && next_.fixed_price_kurus < row.product.price_kurus) {
+      return res.status(400).json({ error: `Pro pakette Jet fiyatının (₺${fromKurus(row.product.price_kurus).toFixed(2)}) altında satılamaz.`, field: 'fixed_price' });
     }
     if (next_.enabled && next_.markup_percent === null && next_.fixed_price_kurus === null) {
       await dbAsync.run('DELETE FROM tenant_digital_prices WHERE tenant_id = ? AND product_id = ?', [req.tenant.id, id]);
@@ -973,6 +1009,7 @@ router.get('/subscription', async (req, res, next) => {
     ]);
     res.json({
       subscription: billing.subscriptionInfo(full, settings, req.owner.balance_kurus),
+      has_domain: await billing.hasActiveDomain(req.tenant.id),
       trial_days: settings.trial_days,
       grace_days: settings.grace_days,
       delete_after_days: settings.delete_after_days,
@@ -985,6 +1022,17 @@ router.get('/subscription', async (req, res, next) => {
 router.post('/subscription/continue', async (req, res, next) => {
   try {
     const result = await billing.continueSubscription(req.tenant.id, req.owner);
+    if (!result.ok) return res.status(result.status || 400).json({ error: result.error, code: result.code, top_up_url: jetTopUpUrl() });
+    invalidateTenantCache();
+    res.json({ message: result.message });
+  } catch (err) { next(err); }
+});
+
+const packageSchema = z.object({ package: z.enum(['standart', 'pro']) });
+
+router.post('/subscription/package', validate(packageSchema), async (req, res, next) => {
+  try {
+    const result = await billing.changePackage(req.tenant.id, req.owner, req.body.package);
     if (!result.ok) return res.status(result.status || 400).json({ error: result.error, code: result.code, top_up_url: jetTopUpUrl() });
     invalidateTenantCache();
     res.json({ message: result.message });

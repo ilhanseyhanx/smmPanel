@@ -11,7 +11,7 @@ const cookieParser = require('cookie-parser');
 const compression = require('compression');
 const { rateLimit } = require('express-rate-limit');
 const { notFoundApi, errorHandler } = require('../middleware/errorHandler');
-const { tenantForHost, tenantSettings, baseDomain, normalizeHost, isMainHost } = require('./resolve');
+const { tenantForHost, tenantSettings, baseDomains, normalizeHost, isMainHost } = require('./resolve');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const TEMPLATE_PATH = path.join(PUBLIC_DIR, 'index.html');
@@ -242,9 +242,39 @@ main{text-align:center;padding:24px}h1{font-size:1.4rem;margin:0 0 8px}p{color:#
 }
 
 function isBaseSubdomain(rawHost) {
-  const base = baseDomain();
   const host = normalizeHost(rawHost);
-  return Boolean(base && host && host !== base && host.endsWith(`.${base}`) && !isMainHost(host));
+  return Boolean(host && !isMainHost(host) && baseDomains().some(base => host !== base && host.endsWith(`.${base}`)));
+}
+
+// Deneme bittikten sonra (28 Eki 2026 karari) site yalnizca bayinin kendi
+// alan adinda acilir. Taban alt adreste (slug.jetsmmpanel.com) yonetim paneli
+// ve odeme bildirimleri calismaya devam eder; vitrin kendi alan adina
+// yonlenir, alan adi yoksa kapali sayfasi gorunur. Jet'in ucretsiz verdigi
+// (comp) paneller ve demo bu kurala tabi degildir.
+const OWN_DOMAIN_PLANS = new Set(['active', 'past_due', 'expired']);
+const BASE_ALWAYS_OPEN = /^\/(admin(\/.*)?|api\/panel(\/.*)?|api\/payments\/(paytr\/callback|shopier\/webhook|nowpayments\/callback)|assets\/.*|brand\/.*|dijital-gorseller\/.*|robots\.txt)$/;
+
+function needsOwnDomain(tenant) {
+  return tenant.via === 'base' && OWN_DOMAIN_PLANS.has(tenant.plan_status) && !tenantSettings(tenant).demo;
+}
+
+function movedPage(tenant) {
+  return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>${escapeHtml(tenant.name)}</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0}
+main{text-align:center;padding:24px}h1{font-size:1.4rem;margin:0 0 8px}p{color:#94a3b8;margin:0}</style></head>
+<body><main><h1>${escapeHtml(tenant.name)}</h1><p>Bu site şu anda bu adreste hizmet vermiyor.</p></main></body></html>`;
+}
+
+function ownDomainGate(req, res, tenant) {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  if (tenant.primary_domain && (req.method === 'GET' || req.method === 'HEAD')) {
+    return res.redirect(301, `https://${tenant.primary_domain}${req.originalUrl}`);
+  }
+  if (req.path.startsWith('/api/')) {
+    return res.status(403).json({ error: 'Bu site artık bu adreste hizmet vermiyor.', error_en: 'This site is no longer served at this address.' });
+  }
+  res.status(503).type('html').send(movedPage(tenant));
 }
 
 function tenantDispatcher(req, res, next) {
@@ -257,6 +287,7 @@ function tenantDispatcher(req, res, next) {
       res.setHeader('X-Robots-Tag', 'noindex, nofollow');
       return res.status(404).type('html').send(unknownSubdomainPage());
     }
+    if (needsOwnDomain(tenant) && !BASE_ALWAYS_OPEN.test(req.path)) return ownDomainGate(req, res, tenant);
     req.tenant = tenant;
     tenantApp(req, res, err => {
       if (err) return errorHandler(err, req, res, () => {});

@@ -19,7 +19,7 @@ Object.assign(SmmApp.prototype, {
     switch (sub.plan_status) {
       case 'trial': return sub.auto_renew
         ? `Deneme ${day(sub.trial_ends_at)} tarihinde bitiyor; ${fee} Jet bakiyenden alınacak.`
-        : `Ücretsiz deneme: ${sub.days_left} gün kaldı. Devam etmek için panelde "Devam et"e bas.`;
+        : `Ücretsiz deneme: ${sub.days_left} gün kaldı. Devam etmek için kendi alan adını bağla ve panelde "Devam et"e bas.`;
       case 'active': return `Aktif · ${day(sub.paid_until)} tarihine kadar ödendi${sub.auto_renew ? '' : ' (yenileme kapalı)'}.`;
       case 'past_due': return `Aylık ücret alınamadı. ${day(sub.grace_ends_at)} tarihine kadar Jet bakiyeni yükle.`;
       case 'expired': return `Site askıda. ${day(sub.delete_at)} tarihinde silinecek; panelden ödeyip açabilirsin.`;
@@ -53,8 +53,24 @@ Object.assign(SmmApp.prototype, {
     update();
   },
 
+  // Paket kartlarindaki "... ile basla": basvuru formunda o paket secilir.
+  rpBindPackagePicks() {
+    document.querySelectorAll('[data-package-pick]').forEach(link => {
+      if (link.dataset.bound) return;
+      link.dataset.bound = '1';
+      link.addEventListener('click', event => {
+        event.preventDefault();
+        this.rpPackage = link.dataset.packagePick;
+        const radio = document.querySelector(`#rp-apply-form input[name=package][value="${this.rpPackage}"]`);
+        if (radio) radio.checked = true;
+        document.getElementById('bayilik-basvuru')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+  },
+
   async renderResellerAccount() {
     this.rpBindCalc();
+    this.rpBindPackagePicks();
     const box = document.getElementById('bayilik-account');
     if (!box) return;
     const esc = value => this.escapeHtml(value);
@@ -84,6 +100,7 @@ Object.assign(SmmApp.prototype, {
         <div class="bp-mine-head"><span class="bp-kicker"><i class="fa-solid fa-store" aria-hidden="true"></i> Bayi Panelim</span><h2>${esc(t.name)}</h2></div>
         <dl class="bp-dl">
           <dt>Site adresi</dt><dd>${t.address ? `<a href="https://${esc(t.address)}" target="_blank" rel="noopener">${esc(t.address)}</a>` : 'Adres yakında tanımlanacak'}</dd>
+          <dt>Paket</dt><dd>${t.package === 'pro' ? 'Pro' : 'Standart'}</dd>
           <dt>Durum</dt><dd>${esc(this.rpPlanText(t.subscription))}</dd>
         </dl>
         ${panelUrl ? `<a class="btn btn-primary" href="${esc(panelUrl)}" target="_blank" rel="noopener"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Yönetim Paneline Git</a>` : ''}
@@ -96,8 +113,14 @@ Object.assign(SmmApp.prototype, {
       return;
     }
     const base = me.base_domain || '';
+    const packages = me.packages || [{ key: 'standart', name: 'Standart', fee: me.monthly_fee }];
+    const picked = this.rpPackage && packages.some(p => p.key === this.rpPackage) ? this.rpPackage : 'standart';
     box.innerHTML = `<form class="bp-card bp-form" id="rp-apply-form" novalidate>
       <h2>Panelini aç · ${esc(me.trial_days)} gün ücretsiz</h2>
+      <fieldset class="bp-packages"><legend>Paket</legend>
+        ${packages.map(p => `<label class="bp-package"><input type="radio" name="package" value="${esc(p.key)}"${p.key === picked ? ' checked' : ''}>
+          <span><strong>${esc(p.name)}</strong> ₺${Number(p.fee).toLocaleString('tr-TR')}/ay</span></label>`).join('')}
+      </fieldset>
       <label>Site adı<input name="name" class="form-control" maxlength="60" placeholder="Örn: Kanka SMM" required></label>
       <label>Adres <small>(küçük harf, rakam ve tire; 3-30 karakter)</small>
         <span class="bp-slug"><input name="slug" class="form-control" maxlength="30" placeholder="kankasmm" autocomplete="off" spellcheck="false" required>${base ? `<span>.${esc(base)}</span>` : ''}</span>
@@ -105,7 +128,7 @@ Object.assign(SmmApp.prototype, {
       <p class="bp-preview" id="rp-preview"></p>
       <p class="bp-error" role="alert"></p>
       <button type="submit" class="btn btn-primary"><i class="fa-solid fa-rocket" aria-hidden="true"></i> Ücretsiz Başlat</button>
-      <p class="bp-muted">Deneme süresince ücret alınmaz. Sonrasında devam edersen aylık ₺${Number(me.monthly_fee).toLocaleString('tr-TR')} Jet bakiyenden alınır.</p>
+      <p class="bp-muted">Deneme süresince ücret alınmaz. Devam etmek için deneme bitmeden kendi alan adını bağlarsın; sonra paketinin aylık ücreti Jet bakiyenden alınır.</p>
     </form>`;
     const form = document.getElementById('rp-apply-form');
     const preview = () => {
@@ -134,7 +157,8 @@ Object.assign(SmmApp.prototype, {
     try {
       const res = await API.applyReseller({
         name: form.elements.namedItem('name').value.trim(),
-        slug: form.elements.namedItem('slug').value.trim().toLowerCase()
+        slug: form.elements.namedItem('slug').value.trim().toLowerCase(),
+        package: form.querySelector('input[name=package]:checked')?.value || 'standart'
       });
       showToast(res.message, 'success');
       this.jt?.('reseller_apply', { label: res.tenant?.slug || '' });

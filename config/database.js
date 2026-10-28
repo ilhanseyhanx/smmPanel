@@ -1000,6 +1000,10 @@ async function runMigrations() {
     );
     CREATE INDEX IF NOT EXISTS idx_digital_orders_tenant ON digital_orders(tenant_id, tenant_customer_id, id DESC);
   `);
+  // Bayi paketi (28 Eki 2026): standart | pro. pending_package: donem sonunda
+  // gecerli olacak paket (Pro'dan Standart'a inis).
+  await addColumnIfMissing('tenants', 'package', "TEXT NOT NULL DEFAULT 'standart'");
+  await addColumnIfMissing('tenants', 'pending_package', 'TEXT');
   // Bayi e-postalari (F6, services/tenantMail.js): hangi bildirimlerin
   // gidecegi ve istege bagli bayinin kendi SMTP'si (parola sifreli). Kayit
   // tablosu hem panelde son gonderimleri gosterir hem de tekrar sinirlar.

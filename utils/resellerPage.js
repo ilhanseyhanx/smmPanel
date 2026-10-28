@@ -28,13 +28,16 @@ function img(name) {
 
 function faqItems(settings, baseDomain) {
   const fee = tl(settings.monthly_fee_tl);
+  const proFee = tl(settings.monthly_fee_pro_tl);
   return [
-    ['Alan adı almam gerekiyor mu?', `Hayır. Panelin ${baseDomain ? `siteadin.${baseDomain}` : 'sana verilen alt adreste'} hemen açılır. İstersen kendi alan adını panelden bağlarsın: tek bir DNS kaydı yeter, SSL otomatik.`],
+    ['Kendi alan adım şart mı?', `Deneme için hayır: panelin ${settings.trial_days} gün ${baseDomain ? `siteadin.${baseDomain}` : 'sana verilen deneme adresinde'} açılır. Devam etmek için kendi alan adını bağlarsın (tek DNS kaydı, SSL otomatik); deneme bitince site yalnızca kendi alan adında açılır.`],
+    ['Standart ile Pro arasındaki fark ne?', `Standart (${fee}/ay) Jet servisleri ve dijital ürünleriyle hazır sitedir. Pro (${proFee}/ay) bunlara ek olarak kendi SMM sağlayıcılarını bağlama, blog, satış sayfaları ve kendi dijital ürünlerini satma imkânı verir. Pro'da Jet servisleri Jet'in fiyatının altına satılamaz ve en az ${settings.pro_min_jet_services} Jet servisi satışta kalır.`],
     ['Müşterilerimin ödediği para kime gider?', 'Doğrudan sana. Havale/EFT, PayTR, Shopier veya kripto hesabını panelden bağlarsın; Jet hiçbir tahsilat yapmaz, komisyon almaz.'],
     ['Sitemde Jet adı görünür mü?', 'Hayır. Site senin adınla, logonla ve renginle açılır; müşterilerin Jet\'i görmez.'],
     ['Servisler nereden geliyor?', `Jet'in servislerinden. Jet fiyatının %${settings.discount_percent} altına alırsın, satış fiyatını sen belirlersin; sipariş, durum takibi, telafi ve iade otomatiktir.`],
     ['Dijital ürün de satabilir miyim?', 'Evet. Jet\'in dijital ürünleri (hesap, lisans, abonelik) panelinde hazır gelir; ayrı kâr oranıyla satarsın, teslimat anında ve otomatiktir.'],
-    ['Deneme bitince ne olur?', `${settings.trial_days} gün ücretsizdir. "Devam et" dersen aylık ${fee} Jet bakiyenden alınır. Demezsen site kapanır, ${settings.delete_after_days} gün içinde ödeyip yeniden açabilirsin.`],
+    ['Deneme bitince ne olur?', `${settings.trial_days} gün ücretsizdir. Kendi alan adını bağlayıp "Devam et" dersen paketinin aylık ücreti Jet bakiyenden alınır. Demezsen site kapanır, ${settings.delete_after_days} gün içinde ödeyip yeniden açabilirsin.`],
+    ['Paketimi sonra değiştirebilir miyim?', 'Evet. Standart\'tan Pro\'ya hemen geçersin, o ayın kalan günlerinin farkı alınır. Pro\'dan Standart\'a dönem sonunda geçilir.'],
     ['Bakiyem yetmezse?', `${settings.grace_days} gün içinde Jet bakiyeni yüklemen yeterli; ücret kendiliğinden alınır, siten kapanmaz.`],
     ['Demoyu nasıl gezerim?', 'Bu sayfadaki demo kartlarından herhangi birine tıkla. Her tema ayrı bir örnek site; "Yönetim paneli" ve "Müşteri gözüyle" şifresiz açılır, hiçbir değişiklik kaydedilmez.'],
     ['API ile çalışmak istersem?', 'Kendi panelin varsa bayi paneline gerek yok: Jet API\'si ücretsizdir, hesabından anahtarını alıp bağlanabilirsin.']
@@ -58,6 +61,7 @@ function calcValues(sales, markup, fee) {
 
 function renderResellerHtml(settings, baseDomain) {
   const fee = tl(settings.monthly_fee_tl);
+  const proFee = tl(settings.monthly_fee_pro_tl);
   const trial = Number(settings.trial_days) || 0;
   const chain = exampleChain(settings);
   const calcSales = 10000;
@@ -72,7 +76,7 @@ function renderResellerHtml(settings, baseDomain) {
     ['fa-tags', 'Kendi fiyatın', 'Kârını tek oranla, servis servis ya da sabit fiyatla ayarla. Maliyetin altına düşen servis kendiliğinden gizlenir.'],
     ['fa-wallet', 'Ödeme doğrudan sana', 'Havale/EFT, PayTR, Shopier ve kripto. Para kendi hesabına girer; Jet aracılık etmez, komisyon almaz.'],
     ['fa-key', 'Dijital ürünler', 'Hesap, lisans ve abonelik gibi dijital ürünleri de sat. Teslimat anında, bilgiler yalnızca alıcıya görünür.'],
-    ['fa-globe', 'Kendi alan adın', 'Tek DNS kaydıyla kendi alan adını bağla; SSL sertifikası otomatik kurulur ve yenilenir.'],
+    ['fa-globe', 'Kendi alan adın', `Deneme ${baseDomain ? `siteadin.${esc(baseDomain)}` : 'deneme adresinde'} açılır; devam ederken kendi alan adını tek DNS kaydıyla bağlarsın, SSL otomatik.`],
     ['fa-palette', 'Senin markan', 'Logo, renk, sekme simgesi ve ana sayfa metinleri senin. Sitende Jet adı hiçbir yerde geçmez.'],
     ['fa-users', 'Müşteri yönetimi', 'Bakiye ekle/düş, ban, sipariş ve ödeme geçmişi, havale onayı ve işlem kaydı tek ekranda.'],
     ['fa-scale-balanced', 'Yasal sayfalar', 'Gizlilik, Mesafeli Satış, İade ve KVKK metinleri senin bilgilerinle otomatik dolar.']
@@ -84,22 +88,38 @@ function renderResellerHtml(settings, baseDomain) {
     ['Servis sağlayıcı', 'Bulursun, bağlarsın, ayrı bakiye tutarsın', `Jet servisleri hazır, %${esc(settings.discount_percent)} indirimli`],
     ['Ödeme altyapısı', 'Her yöntemi kendin entegre edersin', 'Havale, PayTR, Shopier, kripto hazır'],
     ['Yasal sayfalar', 'Kendin yazarsın', 'Bilgilerinle otomatik dolar'],
-    ['Aylık maliyet', 'Sunucu + lisans + bakım', `${fee} sabit, komisyon yok`]
+    ['Aylık maliyet', 'Sunucu + lisans + bakım', `${fee} (Pro ${proFee}) sabit, komisyon yok`]
   ];
-  const included = [
-    'Hazır site ve yönetim paneli',
-    `${sites.length} tema, logo, renk ve metinler`,
-    'Kendi alan adı ve otomatik SSL',
-    '4 ödeme yöntemi, para doğrudan sana',
-    `Jet servisleri %${esc(settings.discount_percent)} indirimli`,
-    'Dijital ürün satışı',
-    'Otomatik sipariş, telafi ve iade',
-    'Komisyon yok, istediğin zaman kapat'
+  const plans = [
+    {
+      key: 'standart', name: 'Standart', fee, tag: 'BAŞLANGIÇ',
+      items: [
+        'Hazır site ve yönetim paneli',
+        `Jet servisleri %${esc(settings.discount_percent)} indirimli, fiyatı sen belirlersin`,
+        'Jet dijital ürünleri',
+        `${sites.length} tema, logo, renk ve metinler`,
+        'Kendi alan adı ve otomatik SSL',
+        '4 ödeme yöntemi, para doğrudan sana',
+        'Müşteri API\'si ve e-postaları',
+        'Komisyon yok, istediğin zaman kapat'
+      ]
+    },
+    {
+      key: 'pro', name: 'Pro', fee: proFee, tag: 'BÜYÜMEK İSTEYENE',
+      items: [
+        'Standart\'taki her şey',
+        'Kendi SMM sağlayıcılarını bağla, servislerini sat',
+        'Blog yazıları',
+        'Satış sayfaları (SEO)',
+        'Kendi dijital ürünlerin (stoklu hesap/lisans)',
+        `Jet servisleri %${esc(settings.discount_percent)} indirimli; Jet fiyatının altına satılmaz, en az ${esc(settings.pro_min_jet_services)} Jet servisi açık kalır`
+      ]
+    }
   ];
   const steps = [
-    ['Başvur', 'Site adını ve adresini seç. Panelin ve siten anında açılır.'],
-    [`${trial} gün ücretsiz dene`, 'Fiyatlarını ayarla, ödeme yöntemini bağla, ilk müşterilerini al.'],
-    ['Devam et', `Beğendiysen "Devam et" de; aylık ${fee} Jet bakiyenden alınır.`]
+    ['Başvur', `Paketini, site adını ve adresini seç. Panelin ve siten ${baseDomain ? `siteadin.${esc(baseDomain)}` : 'deneme adresinde'} anında açılır.`],
+    [`${trial} gün ücretsiz dene`, 'Fiyatlarını ayarla, ödeme yöntemini bağla, kendi alan adını bağla.'],
+    ['Devam et', 'Alan adın bağlıyken "Devam et" de; paketinin aylık ücreti Jet bakiyenden alınır.']
   ];
 
   return `<div class="bp2">
@@ -133,7 +153,7 @@ function renderResellerHtml(settings, baseDomain) {
     <div><strong>%${esc(settings.discount_percent)}</strong><span>Jet fiyatından indirimli alış</span></div>
     <div><strong>${sites.length}</strong><span>hazır tema, tek tıkla değişir</span></div>
     <div><strong>4</strong><span>ödeme yöntemi, para doğrudan sana</span></div>
-    <div><strong>${fee}</strong><span>aylık sabit ücret, komisyon yok</span></div>
+    <div><strong>${fee}</strong><span>aylık sabit ücretten başlar (Pro ${proFee}), komisyon yok</span></div>
   </section>
 
   <section class="bp2-section" id="bp-kazanc" aria-labelledby="bp2-earn-title">
@@ -221,17 +241,20 @@ function renderResellerHtml(settings, baseDomain) {
   <section class="bp2-section" id="bayilik-basla" aria-labelledby="bp2-price-title">
     <header class="bp2-head">
       <span class="bp2-label">05 / FİYAT</span>
-      <h2 id="bp2-price-title">Tek plan, sürpriz yok</h2>
+      <h2 id="bp2-price-title">İki paket, sürpriz yok</h2>
+      <p>${trial ? `İki pakette de ilk ${trial} gün ücretsiz.` : ''} Ücret Jet bakiyenden alınır; deneme sonunda "Devam et" demezsen hiçbir şey ödemezsin.</p>
     </header>
-    <div class="bp2-pricing">
-      <div class="bp2-plan">
-        <span class="bp2-plan-tag">TEK PLAN</span>
-        <h3>Jet Bayi Paneli</h3>
-        <p class="bp2-plan-price"><strong>${fee}</strong><span>/ ay</span></p>
+    <div class="bp2-plans">
+      ${plans.map(plan => `<div class="bp2-plan${plan.key === 'pro' ? ' is-pro' : ''}">
+        <span class="bp2-plan-tag">${plan.tag}</span>
+        <h3>${plan.name}</h3>
+        <p class="bp2-plan-price"><strong>${plan.fee}</strong><span>/ ay</span></p>
         <p class="bp2-plan-trial">${trial ? `İlk ${trial} gün ücretsiz` : 'Hemen başla'}</p>
-        <ul>${included.map(item => `<li><i class="fa-solid fa-check" aria-hidden="true"></i> ${item}</li>`).join('')}</ul>
-        <p class="bp2-note">Ücret Jet bakiyenden alınır. Deneme sonunda "Devam et" demezsen hiçbir şey ödemezsin.</p>
-      </div>
+        <ul>${plan.items.map(item => `<li><i class="fa-solid fa-check" aria-hidden="true"></i> ${item}</li>`).join('')}</ul>
+        <a class="bp2-btn ${plan.key === 'pro' ? 'bp2-btn-primary' : 'bp2-btn-ghost'}" href="#bayilik-basvuru" data-package-pick="${plan.key}">${plan.name} ile başla <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+      </div>`).join('\n      ')}
+    </div>
+    <div class="bp2-pricing" id="bayilik-basvuru">
       <div class="bp2-apply">
         <div class="bp-account" id="bayilik-account"></div>
         <ul class="bp2-assure">
@@ -284,13 +307,14 @@ function resellerJsonLd(settings, baseDomain, base) {
       description: 'Kendi markanla çalışan hazır SMM paneli: Jet servisleri ve dijital ürünler, kendi fiyatın, ödemeler doğrudan sana.',
       provider: { '@type': 'Organization', name: 'Jet SMM Panel', url: base || undefined },
       areaServed: 'TR',
-      offers: {
+      offers: [['Standart', settings.monthly_fee_tl], ['Pro', settings.monthly_fee_pro_tl]].map(([name, price]) => ({
         '@type': 'Offer',
-        price: String(settings.monthly_fee_tl),
+        name: `Jet Bayi Paneli ${name}`,
+        price: String(price),
         priceCurrency: 'TRY',
         url: base ? `${base}/bayilik` : undefined,
         description: `${settings.trial_days} gün ücretsiz deneme, sonrasında aylık`
-      }
+      }))
     },
     {
       '@type': 'FAQPage',

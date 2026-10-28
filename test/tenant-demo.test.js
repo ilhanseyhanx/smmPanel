@@ -104,7 +104,8 @@ test('demo panel: şifresiz açılır, örnek verilerle dolu, hiçbir değişikl
   assert.equal(me.body.tenant.name, 'Neon Boost');
   assert.ok(me.body.demo);
   assert.equal(me.body.subscription.plan_status, 'trial');
-  assert.equal(me.body.subscription.days_left, 5);
+  assert.equal(me.body.subscription.days_left, 1);
+  assert.equal(me.body.subscription.package, 'pro');
 
   const ozet = await panel.get('/api/panel/dashboard');
   assert.equal(ozet.body.recent_orders.length, 8);

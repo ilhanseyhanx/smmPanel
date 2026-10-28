@@ -60,7 +60,9 @@ test('program açılınca sayfa sunucuda basılır: fiyat, deneme, SSS ve JSON-L
   const ld = [...sayfa.text.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(m => JSON.parse(m[1]));
   const graph = ld.flatMap(x => x['@graph'] || [x]);
   assert.ok(graph.some(x => x['@type'] === 'FAQPage' && x.mainEntity.length >= 5));
-  assert.ok(graph.some(x => x['@type'] === 'Service' && x.offers.price === '599' && x.offers.priceCurrency === 'TRY'));
+  const hizmet = graph.find(x => x['@type'] === 'Service');
+  assert.deepEqual(hizmet.offers.map(o => [o.price, o.priceCurrency]), [['599', 'TRY'], ['999', 'TRY']]);
+  assert.match(sayfa.text, /data-package-pick="pro"/);
   assert.match(sayfa.text, /<title>Bayilik - Kendi SMM Panelini Aç/);
   assert.doesNotMatch(sayfa.text, /data-reseller-nav hidden/, 'menü bağlantısı görünür');
   // Tanitim yalnizca kendi adresinde basilir.

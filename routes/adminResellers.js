@@ -32,6 +32,8 @@ const settingsSchema = z.object({
   applications_open: z.boolean(),
   default_markup_percent: percent(1000),
   monthly_fee_tl: z.coerce.number().finite().min(0).max(100_000).optional(),
+  monthly_fee_pro_tl: z.coerce.number().finite().min(0).max(100_000).optional(),
+  pro_min_jet_services: z.coerce.number().int().min(0).max(10_000).optional(),
   trial_days: z.coerce.number().int().min(0).max(60).optional(),
   grace_days: z.coerce.number().int().min(0).max(60).optional(),
   delete_after_days: z.coerce.number().int().min(7).max(365).optional()
@@ -41,7 +43,8 @@ const createSchema = z.object({
   name: z.string().trim().min(2).max(60),
   slug: z.string().trim().min(3).max(30),
   // trial: normal deneme ile baslar; comp: Jet'in ucretsiz verdigi panel.
-  plan: z.enum(['trial', 'comp']).optional().default('trial')
+  plan: z.enum(['trial', 'comp']).optional().default('trial'),
+  package: z.enum(['standart', 'pro']).optional().default('standart')
 });
 const subscriptionSchema = z.object({
   action: z.enum(['extend', 'comp', 'trial']),
@@ -51,7 +54,9 @@ const updateSchema = z.object({
   name: z.string().trim().min(2).max(60).optional(),
   theme: z.enum(THEME_KEYS).optional(),
   discount_percent: percent(90).nullable().optional(),
-  default_markup_percent: percent(1000).optional()
+  default_markup_percent: percent(1000).optional(),
+  // Admin paketi elle degistirir: ucret farki alinmaz, bekleyen inis silinir.
+  package: z.enum(['standart', 'pro']).optional()
 });
 const statusSchema = z.object({
   status: z.enum(['active', 'suspended', 'sleeping']),
@@ -201,6 +206,7 @@ router.get('/', async (req, res, next) => {
       },
       ...addressesOf(row, byTenant.get(row.id) || []),
       is_demo: tenantSettings(row).demo === true,
+      package: row.package === 'pro' ? 'pro' : 'standart',
       subscription: billing.subscriptionInfo(row, settings, row.owner_balance_kurus),
       stats: statsFromRow(row)
     }));
@@ -260,10 +266,10 @@ router.post('/', validate(createSchema), async (req, res, next) => {
     const name = normalizePlainText(req.body.name, 60);
     const plan = req.body.plan === 'comp' ? { plan_status: 'comp', trial_ends_at: null } : await billing.trialFields();
     const created = await dbAsync.run(
-      'INSERT INTO tenants (owner_user_id, slug, name, default_markup_percent, plan_status, trial_ends_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [owner.id, slugCheck.slug, name, settings.default_markup_percent, plan.plan_status, plan.trial_ends_at]
+      'INSERT INTO tenants (owner_user_id, slug, name, default_markup_percent, plan_status, trial_ends_at, package) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [owner.id, slugCheck.slug, name, settings.default_markup_percent, plan.plan_status, plan.trial_ends_at, req.body.package]
     );
-    await adminActivity(req, created.id, 'tenant_created', { name, slug: slugCheck.slug, owner: owner.username, by: 'admin', plan: plan.plan_status });
+    await adminActivity(req, created.id, 'tenant_created', { name, slug: slugCheck.slug, owner: owner.username, by: 'admin', plan: plan.plan_status, package: req.body.package });
     await audit(req, 'tenant_created', created.id, { name, slug: slugCheck.slug, owner: owner.username });
     invalidateTenantCache();
     res.status(201).json({ message: `"${name}" bayi paneli ${owner.username} için oluşturuldu.`, id: created.id });
@@ -341,6 +347,8 @@ router.get('/:id', async (req, res, next) => {
         name: tenant.name,
         slug: tenant.slug,
         theme: tenant.theme,
+        package: tenant.package === 'pro' ? 'pro' : 'standart',
+        pending_package: tenant.pending_package || null,
         status: tenant.status,
         status_reason: tenant.status_reason,
         discount_percent: tenant.discount_percent,
@@ -441,14 +449,14 @@ router.put('/:id', validate(updateSchema), async (req, res, next) => {
     const tenant = await loadTenant(req, res);
     if (!tenant) return;
     const changes = {};
-    for (const key of ['name', 'theme', 'discount_percent', 'default_markup_percent']) {
+    for (const key of ['name', 'theme', 'discount_percent', 'default_markup_percent', 'package']) {
       if (req.body[key] === undefined) continue;
       const value = key === 'name' ? normalizePlainText(req.body.name, 60) : req.body[key];
       if (key === 'name' && !value) return res.status(400).json({ error: 'Site adı boş olamaz.', field: 'name' });
       if (value !== tenant[key]) changes[key] = { from: tenant[key], to: value };
     }
     if (!Object.keys(changes).length) return res.json({ message: 'Değişiklik yok.' });
-    const sets = Object.keys(changes).map(key => `${key} = ?`).join(', ');
+    const sets = Object.keys(changes).map(key => `${key} = ?`).join(', ') + (changes.package ? ', pending_package = NULL' : '');
     await dbAsync.run(
       `UPDATE tenants SET ${sets}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
       [...Object.values(changes).map(change => change.to), tenant.id]

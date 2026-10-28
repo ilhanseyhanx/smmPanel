@@ -212,13 +212,15 @@ function paged(list, query, limit) {
 
 const OWNER_BALANCE = 1840.5;
 
-/** Demo aboneligi: panel her zaman "deneme, 5 gun kaldi" gosterir. */
+/** Demo aboneligi: panel her zaman Pro paket, "denemede 1 gun kaldi" gosterir. */
 function demoSubscription(settings) {
-  const ends = Math.floor(Date.now() / HOUR) * HOUR + 5 * 24 * HOUR;
+  const ends = Math.floor(Date.now() / HOUR) * HOUR + 24 * HOUR;
   return {
-    plan_status: 'trial', fee: settings.monthly_fee_tl, auto_renew: false,
-    trial_ends_at: sqlDate(ends), paid_until: null, period_ends_at: sqlDate(ends), days_left: 5,
-    grace_ends_at: null, delete_at: null, owner_balance: OWNER_BALANCE, balance_enough: OWNER_BALANCE >= settings.monthly_fee_tl
+    plan_status: 'trial', package: 'pro', package_name: 'Pro', pending_package: null,
+    fees: { standart: settings.monthly_fee_tl, pro: settings.monthly_fee_pro_tl },
+    fee: settings.monthly_fee_pro_tl, hours_left: 24, auto_renew: false,
+    trial_ends_at: sqlDate(ends), paid_until: null, period_ends_at: sqlDate(ends), days_left: 1,
+    grace_ends_at: null, delete_at: null, owner_balance: OWNER_BALANCE, balance_enough: OWNER_BALANCE >= settings.monthly_fee_pro_tl
   };
 }
 
@@ -284,6 +286,7 @@ function panelResponse(path, query, ctx) {
   if (path === '/subscription') {
     return {
       subscription: demoSubscription(ctx.settings),
+      has_domain: true,
       trial_days: ctx.settings.trial_days, grace_days: ctx.settings.grace_days, delete_after_days: ctx.settings.delete_after_days,
       top_up_url: ctx.topUpUrl, invoices: []
     };
